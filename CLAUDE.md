@@ -52,14 +52,29 @@ This is a fork of CleverRaven/Cataclysm-DDA. Its goal is a mobile-first Android 
   - App ID is `com.efficientaf.cddamobile` (plus `.experimental`); debug builds are signed with `android/app/debug.keystore`.
   - Android-only code does not compile on desktop. Check it with the NDK before pushing; a full Gradle build is the real test.
 - **Desktop tiles:** Ubuntu 24.04 has no SDL3 packages. Build SDL3 3.4.10, SDL3_image 3.4.4 and SDL3_ttf 3.2.2 from the release tarballs on GitHub (`github.com/libsdl-org/<repo>/releases/download/...`) with CMake into `/usr/local`, then `make -j4 TILES=1 SOUND=0 LOCALIZE=0 RUNTESTS=0 ASTYLE=0 LINTJSON=0 cataclysm-tiles`.
-- **Testing touch without a phone:** run the desktop build under `Xvfb` with `SOFTWARE_RENDERING` on and the `TOUCH_*` options on, and feed it gestures through `CATA_TOUCH_SCRIPT` (format in `src/touch_input.h`). Take screenshots with ImageMagick's `import`. On X11, ImGui follows the real mouse pointer, so park it (`xdotool mousemove`) where a scripted tap on an ImGui window will land.
+- **Testing touch without a phone:** use `tools/mobile_ui/` (needs `xvfb xdotool imagemagick x11-utils`), or by hand: run the desktop build under `Xvfb` with `SOFTWARE_RENDERING` on and the `TOUCH_*` options on, and feed it gestures through `CATA_TOUCH_SCRIPT` (format in `src/touch_input.h`). Take screenshots with ImageMagick's `import`. On X11, ImGui follows the real mouse pointer, so park it (`xdotool mousemove`) where a scripted tap on an ImGui window will land.
 
 ## Mobile code (this fork)
 
-- `src/touch_input.{h,cpp}`: tap, long-press, pinch, pan and ImGui pointer logic, their options, and the desktop stand-in for the Android gesture code. Hooks are marked `Mobile UI` in `sdltiles.cpp`, `handle_action.cpp`, `game.cpp` and `uilist.cpp`.
-- `src/mobile_hud.{h,cpp}`: the overlay drawn in `refresh_display()`: Recenter button and, with `MOBILE_HUD`, location, status chips and messages. `panels.cpp` and `game::draw_panels` hide the sidebar.
-- Options are added at the end of `add_options_android()` in `options.cpp`.
+Everything is behind options registered at the end of `add_options_android()` in `options.cpp` (`MOBILE_HUD`, `MOBILE_MENUS`, `TOUCH_*`), on by default on Android. Hooks in upstream files are marked `// Mobile UI:`.
+
+- `src/touch_input.{h,cpp}`: tap, long-press, pinch, pan, ImGui pointer input (tap = click, drag = scroll, raw-drag areas), zoom range, and the desktop stand-in for the Android gesture code.
+- `src/mobile_ui.{h,cpp}`: the canvas look: palette, fonts (`data/font/Barlow*.ttf`, `JetBrainsMono-Medium.ttf`), icons (`data/mobile_ui/icons/*.svg`), `pressable`, `box`, `app_bar`, bottom sheets.
+- `src/mobile_hud.{h,cpp}`: play-screen overlay drawn with SDL in `refresh_display()`, fixed at the Balanced preset.
+- Screens (ImGui, one file pair each): `mobile_menu` (main menu, new game, pause and wait sheets), `mobile_chargen`, `mobile_inventory` (also replaces the pick-up menu), `mobile_crafting`, `mobile_drawer` (Info and Log drawers, minimap), `mobile_overmap`, `mobile_settings`, `mobile_death`, `mobile_dialog` (popups, yes/no, `uilist` as a sheet).
 - Tests: `tests/touch_input_test.cpp` (`[touch_input]`).
+- `tools/mobile_ui/`: the desktop test kit (`run.sh`, `drive.sh`, `build.sh`), an NDK syntax check, and `BRIEF.md`, the brief used for workers building one screen each.
+
+### Status and open work (16 Nov 2026)
+
+Every canvas screen exists and was checked on a desktop build with scripted touches; the owner tests APKs on a phone. Open, most important first:
+
+1. **Prompts that expect a key** have no touch answer: for example "Press ESC, q, Q or SPACE to accept your fate…" on death and "RETURN to move anyway" from safe mode. The owner wants on-screen buttons that pop up only in these states, richer than upstream's single-character shortcut row (named buttons for the keys the current prompt or input context accepts).
+2. Upstream's shortcut bar is hidden on the map and over mobile screens (`touch_input::hide_shortcut_bar`) but still shows over upstream text screens; item 1 should replace it there.
+3. Screens still upstream's: keybindings, full options list, `uilist` menus with tabs, callbacks or fixed positions, and anything the canvas does not cover (NPC dialogue, bionics, mutations, vehicles, construction, look-around).
+4. Play screen: movement-pad toggle and zoom buttons as HUD pieces, Edit HUD mode, presets from `data/json/ui/mobile_hud/`, left handle opening straight onto the map; portrait HUD was not verified.
+5. Map: a drag lands about one tile short; two fingers only zoom. Sheets cannot be dragged down. Yes/no questions still say "(Case Sensitive)".
+6. Smooth pinch scaling between zoom levels.
 
 ## Suggested order of work (roadmap phases 0–3)
 
