@@ -675,8 +675,7 @@ void view::impl::draw_controls()
     draw_chrome( area_min, area_max, interactive );
 
     if( sheet_open ) {
-        draw_sheet( origin, size );
-        // outline the tile the sheet is about
+        // outline the tile the sheet is about, under the sheet
         if( geo.valid && selected.z() == cursor.z() ) {
             const ImVec2 corner = tile_corner( geo, ( selected.xy() - cursor.xy() ).raw() );
             draw->PushClipRect( area_min, area_max, true );
@@ -686,6 +685,7 @@ void view::impl::draw_controls()
                            mobile_ui::col_accent, 0.0f, 0, std::max( 2.0f, u ) );
             draw->PopClipRect();
         }
+        draw_sheet( origin, size );
     }
 
     if( !toast.empty() && clock::now() < toast_until ) {
