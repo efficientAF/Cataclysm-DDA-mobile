@@ -151,7 +151,8 @@ static const std::string flag_NO_RESIZE( "NO_RESIZE" );
 
 class basecamp;
 
-static bool crafting_allowed( const Character &p, const recipe &rec )
+// Mobile UI: not static, so that mobile_crafting.cpp runs the same checks
+bool crafting_allowed( const Character &p, const recipe &rec )
 {
     if( p.morale_crafting_speed_multiplier( rec ) <= 0.0f ) {
         if( p.is_avatar() ) {

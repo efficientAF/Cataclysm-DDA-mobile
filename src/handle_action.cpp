@@ -69,6 +69,7 @@
 #include "math_parser_diag_value.h"
 #include "mdarray.h"
 #include "messages.h"
+#include "mobile_crafting.h"
 #include "mobile_drawer.h"
 #include "mobile_menu.h"
 #include "monster.h"
@@ -2853,7 +2854,12 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
             break;
 
         case ACTION_CRAFT:
-            player_character.craft();
+            // Mobile UI: the canvas crafting screen instead of upstream's
+            if( mobile_menu::enabled() ) {
+                mobile_crafting::show();
+            } else {
+                player_character.craft();
+            }
             break;
 
         case ACTION_RECRAFT:

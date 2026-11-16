@@ -36,6 +36,10 @@ void remove_ammo( std::list<item> &dis_items, Character &p );
 
 void drop_or_handle( const item &newit, Character &p );
 
+// Mobile UI: the checks Character::craft makes before it starts a craft (morale,
+// light, driving and so on).  It tells the player why not.
+bool crafting_allowed( const Character &p, const recipe &rec );
+
 // Per-choice data for the timer sub-menu when the modal is shown on an
 // in-flight unattended step.  All offsets are step-start anchored
 // (`alarm_at = passive_started_at + offset`), so the resulting

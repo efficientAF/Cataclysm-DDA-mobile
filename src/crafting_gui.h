@@ -50,4 +50,7 @@ struct crafting_category {
     static void finalize_all();
 };
 
+// Mobile UI: all recipe categories, in the order of the crafting menu's tabs
+const std::vector<crafting_category> &get_crafting_categories();
+
 #endif // CATA_SRC_CRAFTING_GUI_H

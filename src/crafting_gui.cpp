@@ -182,6 +182,12 @@ static std::string get_cat_unprefixed( std::string_view prefixed_name )
 
 // Ceil-rounded human-readable craft time.  Input is game turns (seconds).
 
+// Mobile UI: all recipe categories, in the order of the crafting menu's tabs
+const std::vector<crafting_category> &get_crafting_categories()
+{
+    return craft_cat_list.get_all();
+}
+
 void load_recipe_category( const JsonObject &jsobj, const std::string &src )
 {
     craft_cat_list.load( jsobj, src );
