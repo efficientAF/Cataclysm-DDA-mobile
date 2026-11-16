@@ -36,7 +36,10 @@
 #include "point.h"
 #include "sdltiles.h"
 #include "string_formatter.h"
+#include "touch_input.h"
 #include "translations.h"
+#include "ui_manager.h"
+#include "uistate.h"
 #endif
 
 namespace mobile_overmap
@@ -262,9 +265,20 @@ class view::impl : public cataimgui::window
         // an upstream action asked for by a button
         std::string pending_action;
         sheet_event pending_sheet = sheet_event::none;
-        // vertical drag over the map, in pixels, not yet turned into tiles
-        float pan_pixels = 0.0f;
-        clock::time_point last_touch;
+        // drag over the map, in pixels, not yet turned into tiles
+        ImVec2 pan_pixels = ImVec2( 0.0f, 0.0f );
+        // how much of the drag in progress pan_pixels has had, and whether it
+        // went far enough to not be a tap
+        ImVec2 drag_seen = ImVec2( 0.0f, 0.0f );
+        bool map_dragged = false;
+        // height of the app bar over the map, in pixels
+        float bar_pixels = 0.0f;
+        // the player has been put in the middle of the visible map once
+        bool centered = false;
+        int last_zoom = 0;
+        // Rows from the cursor, which upstream keeps at the center of the
+        // screen, down to the middle of the map below the app bar.
+        int focus_rows( const map_geometry &geo ) const;
 
         // --- tile sheet ---
         bool sheet_open = false;
@@ -281,8 +295,6 @@ class view::impl : public cataimgui::window
         void open_sheet( const tripoint_abs_omt &pos );
         void close_sheet();
         void show_toast( const std::string &text );
-        // How far a sideways swipe pans, in tiles.
-        int swipe_step() const;
 
     protected:
         cataimgui::bounds get_bounds() override {
@@ -329,10 +341,10 @@ void view::impl::show_toast( const std::string &text )
     toast_until = clock::now() + std::chrono::milliseconds( 2200 );
 }
 
-int view::impl::swipe_step() const
+int view::impl::focus_rows( const map_geometry &geo ) const
 {
-    const map_geometry geo = overmap_geometry();
-    return geo.valid ? std::max( 3, geo.win_size.x / geo.tile.x / 4 ) : 3;
+    return geo.valid ? static_cast<int>( std::lround( bar_pixels * 0.5f /
+                                         static_cast<float>( geo.tile.y ) ) ) : 0;
 }
 
 void view::impl::refresh_cache( const tripoint_abs_omt &cursor, const map_geometry &geo )
@@ -619,17 +631,9 @@ void view::impl::draw_controls()
     // the window is a pixel short of the screen, the drawing is not
     draw->PushClipRectFullScreen();
     const bool interactive = !sheet_open;
-    const bool touching = io.MouseSource == ImGuiMouseSource_TouchScreen;
-    // The touch layer turns a vertical drag into wheel notches of five lines of
-    // text each (see touch_input::finger_motion); this is that drag in pixels.
-    const float wheel_pixels = io.MouseWheel * 5.0f * std::max( ImGui::GetFontSize(), 1.0f );
-    if( touching && ImGui::IsMousePosValid() ) {
-        last_touch = clock::now();
-    }
 
     const map_geometry geo = overmap_geometry();
     const tripoint_abs_omt cursor = g->overmap_data.cursor_pos;
-    refresh_cache( sheet_open ? selected : cursor, geo );
 
     // app bar, opaque over the top edge of the map
     const float bar_bottom = origin.y + safe.y + 54.0f * u;
@@ -657,19 +661,43 @@ void view::impl::draw_controls()
     const ImVec2 area_min( origin.x, bar_bottom );
     const ImVec2 area_max = screen_max;
     const ImVec2 area_size( area_max.x - area_min.x, area_max.y - area_min.y );
+    bar_pixels = bar_bottom - origin.y;
+    const tripoint_abs_omt focus = cursor + point( 0, focus_rows( geo ) );
+    refresh_cache( sheet_open ? selected : focus, geo );
 
-    // the map itself: a tap picks a tile, a drag pans
+    // the map itself: a tap picks a tile, a drag pans; the touch layer hands
+    // over drags as they are and takes pinches for the zoom
     if( interactive ) {
+        touch_input::set_raw_drag_rect( area_min.x, area_min.y, area_size.x, area_size.y,
+                                        touch_input::view_mode::overmap );
         ImGui::SetNextItemAllowOverlap();
-        if( mobile_ui::pressable( "##om_map", area_min, area_size ) ) {
-            if( const std::optional<point> rel = tile_at( geo, io.MouseClickedPos[0] ) ) {
-                open_sheet( cursor + *rel );
-                refresh_cache( selected, geo );
+        const bool released = mobile_ui::pressable( "##om_map", area_min, area_size );
+        // the last move of a drag can arrive in the frame of its release
+        const bool let_go = ImGui::IsItemDeactivated() && map_dragged && ImGui::IsMousePosValid();
+        if( ImGui::IsItemActive() || let_go ) {
+            const ImVec2 drag( io.MousePos.x - io.MouseClickedPos[0].x,
+                               io.MousePos.y - io.MouseClickedPos[0].y );
+            if( std::hypot( drag.x, drag.y ) > 6.0f * u ) {
+                map_dragged = true;
+            }
+            if( map_dragged ) {
+                pan_pixels.x += drag.x - drag_seen.x;
+                pan_pixels.y += drag.y - drag_seen.y;
+                drag_seen = drag;
             }
         }
-        if( wheel_pixels != 0.0f && touching && io.MousePos.y >= area_min.y ) {
-            pan_pixels += wheel_pixels;
+        if( !ImGui::IsItemActive() ) {
+            if( released && !map_dragged ) {
+                if( const std::optional<point> rel = tile_at( geo, io.MouseClickedPos[0] ) ) {
+                    open_sheet( cursor + *rel );
+                    refresh_cache( selected, geo );
+                }
+            }
+            map_dragged = false;
+            drag_seen = ImVec2( 0.0f, 0.0f );
         }
+    } else {
+        touch_input::clear_raw_drag_rect();
     }
 
     draw_chrome( area_min, area_max, interactive );
@@ -704,6 +732,7 @@ view::view() : pimpl( std::make_unique<impl>() ) {}
 
 view::~view()
 {
+    touch_input::clear_raw_drag_rect();
     travel_confirmed_flag = false;
 }
 
@@ -769,31 +798,48 @@ std::string view::handle( const std::string &action, input_context &ctxt,
         return "CHOOSE_DESTINATION";
     }
 
-    if( !v.pending_action.empty() ) {
-        std::string ret;
-        ret.swap( v.pending_action );
-        return ret;
-    }
-
-    // a vertical drag: the map follows the finger
     const map_geometry geo = overmap_geometry();
-    if( v.pan_pixels != 0.0f && geo.valid ) {
-        const int tiles = static_cast<int>( v.pan_pixels / static_cast<float>( geo.tile.y ) );
-        if( tiles != 0 ) {
-            v.pan_pixels -= static_cast<float>( tiles * geo.tile.y );
-            cursor.y() -= tiles;
-            return idle_action;
+    // Upstream keeps the cursor in the middle of the screen; the middle of the
+    // map that shows below the app bar is a few rows further down.
+    const tripoint_abs_omt centered_cursor = g->overmap_data.origin_pos +
+            point( 0, -v.focus_rows( geo ) );
+    if( !v.centered && geo.valid && v.bar_pixels > 0.0f ) {
+        v.centered = true;
+        if( cursor == g->overmap_data.origin_pos ) {
+            cursor = centered_cursor;
         }
     }
 
-    // A sideways swipe arrives as an arrow key once the finger is up.  Pan as
-    // if the finger had dragged the map along; keys of a real keyboard keep
-    // moving the cursor the way upstream does.
-    if( ( action == "LEFT" || action == "RIGHT" ) &&
-        clock::now() - v.last_touch < std::chrono::milliseconds( 600 ) ) {
-        cursor.x() += action == "LEFT" ? v.swipe_step() : -v.swipe_step();
-        v.pan_pixels = 0.0f;
-        return idle_action;
+    if( !v.pending_action.empty() ) {
+        std::string ret;
+        ret.swap( v.pending_action );
+        if( ret == "CENTER" ) {
+            cursor = centered_cursor;
+            return idle_action;
+        }
+        return ret;
+    }
+
+    // a pinch changed the zoom (touch_input::two_finger_flush): lay out again
+    if( v.last_zoom != uistate.overmap_tileset_zoom ) {
+        const bool first = v.last_zoom == 0;
+        v.last_zoom = uistate.overmap_tileset_zoom;
+        if( !first && g->overmap_data.ui ) {
+            g->overmap_data.ui->mark_resize();
+            return "ANY_INPUT";
+        }
+    }
+
+    // a drag: the map follows the finger
+    if( geo.valid ) {
+        const point tiles( static_cast<int>( v.pan_pixels.x / static_cast<float>( geo.tile.x ) ),
+                           static_cast<int>( v.pan_pixels.y / static_cast<float>( geo.tile.y ) ) );
+        if( tiles != point::zero ) {
+            v.pan_pixels.x -= static_cast<float>( tiles.x * geo.tile.x );
+            v.pan_pixels.y -= static_cast<float>( tiles.y * geo.tile.y );
+            cursor += -tiles;
+            return idle_action;
+        }
     }
 
     // taps are read from ImGui, not from the mouse actions of the map

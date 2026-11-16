@@ -6599,6 +6599,12 @@ static void CheckMessages()
                                                     GetFingerY( ev, WindowHeight ) );
                         break;
                     }
+                    if( slot == 1 && touch_claimed ) {
+                        // Mobile UI: second finger of a pinch on a raw drag area (the overmap)
+                        touch_input::second_finger_motion( GetFingerX( ev, WindowWidth ),
+                                                           GetFingerY( ev, WindowHeight ) );
+                        break;
+                    }
                     if( slot == 0 ) {
                         if( !is_quick_shortcut_touch ) {
                             update_finger_repeat_delay();
@@ -6655,6 +6661,11 @@ static void CheckMessages()
                         ui_manager::redraw_invalidated();
                         needupdate = true; // ensure virtual joystick and quick shortcuts redraw as we interact
                     } else if( finger_slot_for( GetFingerID( ev ), true ) == 1 ) {
+                        if( touch_claimed ) {
+                            // Mobile UI: pinch on a raw drag area (the overmap)
+                            touch_input::second_finger_down( GetFingerX( ev, WindowWidth ),
+                                                             GetFingerY( ev, WindowHeight ) );
+                        }
                         if( !is_quick_shortcut_touch ) {
                             second_finger_down_x = second_finger_curr_x = GetFingerX( ev, WindowWidth );
                             second_finger_down_y = second_finger_curr_y = GetFingerY( ev, WindowHeight );

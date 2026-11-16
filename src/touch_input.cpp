@@ -661,14 +661,49 @@ struct owned_finger_state {
     float down_x = 0.0f;
     float down_y = 0.0f;
     float last_y = 0.0f;
+    // where the finger is now
+    float x = 0.0f;
+    float y = 0.0f;
     drag_axis drag = drag_axis::none;
+    // went down in a raw drag area: ImGui gets a held drag, not wheel or keys
+    bool raw = false;
+    // the held drag has started: ImGui has the button down
+    bool raw_dragging = false;
+    // a second finger joined in a raw drag area; nothing else happens until all lift
+    bool raw_pinch = false;
+    float second_x = 0.0f;
+    float second_y = 0.0f;
     // for owner::hud_button
     action_id act = ACTION_NULL;
 };
 } // namespace
 
+namespace
+{
+struct raw_drag_area {
+    bool set = false;
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+    view_mode pinch_mode = view_mode::overmap;
+};
+} // namespace
+
 static owned_finger_state owned_finger;
+static raw_drag_area raw_area;
 static int wake_frames = 0;
+
+void set_raw_drag_rect( const float x, const float y, const float w, const float h,
+                        const view_mode pinch_mode )
+{
+    raw_area = { true, x, y, w, h, pinch_mode };
+}
+
+void clear_raw_drag_rect()
+{
+    raw_area = raw_drag_area();
+}
 // ImGui ignores the mouse while the game has it switched off or hidden.  A
 // finger on an ImGui window lifts that for as long as its tap is being handled.
 static bool restore_no_mouse = false;
@@ -739,6 +774,10 @@ bool finger_down( const float x, const float y, const bool default_mode )
         const ImVec2 pos = to_imgui( x, y );
         if( imgui_window_at( pos ) ) {
             owned_finger.who = owner::imgui;
+            owned_finger.x = x;
+            owned_finger.y = y;
+            owned_finger.raw = raw_area.set && pos.x >= raw_area.x && pos.y >= raw_area.y &&
+                               pos.x < raw_area.x + raw_area.w && pos.y < raw_area.y + raw_area.h;
             enable_imgui_pointer();
             ImGuiIO &io = ImGui::GetIO();
             io.AddMouseSourceEvent( ImGuiMouseSource_TouchScreen );
@@ -753,6 +792,34 @@ bool finger_down( const float x, const float y, const bool default_mode )
 void finger_motion( const float x, const float y )
 {
     if( owned_finger.who != owner::imgui ) {
+        return;
+    }
+    owned_finger.x = x;
+    owned_finger.y = y;
+    if( owned_finger.raw_pinch ) {
+        two_finger_update( x, y, owned_finger.second_x, owned_finger.second_y );
+        return;
+    }
+    if( owned_finger.raw ) {
+        if( !owned_finger.raw_dragging &&
+            classify_drag( x - owned_finger.down_x, y - owned_finger.down_y,
+                           touch_slop() ) == drag_axis::none ) {
+            return;
+        }
+        ImGuiIO &io = ImGui::GetIO();
+        io.AddMouseSourceEvent( ImGuiMouseSource_TouchScreen );
+        if( !owned_finger.raw_dragging ) {
+            // The drag starts where the finger went down.  ImGui spreads the
+            // press and the moves that follow over frames of its own accord.
+            owned_finger.raw_dragging = true;
+            owned_finger.drag = drag_axis::vertical;
+            const ImVec2 down = to_imgui( owned_finger.down_x, owned_finger.down_y );
+            io.AddMousePosEvent( down.x, down.y );
+            io.AddMouseButtonEvent( ImGuiMouseButton_Left, true );
+        }
+        const ImVec2 pos = to_imgui( x, y );
+        io.AddMousePosEvent( pos.x, pos.y );
+        request_wake_frames( 3 );
         return;
     }
     if( owned_finger.drag == drag_axis::none ) {
@@ -771,6 +838,45 @@ void finger_motion( const float x, const float y )
         owned_finger.last_y = y;
         request_wake_frames( 2 );
     }
+}
+
+// Ends the held drag of a raw drag area: let go of the button, then park the
+// pointer a frame later (see take_wake_frame).
+static void release_raw_drag( const float x, const float y )
+{
+    ImGuiIO &io = ImGui::GetIO();
+    io.AddMouseSourceEvent( ImGuiMouseSource_TouchScreen );
+    const ImVec2 pos = to_imgui( x, y );
+    io.AddMousePosEvent( pos.x, pos.y );
+    io.AddMouseButtonEvent( ImGuiMouseButton_Left, false );
+    tap_stage = tap_step::leave;
+    request_wake_frames( 4 );
+}
+
+bool second_finger_down( const float x, const float y )
+{
+    if( owned_finger.who != owner::imgui || !owned_finger.raw || owned_finger.raw_pinch ) {
+        return false;
+    }
+    if( owned_finger.raw_dragging ) {
+        release_raw_drag( owned_finger.x, owned_finger.y );
+        owned_finger.raw_dragging = false;
+    }
+    owned_finger.raw_pinch = true;
+    owned_finger.second_x = x;
+    owned_finger.second_y = y;
+    two_finger_begin( raw_area.pinch_mode, owned_finger.x, owned_finger.y, x, y );
+    return true;
+}
+
+void second_finger_motion( const float x, const float y )
+{
+    if( owned_finger.who != owner::imgui || !owned_finger.raw_pinch ) {
+        return;
+    }
+    owned_finger.second_x = x;
+    owned_finger.second_y = y;
+    two_finger_update( owned_finger.x, owned_finger.y, x, y );
 }
 
 bool finger_up( const float x, const float y, input_event &out )
@@ -802,6 +908,16 @@ bool finger_up( const float x, const float y, input_event &out )
         case owner::imgui: {
             ImGuiIO &io = ImGui::GetIO();
             io.AddMouseSourceEvent( ImGuiMouseSource_TouchScreen );
+            if( finger.raw_pinch ) {
+                two_finger_end();
+                io.AddMousePosEvent( -FLT_MAX, -FLT_MAX );
+                request_wake_frames( 2 );
+                break;
+            }
+            if( finger.raw_dragging ) {
+                release_raw_drag( x, y );
+                break;
+            }
             if( finger.drag == drag_axis::none ) {
                 // A tap is a click where the finger went down.  ImGui has to see
                 // the press, the release and the pointer leaving in separate
@@ -832,6 +948,9 @@ bool finger_up( const float x, const float y, input_event &out )
 void finger_cancel()
 {
     if( owned_finger.who == owner::imgui && ImGui::GetCurrentContext() != nullptr ) {
+        if( owned_finger.raw_dragging ) {
+            ImGui::GetIO().AddMouseButtonEvent( ImGuiMouseButton_Left, false );
+        }
         ImGui::GetIO().AddMousePosEvent( -FLT_MAX, -FLT_MAX );
     }
     owned_finger = owned_finger_state();
@@ -1065,6 +1184,8 @@ bool desktop_finger_event( const SDL_Event &ev, const int window_w, const int wi
         if( slot == 1 && !desk.owned && default_mode ) {
             desk.two_fingers = true;
             two_finger_begin( view_mode::map, desk.x[0], desk.y[0], desk.x[1], desk.y[1] );
+        } else if( slot == 1 && desk.owned ) {
+            second_finger_down( fx, fy );
         }
         return true;
     }
@@ -1080,6 +1201,8 @@ bool desktop_finger_event( const SDL_Event &ev, const int window_w, const int wi
         if( desk.owned ) {
             if( slot == 0 ) {
                 finger_motion( fx, fy );
+            } else {
+                second_finger_motion( fx, fy );
             }
             return true;
         }

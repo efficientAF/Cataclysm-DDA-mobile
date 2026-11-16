@@ -156,9 +156,25 @@ bool two_finger_acted();
 // finger; the caller must then route its motion and release here and nowhere else.
 bool finger_down( float x, float y, bool default_mode );
 void finger_motion( float x, float y );
+// A second finger went down while this module has the first.  Returns true if
+// the two now pinch a raw drag area; report the second finger's moves with
+// second_finger_motion then.
+bool second_finger_down( float x, float y );
+void second_finger_motion( float x, float y );
 // Returns true if it set out to an input to deliver.
 bool finger_up( float x, float y, input_event &out );
 void finger_cancel();
+// --- Raw drag areas ---
+//
+// A screen that pans its own content (the overmap) registers the area, in ImGui
+// coordinates, every frame it wants it.  A finger that goes down inside it on
+// an ImGui window is not turned into wheel scrolling or arrow keys: once it
+// leaves the slop radius ImGui gets a held mouse drag from where it went down,
+// released when it lifts.  A tap stays a click.  A second finger starts a
+// two-finger gesture on pinch_mode, which zooms live.
+void set_raw_drag_rect( float x, float y, float w, float h, view_mode pinch_mode );
+void clear_raw_drag_rect();
+
 // True while a finger is on an ImGui window or its tap is still being handled.
 // ImGui must accept pointer input for that long, even with the mouse disabled.
 bool pointer_active();
