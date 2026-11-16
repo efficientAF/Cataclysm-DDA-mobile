@@ -147,15 +147,17 @@ void finger_motion( const float x, const float y )
     mobile_hud::layout &layout = working_layout( geo.landscape );
     if( is_drawer( editor.selection ) ) {
         mobile_hud::drawer &d = layout.drawers[static_cast<size_t>( editor.selection ) - num_pieces];
-        mobile_hud::move_handle( d, x, y, geo.screen, mobile_hud::insets(), geo.unit );
+        mobile_hud::move_handle( d, x, y, geo.screen, geo.handle_safe, geo.unit );
     } else {
         mobile_hud::rect where = editor.drag.start_rect;
-        where.x = std::clamp( where.x + dx, geo.screen.x,
-                              std::max( geo.screen.x, geo.screen.x + geo.screen.w - where.w ) );
-        where.y = std::clamp( where.y + dy, geo.screen.y,
-                              std::max( geo.screen.y, geo.screen.y + geo.screen.h - where.h ) );
+        const float left = geo.screen.x + geo.safe.left;
+        const float top = geo.screen.y + geo.safe.top;
+        where.x = std::clamp( where.x + dx, left, std::max( left,
+                              geo.screen.x + geo.screen.w - geo.safe.right - where.w ) );
+        where.y = std::clamp( where.y + dy, top, std::max( top,
+                              geo.screen.y + geo.screen.h - geo.safe.bottom - where.h ) );
         mobile_hud::pin_to( layout.pieces[static_cast<size_t>( editor.selection )], where, geo.screen,
-                            mobile_hud::insets(), geo.unit, geo.landscape );
+                            geo.safe, geo.unit, geo.landscape );
     }
     mobile_hud::update_edit( editor.working, editor.selection );
 }
@@ -355,7 +357,6 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
     const ImVec4 safe = mobile_ui::safe_insets();
     const bool landscape = size.x > size.y;
     mobile_hud::layout &layout = working_layout( landscape );
-    const mobile_hud::edit_geometry geo = mobile_hud::edit_frame();
     const size_t index = static_cast<size_t>( editor.selection );
     const bool drawer = is_drawer( editor.selection );
     const piece_id id = drawer ? piece_id::num : static_cast<piece_id>( index );
@@ -386,23 +387,12 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
     const float pad = 12.0f * u;
     const float w = std::min( size.x - safe.x - safe.z - 24.0f * u, 372.0f * u );
     const float h = static_cast<float>( rows ) * row_h * u + 2.0f * pad;
-    // above or below the piece, whichever has the room; pieces are in window
-    // pixels, so compare by the share of the screen
-    const mobile_hud::rect &where = drawer ? geo.handles[index - num_pieces] : geo.pieces[index];
-    const float piece_mid = geo.screen.h > 0.0f ? ( where.y + where.h * 0.5f - geo.screen.y ) /
-                            geo.screen.h : 0.0f;
+    // in the middle of the screen, like the bar: the pieces live at the edges
+    // and are drawn over everything else
     const float top = origin.y + safe.y + 10.0f * u;
     const float bottom = origin.y + size.y - safe.w - 10.0f * u;
-    ImVec2 min( origin.x + safe.x + ( size.x - safe.x - safe.z - w ) * 0.5f,
-                piece_mid < 0.5f ? bottom - h : top );
-    if( landscape ) {
-        // beside it instead: the screen is wide and short
-        const float piece_x = geo.screen.w > 0.0f ? ( where.x + where.w * 0.5f - geo.screen.x ) /
-                              geo.screen.w : 0.0f;
-        min.x = piece_x < 0.5f ? origin.x + size.x - safe.z - 12.0f * u - w :
-                origin.x + safe.x + 12.0f * u;
-        min.y = std::max( top, origin.y + ( size.y - h ) * 0.5f );
-    }
+    const ImVec2 min( origin.x + safe.x + ( size.x - safe.x - safe.z - w ) * 0.5f,
+                      std::max( top, origin.y + size.y * 0.42f - h * 0.5f ) );
     const ImVec2 max( min.x + w, std::min( bottom, min.y + h ) );
     mobile_ui::box( draw, min, max, mobile_ui::col_sheet, mobile_ui::col_line, 16.0f );
     editor.chrome.emplace_back( min, max );
@@ -601,6 +591,8 @@ void run()
         ctxt.register_action( "ANY_INPUT" );
         bool done = false;
         while( !done ) {
+            // the map again every time, or what was drawn before shows through
+            g->invalidate_main_ui_adaptor();
             ui_manager::redraw();
             const std::string action = ctxt.handle_input();
             const bar_action tapped = action == "QUIT" ? bar_action::cancel : window.tapped;

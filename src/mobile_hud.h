@@ -80,6 +80,9 @@ bool is_editing();
 struct edit_geometry {
     // where the HUD draws, in window pixels, and pixels per canvas unit
     rect screen;
+    // room kept free at its edges, for the pieces and for the drawer handles
+    insets safe;
+    insets handle_safe;
     float unit = 1.0f;
     bool landscape = false;
     // where each piece and handle was drawn; empty if it was not

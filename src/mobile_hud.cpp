@@ -113,6 +113,10 @@ static std::array<SDL_FRect, num_drawers> handle_rects;
 
 // the frame being drawn
 static rect frame_screen;
+// room kept free at its edges for notches, system bars and drawer handles
+static insets frame_safe;
+// the same without the room for handles
+static insets frame_handle_safe;
 static bool frame_landscape = false;
 static const layout *frame_layout = nullptr;
 // of the piece being drawn; see piece::opacity
@@ -385,7 +389,7 @@ static SDL_FRect to_frect( const rect &r )
 // place for the editor.
 static SDL_FRect place_piece( const piece_id id, const float w, const float h )
 {
-    const rect r = place( ( *frame_layout )[id], w, h, frame_screen, insets(), unit,
+    const rect r = place( ( *frame_layout )[id], w, h, frame_screen, frame_safe, unit,
                           frame_landscape );
     const SDL_FRect result = to_frect( r );
     piece_rects[static_cast<size_t>( id )] = result;
@@ -643,7 +647,23 @@ static void draw_drawer_handles()
         if( !cfg.visible ) {
             continue;
         }
-        const SDL_FRect rect = to_frect( handle_rect( cfg, frame_screen, insets(), unit ) );
+        // handles sit on the very edge of the screen, as on the canvas
+        insets along = frame_handle_safe;
+        switch( cfg.edge ) {
+            case screen_edge::left:
+                along.left = 0.0f;
+                break;
+            case screen_edge::right:
+                along.right = 0.0f;
+                break;
+            case screen_edge::top:
+                along.top = 0.0f;
+                break;
+            case screen_edge::bottom:
+                along.bottom = 0.0f;
+                break;
+        }
+        const SDL_FRect rect = to_frect( handle_rect( cfg, frame_screen, along, unit ) );
         handle_rects[i] = rect;
         const bool horizontal = cfg.edge == screen_edge::top || cfg.edge == screen_edge::bottom;
         const char *const icon = id == drawer_id::info ? "person" : "globe";
@@ -900,11 +920,30 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
     if( unit <= 0.0f ) {
         return;
     }
-    frame_screen = { area.x, area.y, area.w, area.h };
+    const SDL_FRect whole = view.w > 0 && view.h > 0 ?
+                            SDL_FRect{ static_cast<float>( view.x ), static_cast<float>( view.y ), static_cast<float>( view.w ), static_cast<float>( view.h ) } :
+                            SDL_FRect{ 0.0f, 0.0f, static_cast<float>( window_w ), static_cast<float>( window_h ) };
+    frame_screen = { whole.x, whole.y, whole.w, whole.h };
     frame_landscape = area.w > area.h;
     const layout &current = editing ? ( frame_landscape ? edit_preset.landscape :
                                         edit_preset.portrait ) : active_layout( frame_landscape );
     frame_layout = &current;
+    frame_handle_safe = { area.x - whole.x, area.y - whole.y,
+                          whole.x + whole.w - area.x - area.w, whole.y + whole.h - area.y - area.h
+                        };
+    frame_safe = frame_handle_safe;
+    if( frame_landscape ) {
+        // The canvas's phone has a notch band at either side in landscape, and
+        // side handles live in it.  Without a notch the pieces still keep clear.
+        for( const drawer &d : current.drawers ) {
+            if( d.visible && d.edge == screen_edge::left ) {
+                frame_safe.left = std::max( frame_safe.left, 30.0f * unit );
+            }
+            if( d.visible && d.edge == screen_edge::right ) {
+                frame_safe.right = std::max( frame_safe.right, 30.0f * unit );
+            }
+        }
+    }
 
     if( touch_input::hud_enabled() ) {
         const auto shown = [&current]( const piece_id id ) {
@@ -1062,6 +1101,8 @@ edit_geometry edit_frame()
 {
     edit_geometry geo;
     geo.screen = frame_screen;
+    geo.safe = frame_safe;
+    geo.handle_safe = frame_handle_safe;
     geo.unit = unit;
     geo.landscape = frame_landscape;
     for( size_t i = 0; i < num_pieces; ++i ) {
