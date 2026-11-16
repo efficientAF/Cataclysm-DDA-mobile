@@ -93,7 +93,7 @@ static icon_cache icons;
 // Icons are drawn once at this size and scaled down by the GPU.
 static constexpr int icon_pixels = 96;
 
-static SDL_Texture *icon_texture( const std::string &name )
+SDL_Texture *icon_texture( const std::string &name )
 {
     const uint64_t generation = renderer_resource_generation();
     if( icons.generation != generation ) {

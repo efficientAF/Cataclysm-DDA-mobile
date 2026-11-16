@@ -3,60 +3,103 @@
 #include "mobile_hud.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <map>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "action.h"
 #include "avatar.h"
 #include "bodypart.h"
-#include "creature.h"
-#include "catacharset.h"
 #include "color.h"
+#include "creature.h"
 #include "cursesport.h"
 #include "display.h"
+#include "filesystem.h"
 #include "game.h"
+#include "item.h"
+#include "item_location.h"
+#include "math_defines.h"
 #include "messages.h"
+#include "mobile_ui.h"
 #include "output.h"
+#include "path_info.h"
 #include "point.h"
-#include "sdl_font.h"
 #include "sdltiles.h"
 #include "string_formatter.h"
 #include "touch_input.h"
 #include "translations.h"
 
+static const efftype_id effect_bleed( "bleed" );
+
 namespace mobile_hud
 {
 
-// Curses color indices into the font palette.
-static constexpr unsigned char color_light_gray = 7;
-static constexpr unsigned char color_white = 15;
-
-// Sizes in canvas units.
-static constexpr float text_units = 13.0f;
-static constexpr float line_units = 17.0f;
-static constexpr float pad_units = 10.0f;
-static constexpr float margin_units = 12.0f;
-
-// Panel background, as in the canvas: rgba(13, 16, 12, 0.8)
-static constexpr Uint8 panel_r = 13;
-static constexpr Uint8 panel_g = 16;
-static constexpr Uint8 panel_b = 12;
-static constexpr Uint8 panel_a = 204;
-
-// Rectangle of the Recenter button in window pixels; empty while it is hidden.
-static SDL_Rect recenter_rect = { 0, 0, 0, 0 };
+// --- Drawing kit: the canvas look on the SDL renderer ---
 
 namespace
 {
+struct rgba {
+    Uint8 r;
+    Uint8 g;
+    Uint8 b;
+    Uint8 a;
+};
+
+enum class face : int {
+    body,
+    bold,
+    mono,
+};
+
+struct text_key {
+    int face_index;
+    int pixels;
+    std::string text;
+    bool operator<( const text_key &other ) const {
+        return std::tie( face_index, pixels, text ) < std::tie( other.face_index, other.pixels,
+                other.text );
+    }
+};
+
+struct text_entry {
+    SDL_Texture *texture = nullptr;
+    float w = 0.0f;
+    float h = 0.0f;
+};
+
 struct quick_button {
     SDL_Rect rect;
     action_id act;
 };
 } // namespace
 
-// Quick action buttons drawn in the last frame.
+// the canvas's game palette
+static constexpr rgba col_panel = { 13, 16, 12, 204 };
+static constexpr rgba col_panel_solid = { 20, 24, 18, 255 };
+static constexpr rgba col_line = { 232, 236, 222, 36 };
+static constexpr rgba col_fg = { 233, 236, 223, 255 };
+static constexpr rgba col_muted = { 154, 163, 146, 255 };
+static constexpr rgba col_accent = { 240, 145, 63, 255 };
+static constexpr rgba col_hp_good = { 108, 191, 85, 255 };
+static constexpr rgba col_hp_ok = { 216, 187, 66, 255 };
+static constexpr rgba col_hp_low = { 230, 137, 45, 255 };
+static constexpr rgba col_hp_bad = { 224, 73, 43, 255 };
+
+static SDL_Renderer *sdl = nullptr;
+// pixels per canvas unit for the frame being drawn
+static float unit = 1.0f;
+
+static uint64_t cache_generation = 0;
+static std::map<std::pair<int, int>, TTF_Font *> font_cache;
+static std::map<text_key, text_entry> text_cache;
+
+static SDL_Rect recenter_rect = { 0, 0, 0, 0 };
 static std::vector<quick_button> quick_buttons;
 
 static bool contains( const SDL_Rect &rect, const float x, const float y )
@@ -66,8 +109,225 @@ static bool contains( const SDL_Rect &rect, const float x, const float y )
            y >= static_cast<float>( rect.y ) && y < static_cast<float>( rect.y + rect.h );
 }
 
+static void flush_caches_if_renderer_changed()
+{
+    const uint64_t generation = renderer_resource_generation();
+    if( generation == cache_generation && text_cache.size() < 400 ) {
+        return;
+    }
+    // the textures died with the old renderer, or there are too many of them
+    for( std::pair<const text_key, text_entry> &entry : text_cache ) {
+        if( generation == cache_generation && entry.second.texture != nullptr ) {
+            SDL_DestroyTexture( entry.second.texture );
+        }
+    }
+    text_cache.clear();
+    cache_generation = generation;
+}
+
+static TTF_Font *font_for( const face f, const int pixels )
+{
+    static const std::array<const char *, 3> files = {
+        "Barlow-Medium.ttf", "Barlow-Bold.ttf", "JetBrainsMono-Medium.ttf"
+    };
+    const std::pair<int, int> key( static_cast<int>( f ), pixels );
+    const auto found = font_cache.find( key );
+    if( found != font_cache.end() ) {
+        return found->second;
+    }
+    const std::string path = PATH_INFO::fontdir() + files[static_cast<size_t>( f )];
+    TTF_Font *const font = file_exist( path ) ? TTF_OpenFont( path.c_str(),
+                           static_cast<float>( pixels ) ) : nullptr;
+    font_cache[key] = font;
+    return font;
+}
+
+static const text_entry &text_texture( const face f, const float size_units,
+                                       const std::string &text )
+{
+    static const text_entry none;
+    const int pixels = std::max( 6, static_cast<int>( std::lround( size_units * unit ) ) );
+    const text_key key{ static_cast<int>( f ), pixels, text };
+    const auto found = text_cache.find( key );
+    if( found != text_cache.end() ) {
+        return found->second;
+    }
+    text_entry entry;
+    TTF_Font *const font = font_for( f, pixels );
+    if( font != nullptr && !text.empty() ) {
+        if( SDL_Surface *const surface = TTF_RenderText_Blended( font, text.c_str(), 0,
+                                         SDL_Color{ 255, 255, 255, 255 } ) ) {
+            entry.texture = SDL_CreateTextureFromSurface( sdl, surface );
+            entry.w = static_cast<float>( surface->w );
+            entry.h = static_cast<float>( surface->h );
+            SDL_DestroySurface( surface );
+        }
+    }
+    return text_cache.emplace( key, entry ).first->second;
+}
+
+// Shortens text with an ellipsis until it fits into max_width pixels.
+static std::string fit_text( const face f, const float size_units, const std::string &text,
+                             const float max_width )
+{
+    const int pixels = std::max( 6, static_cast<int>( std::lround( size_units * unit ) ) );
+    TTF_Font *const font = font_for( f, pixels );
+    int w = 0;
+    size_t fits = 0;
+    if( font == nullptr ||
+        !TTF_MeasureString( font, text.c_str(), 0, static_cast<int>( max_width ), &w, &fits ) ||
+        fits >= text.size() ) {
+        return text;
+    }
+    // leave room for the ellipsis, and do not cut a UTF-8 sequence in half
+    size_t cut = fits > 2 ? fits - 2 : 0;
+    while( cut > 0 && ( static_cast<unsigned char>( text[cut] ) & 0xC0 ) == 0x80 ) {
+        --cut;
+    }
+    return text.substr( 0, cut ) + "…";
+}
+
+static float text_width( const face f, const float size_units, const std::string &text )
+{
+    return text_texture( f, size_units, text ).w;
+}
+
+// Draws one line of text with its top left corner at x, y.
+static void draw_text( const face f, const float size_units, const std::string &text, const float x,
+                       const float y, const rgba &color )
+{
+    const text_entry &entry = text_texture( f, size_units, text );
+    if( entry.texture == nullptr ) {
+        return;
+    }
+    SDL_SetTextureColorMod( entry.texture, color.r, color.g, color.b );
+    SDL_SetTextureAlphaMod( entry.texture, color.a );
+    const SDL_FRect dst = { std::floor( x ), std::floor( y ), entry.w, entry.h };
+    SDL_RenderTexture( sdl, entry.texture, nullptr, &dst );
+}
+
+// Height of a line of text of this size, for vertical centering.
+static float text_height( const face f, const float size_units )
+{
+    return text_texture( f, size_units, "Ag" ).h;
+}
+
+static void draw_icon( const std::string &name, const float x, const float y, const float size,
+                       const rgba &color )
+{
+    SDL_Texture *const texture = mobile_ui::icon_texture( name );
+    if( texture == nullptr ) {
+        return;
+    }
+    SDL_SetTextureColorMod( texture, color.r, color.g, color.b );
+    SDL_SetTextureAlphaMod( texture, color.a );
+    const SDL_FRect dst = { x, y, size, size };
+    SDL_RenderTexture( sdl, texture, nullptr, &dst );
+}
+
+// Outline of a rounded rectangle, clockwise.
+static std::vector<SDL_FPoint> round_outline( const SDL_FRect &rect, float radius )
+{
+    radius = std::max( 0.0f, std::min( radius, std::min( rect.w, rect.h ) * 0.5f ) );
+    static constexpr int steps = 6;
+    const std::array<SDL_FPoint, 4> centers = { {
+            { rect.x + rect.w - radius, rect.y + radius },
+            { rect.x + rect.w - radius, rect.y + rect.h - radius },
+            { rect.x + radius, rect.y + rect.h - radius },
+            { rect.x + radius, rect.y + radius }
+        }
+    };
+    std::vector<SDL_FPoint> points;
+    for( int corner = 0; corner < 4; ++corner ) {
+        for( int i = 0; i <= steps; ++i ) {
+            const float angle = ( static_cast<float>( corner ) - 1.0f + static_cast<float>( i ) /
+                                  static_cast<float>( steps ) ) * static_cast<float>( M_PI ) * 0.5f;
+            points.push_back( { centers[corner].x + radius * std::cos( angle ),
+                                centers[corner].y + radius * std::sin( angle )
+                              } );
+        }
+    }
+    return points;
+}
+
+static SDL_FColor to_fcolor( const rgba &color )
+{
+    return { static_cast<float>( color.r ) / 255.0f, static_cast<float>( color.g ) / 255.0f,
+             static_cast<float>( color.b ) / 255.0f, static_cast<float>( color.a ) / 255.0f
+           };
+}
+
+// A filled rounded rectangle; radius in pixels.
+static void fill_round( const SDL_FRect &rect, const float radius, const rgba &color )
+{
+    if( rect.w <= 0.0f || rect.h <= 0.0f || color.a == 0 ) {
+        return;
+    }
+    const std::vector<SDL_FPoint> outline = round_outline( rect, radius );
+    const SDL_FColor fc = to_fcolor( color );
+    std::vector<SDL_Vertex> vertices;
+    vertices.push_back( { { rect.x + rect.w * 0.5f, rect.y + rect.h * 0.5f }, fc, { 0.0f, 0.0f } } );
+    for( const SDL_FPoint &p : outline ) {
+        vertices.push_back( { p, fc, { 0.0f, 0.0f } } );
+    }
+    std::vector<int> indices;
+    const int count = static_cast<int>( outline.size() );
+    for( int i = 0; i < count; ++i ) {
+        indices.push_back( 0 );
+        indices.push_back( 1 + i );
+        indices.push_back( 1 + ( i + 1 ) % count );
+    }
+    SDL_SetRenderDrawBlendMode( sdl, SDL_BLENDMODE_BLEND );
+    SDL_RenderGeometry( sdl, nullptr, vertices.data(), static_cast<int>( vertices.size() ),
+                        indices.data(), static_cast<int>( indices.size() ) );
+}
+
+// The border of a rounded rectangle, drawn inside it.
+static void stroke_round( const SDL_FRect &rect, const float radius, const float width,
+                          const rgba &color )
+{
+    if( rect.w <= 2.0f * width || rect.h <= 2.0f * width || color.a == 0 ) {
+        return;
+    }
+    const std::vector<SDL_FPoint> outer = round_outline( rect, radius );
+    const SDL_FRect inner_rect = { rect.x + width, rect.y + width, rect.w - 2.0f * width,
+                                   rect.h - 2.0f * width
+                                 };
+    const std::vector<SDL_FPoint> inner = round_outline( inner_rect, std::max( 0.0f,
+                                          radius - width ) );
+    const SDL_FColor fc = to_fcolor( color );
+    std::vector<SDL_Vertex> vertices;
+    for( size_t i = 0; i < outer.size(); ++i ) {
+        vertices.push_back( { outer[i], fc, { 0.0f, 0.0f } } );
+        vertices.push_back( { inner[i], fc, { 0.0f, 0.0f } } );
+    }
+    std::vector<int> indices;
+    const int count = static_cast<int>( outer.size() );
+    for( int i = 0; i < count; ++i ) {
+        const int next = ( i + 1 ) % count;
+        indices.insert( indices.end(), { 2 * i, 2 * next, 2 * i + 1, 2 * i + 1, 2 * next, 2 * next + 1 } );
+    }
+    SDL_SetRenderDrawBlendMode( sdl, SDL_BLENDMODE_BLEND );
+    SDL_RenderGeometry( sdl, nullptr, vertices.data(), static_cast<int>( vertices.size() ),
+                        indices.data(), static_cast<int>( indices.size() ) );
+}
+
+// The canvas's panel background: translucent dark, hairline border, 10 unit corners.
+static void draw_panel( const SDL_FRect &rect )
+{
+    fill_round( rect, 10.0f * unit, col_panel );
+    stroke_round( rect, 10.0f * unit, std::max( 1.0f, unit ), col_line );
+}
+
+static SDL_Rect to_rect( const SDL_FRect &rect )
+{
+    return { static_cast<int>( rect.x ), static_cast<int>( rect.y ), static_cast<int>( rect.w ),
+             static_cast<int>( rect.h )
+           };
+}
+
 // Where the HUD may draw: the game view, minus notches and system bars.
-static SDL_Rect hud_area( const SDL_Rect &view, const int window_w, const int window_h )
+static SDL_FRect hud_area( const SDL_Rect &view, const int window_w, const int window_h )
 {
     SDL_Rect area = { 0, 0, window_w, window_h };
     if( view.w > 0 && view.h > 0 ) {
@@ -81,365 +341,346 @@ static SDL_Rect hud_area( const SDL_Rect &view, const int window_w, const int wi
             area = both;
         }
     }
-    return area;
+    return { static_cast<float>( area.x ), static_cast<float>( area.y ), static_cast<float>( area.w ),
+             static_cast<float>( area.h )
+           };
 }
 
-static void fill_rect( const SDL_Renderer_Ptr &renderer, const SDL_Rect &rect, const Uint8 r,
-                       const Uint8 g, const Uint8 b, const Uint8 a )
-{
-    SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_BLEND );
-    SetRenderDrawColor( renderer, r, g, b, a );
-    RenderFillRect( renderer, &rect );
-    SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_NONE );
-}
+// --- Pieces, placed as in the canvas's Balanced preset ---
 
-static float text_width( const Font &font, const std::string &text, const float text_height )
-{
-    return static_cast<float>( font.width * utf8_width( text ) ) * text_height /
-           static_cast<float>( font.height );
-}
-
-// Shortens text to fit into max_width pixels.
-static std::string fit_text( const Font &font, const std::string &text, const float text_height,
-                             const float max_width )
-{
-    const float cell = static_cast<float>( font.width ) * text_height / static_cast<float>
-                       ( font.height );
-    const int columns = cell > 0.0f ? static_cast<int>( max_width / cell ) : 0;
-    if( utf8_width( text ) <= columns ) {
-        return text;
-    }
-    return utf8_truncate( text, static_cast<size_t>( std::max( columns, 0 ) ) );
-}
-
-// Draws one line of text with its top left corner at x, y, text_height pixels tall.
-static void draw_text( const SDL_Renderer_Ptr &renderer, Font &font, const std::string &text,
-                       const float x, const float y, const float text_height, const unsigned char color )
-{
-    if( text.empty() ) {
-        return;
-    }
-    const float scale = text_height / static_cast<float>( font.height );
-    RenderSetScale( renderer, scale, scale );
-    font.OutputChar( renderer, text, point( static_cast<int>( x / scale ),
-                                            static_cast<int>( y / scale ) ), color );
-    RenderSetScale( renderer, 1.0f, 1.0f );
-}
-
-static void draw_recenter_button( const SDL_Renderer_Ptr &renderer, Font &font,
-                                  const SDL_Rect &safe, const float unit, const bool landscape )
-{
-    const std::string label = _( "Recenter" );
-    const float text_height = 16.0f * unit;
-    const int w = static_cast<int>( text_width( font, label, text_height ) + 28.0f * unit );
-    const int h = static_cast<int>( 40.0f * unit );
-    SDL_Rect rect = { 0, 0, w, h };
-    if( landscape ) {
-        // canvas: anchor top center, 40 units down
-        rect.x = safe.x + ( safe.w - w ) / 2;
-        rect.y = safe.y + static_cast<int>( 40.0f * unit );
-    } else {
-        // canvas: anchor top right, 12 units in and 236 down
-        rect.x = safe.x + safe.w - w - static_cast<int>( 12.0f * unit );
-        rect.y = safe.y + static_cast<int>( 236.0f * unit );
-    }
-
-    const int border = std::max( 1, static_cast<int>( 1.5f * unit ) );
-    // accent border, then the dark panel inside it
-    fill_rect( renderer, rect, 240, 145, 63, 255 );
-    const SDL_Rect inner = { rect.x + border, rect.y + border, rect.w - 2 * border, rect.h - 2 * border };
-    fill_rect( renderer, inner, 20, 24, 18, 255 );
-    draw_text( renderer, font, label,
-               static_cast<float>( rect.x ) + ( static_cast<float>( rect.w ) -
-                       text_width( font, label, text_height ) ) * 0.5f,
-               static_cast<float>( rect.y ) + ( static_cast<float>( rect.h ) - text_height ) * 0.5f,
-               text_height, color_white );
-    recenter_rect = rect;
-}
-
-// Location name on the first row; date, time, weather and temperature on the second.
-// Returns the bottom edge of the panel.
-static int draw_location( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
-                          const float unit )
+// Place on the first row; date and time on the second.  Returns its bottom edge.
+static float draw_location( const SDL_FRect &area )
 {
     const avatar &you = get_avatar();
+    const float w = std::min( 236.0f * unit, area.w - 20.0f * unit );
+    const float line = 17.0f * unit;
+    const SDL_FRect rect = { area.x + 10.0f * unit, area.y + 12.0f * unit, w, 2.0f * line + 12.0f * unit };
+    draw_panel( rect );
+    const float room = w - 20.0f * unit;
+    const float x = rect.x + 10.0f * unit;
+    const float pad_y = ( line - text_height( face::body, 13.0f ) ) * 0.5f;
     const std::string place = remove_color_tags( display::current_position_text(
                                   you.pos_abs_omt() ) );
-    const std::string when = string_format( "%s  %s  %s  %s", display::date_string(),
-                                            remove_color_tags( display::time_string( you ) ),
-                                            remove_color_tags( display::weather_text_color( you ).first ),
-                                            remove_color_tags( display::get_temp( you ) ) );
-    const float text_height = text_units * unit;
-    const float line = line_units * unit;
-    const float pad = pad_units * unit;
-    const int max_w = safe.w - static_cast<int>( 2.0f * margin_units * unit );
-    const float wanted = std::max( text_width( font, place, text_height ),
-                                   text_width( font, when, text_height ) ) + 2.0f * pad;
-    const SDL_Rect rect = { safe.x + static_cast<int>( margin_units * unit ),
-                            safe.y + static_cast<int>( margin_units * unit ),
-                            std::min( static_cast<int>( wanted ), max_w ),
-                            static_cast<int>( 2.0f * line + 2.0f * pad * 0.6f )
-                          };
-    fill_rect( renderer, rect, panel_r, panel_g, panel_b, panel_a );
-    const float text_x = static_cast<float>( rect.x ) + pad;
-    const float text_y = static_cast<float>( rect.y ) + pad * 0.6f + ( line - text_height ) * 0.5f;
-    const float room = static_cast<float>( rect.w ) - 2.0f * pad;
-    draw_text( renderer, font, fit_text( font, place, text_height, room ), text_x, text_y,
-               text_height, color_white );
-    draw_text( renderer, font, fit_text( font, when, text_height, room ), text_x, text_y + line,
-               text_height, color_light_gray );
+    draw_text( face::bold, 13.0f, fit_text( face::bold, 13.0f, place, room ), x,
+               rect.y + 6.0f * unit + pad_y, col_fg );
+    const std::string when = string_format( "%s · %s", display::date_string(),
+                                            remove_color_tags( display::time_string( you ) ) );
+    draw_text( face::body, 13.0f, fit_text( face::body, 13.0f, when, room ), x,
+               rect.y + 6.0f * unit + line + pad_y, col_fg );
     return rect.y + rect.h;
 }
 
+namespace
+{
+struct condition {
+    const char *icon;
+    // 1 to 4
+    int level;
+};
+} // namespace
+
 // Index into the font palette for a curses color.
-static unsigned char palette_index( const nc_color &color )
+static int palette_index( const nc_color &color )
 {
     int fg = static_cast<int>( cata_cursesport::colorpairs[color.to_color_pair_index()].FG );
     if( color.is_bold() ) {
         fg += 8;
     }
-    return static_cast<unsigned char>( std::clamp( fg, 0, 15 ) );
+    return std::clamp( fg, 0, 15 );
 }
 
-// Colors the game uses for "nothing wrong": no chip is shown for them.
-static bool is_calm_color( const unsigned char index )
+// How bad the game's own color for a value says it is: 0 for fine, up to 3.
+static int level_from_color( const nc_color &color )
 {
-    // black, green, light gray, dark gray, light green, white
-    return index == 0 || index == 2 || index == 7 || index == 8 || index == 10 || index == 15;
+    switch( palette_index( color ) ) {
+        case 3:  // brown
+        case 11: // yellow
+        case 14: // light cyan
+            return 1;
+        case 9:  // light red
+        case 6:  // cyan
+        case 12: // light blue
+        case 13: // pink
+            return 2;
+        case 1:  // red
+        case 4:  // blue
+        case 5:  // magenta
+            return 3;
+        default:
+            return 0;
+    }
 }
 
-// One chip per condition that needs attention, hidden while things are normal.
-// The texts and colors are the ones the sidebar widgets show.
-static void draw_status( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
-                         const float unit, const int top )
+static bool is_cold_color( const nc_color &color )
+{
+    const int index = palette_index( color );
+    return index == 4 || index == 6 || index == 12 || index == 14;
+}
+
+// What needs attention right now, worst first.  The values and their colors
+// are the ones the sidebar widgets show.
+static std::vector<condition> active_conditions()
 {
     const avatar &you = get_avatar();
-    const std::vector<std::pair<std::string, nc_color>> conditions = {
-        display::pain_text_color( you ),
-        display::hunger_text_color( you ),
-        display::thirst_text_color( you ),
-        display::sleepiness_text_color( you ),
-        display::temp_text_color( you ),
-        display::weariness_text_color( you ),
-        display::carry_weight_text_color( you ),
+    std::vector<condition> found;
+    const auto add = [&found]( const char *icon, const int level ) {
+        if( level > 0 ) {
+            found.push_back( { icon, std::min( level, 4 ) } );
+        }
     };
-    const float text_height = text_units * unit;
-    const float pad = pad_units * unit;
-    const int border = std::max( 1, static_cast<int>( 2.0f * unit ) );
-    const int h = static_cast<int>( 30.0f * unit );
-    const int gap = static_cast<int>( 4.0f * unit );
-    const int left = safe.x + static_cast<int>( margin_units * unit );
-    const int right = safe.x + safe.w - static_cast<int>( margin_units * unit );
-    int x = left;
-    int y = top + static_cast<int>( 8.0f * unit );
-    for( const std::pair<std::string, nc_color> &condition : conditions ) {
-        const std::string label = remove_color_tags( condition.first );
-        const unsigned char color = palette_index( condition.second );
-        if( label.empty() || is_calm_color( color ) ) {
-            continue;
+    int bleeding = 0;
+    for( const bodypart_id &part : you.get_all_body_parts() ) {
+        bleeding = std::max( bleeding, you.get_effect_int( effect_bleed, part ) );
+    }
+    add( "bleed", bleeding > 20 ? 4 : bleeding > 10 ? 3 : bleeding > 5 ? 2 : bleeding > 0 ? 1 : 0 );
+    add( "pain", level_from_color( display::pain_text_color( you ).second ) );
+    const std::pair<std::string, nc_color> thirst = display::thirst_text_color( you );
+    add( "thirst", thirst.first.empty() ? 0 : level_from_color( thirst.second ) );
+    const std::pair<std::string, nc_color> hunger = display::hunger_text_color( you );
+    add( "hunger", hunger.first.empty() ? 0 : level_from_color( hunger.second ) );
+    const std::pair<std::string, nc_color> sleepiness = display::sleepiness_text_color( you );
+    add( "tired", sleepiness.first.empty() ? 0 : level_from_color( sleepiness.second ) );
+    const std::pair<std::string, nc_color> temperature = display::temp_text_color( you );
+    add( is_cold_color( temperature.second ) ? "cold" : "hot",
+         level_from_color( temperature.second ) );
+    add( "enc", level_from_color( display::carry_weight_text_color( you ).second ) );
+    const int stamina_max = you.get_stamina_max();
+    const float stamina = stamina_max > 0 ? static_cast<float>( you.get_stamina() ) /
+                          static_cast<float>( stamina_max ) : 1.0f;
+    add( "winded", stamina < 0.1f ? 3 : stamina < 0.25f ? 2 : stamina < 0.5f ? 1 : 0 );
+    std::stable_sort( found.begin(), found.end(), []( const condition & a, const condition & b ) {
+        return a.level > b.level;
+    } );
+    return found;
+}
+
+// One square icon per condition, in its severity color, with a pip per level.
+static void draw_status( const SDL_FRect &area, const float top, const bool landscape )
+{
+    static constexpr std::array<rgba, 4> severity = { {
+            { 216, 187, 66, 255 }, { 230, 137, 45, 255 }, { 224, 73, 43, 255 }, { 255, 106, 85, 255 }
         }
-        const int w = static_cast<int>( text_width( font, label, text_height ) + 2.0f * pad );
-        if( x + w > right && x > left ) {
-            // next row
-            x = left;
-            y += h + gap;
+    };
+    const float size = ( landscape ? 32.0f : 34.0f ) * unit;
+    const float gap = 4.0f * unit;
+    const size_t max_shown = landscape ? 8 : 6;
+    float x = area.x + 10.0f * unit;
+    const float y = top + 8.0f * unit;
+    size_t shown = 0;
+    for( const condition &cond : active_conditions() ) {
+        if( shown++ >= max_shown ) {
+            break;
         }
-        const SDL_Rect rect = { x, y, w, h };
-        const SDL_Color &rgb = windowsPalette[color];
-        fill_rect( renderer, rect, rgb.r, rgb.g, rgb.b, 255 );
-        const SDL_Rect inner = { rect.x + border, rect.y + border, rect.w - 2 * border, rect.h - 2 * border };
-        fill_rect( renderer, inner, 11, 13, 10, 255 );
-        draw_text( renderer, font, label, static_cast<float>( x ) + pad,
-                   static_cast<float>( y ) + ( static_cast<float>( h ) - text_height ) * 0.5f,
-                   text_height, color );
-        x += w + gap;
+        const rgba &color = severity[static_cast<size_t>( cond.level - 1 )];
+        const SDL_FRect rect = { x, y, size, size };
+        fill_round( rect, 9.0f * unit, cond.level == 4 ? rgba{ 90, 12, 10, 217 } :
+                    rgba{ 11, 13, 10, 214 } );
+        stroke_round( rect, 9.0f * unit, 2.0f * unit, cond.level == 4 ? rgba{ 176, 32, 31, 255 } :
+                      color );
+        const float icon_size = size * 0.58f;
+        draw_icon( cond.icon, x + ( size - icon_size ) * 0.5f, y + ( size - icon_size ) * 0.5f - unit,
+                   icon_size, color );
+        // one pip per level along the bottom edge
+        const float pip = 3.0f * unit;
+        const float pips_w = static_cast<float>( cond.level ) * pip +
+                             static_cast<float>( cond.level - 1 ) * 2.0f * unit;
+        float pip_x = x + ( size - pips_w ) * 0.5f;
+        for( int i = 0; i < cond.level; ++i ) {
+            fill_round( { pip_x, y + size - 2.0f * unit - pip - 2.0f * unit, pip, pip }, pip * 0.5f, color );
+            pip_x += pip + 2.0f * unit;
+        }
+        x += size + gap;
     }
 }
 
-// The last few messages, newest at the bottom.
-static void draw_log( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
-                      const float unit, const bool landscape )
+static const rgba &hp_color( const avatar &you, const char *part_id )
 {
-    static constexpr int rows = 3;
-    const std::vector<std::pair<std::string, std::string>> messages = Messages::recent_messages(
-                rows );
-    if( messages.empty() ) {
-        return;
+    const bodypart_id part( part_id );
+    const int hp_max = you.get_part_hp_max( part );
+    const int percent = hp_max > 0 ? you.get_part_hp_cur( part ) * 100 / hp_max : 0;
+    return percent > 80 ? col_hp_good : percent > 50 ? col_hp_ok : percent > 25 ? col_hp_low :
+           col_hp_bad;
+}
+
+// A small figure colored by the health of each limb.  Returns its bottom edge.
+static float draw_body( const SDL_FRect &area, const bool landscape )
+{
+    const avatar &you = get_avatar();
+    const float size = ( landscape ? 64.0f : 70.0f ) * unit;
+    // the figure is drawn on the canvas's 40 by 62 grid
+    const float k = size / 62.0f;
+    const SDL_FRect rect = { area.x + area.w - 10.0f * unit - ( 40.0f * k + 14.0f * unit ),
+                             area.y + 12.0f * unit, 40.0f * k + 14.0f * unit, size + 10.0f * unit
+                           };
+    draw_panel( rect );
+    const float ox = rect.x + 7.0f * unit;
+    const float oy = rect.y + 5.0f * unit;
+    const auto part = [&]( const float x, const float y, const float w, const float h,
+    const float radius, const rgba & color ) {
+        fill_round( { ox + x * k, oy + y * k, w * k, h * k }, radius * k, color );
+    };
+    part( 14.0f, 1.0f, 12.0f, 12.0f, 6.0f, hp_color( you, "head" ) );
+    part( 12.5f, 14.5f, 15.0f, 21.0f, 3.0f, hp_color( you, "torso" ) );
+    part( 4.5f, 15.0f, 6.0f, 20.0f, 3.0f, hp_color( you, "arm_r" ) );
+    part( 29.5f, 15.0f, 6.0f, 20.0f, 3.0f, hp_color( you, "arm_l" ) );
+    part( 12.5f, 37.0f, 6.5f, 24.0f, 3.0f, hp_color( you, "leg_r" ) );
+    part( 21.0f, 37.0f, 6.5f, 24.0f, 3.0f, hp_color( you, "leg_l" ) );
+    return rect.y + rect.h;
+}
+
+// What is in your hands, under the body figure.
+static void draw_wielded( const SDL_FRect &area, const float top )
+{
+    const avatar &you = get_avatar();
+    const item_location weapon = you.get_wielded_item();
+    const std::string name = weapon ? remove_color_tags( weapon->tname() ) : _( "Bare hands" );
+    std::string detail;
+    if( weapon && weapon->is_gun() ) {
+        detail = string_format( n_gettext( "%d round", "%d rounds", weapon->ammo_remaining() ),
+                                weapon->ammo_remaining() );
+    } else {
+        detail = weapon ? _( "Wielded" ) : _( "Nothing wielded" );
     }
-    const float text_height = text_units * unit;
-    const float line = line_units * unit;
-    const float pad = pad_units * unit;
-    // canvas: anchor bottom left; 320 wide and 20 up in landscape, 366 wide and 100 up in portrait
-    const int w = std::min( static_cast<int>( ( landscape ? 320.0f : 366.0f ) * unit ),
-                            safe.w - static_cast<int>( 2.0f * margin_units * unit ) );
-    const int h = static_cast<int>( static_cast<float>( messages.size() ) * line + 2.0f * pad * 0.6f );
-    const SDL_Rect rect = { safe.x + static_cast<int>( margin_units * unit ),
-                            safe.y + safe.h - h - static_cast<int>( ( landscape ? 20.0f : 100.0f ) * unit ),
-                            w, h
-                          };
-    fill_rect( renderer, rect, panel_r, panel_g, panel_b, panel_a );
-    const float room = static_cast<float>( rect.w ) - 2.0f * pad;
-    float y = static_cast<float>( rect.y ) + pad * 0.6f + ( line - text_height ) * 0.5f;
+    const float max_text = 150.0f * unit;
+    const std::string shown_name = fit_text( face::bold, 13.0f, name, max_text );
+    const float text_w = std::max( text_width( face::bold, 13.0f, shown_name ),
+                                   text_width( face::body, 12.0f, detail ) );
+    const float w = 7.0f * unit + 22.0f * unit + 8.0f * unit + text_w + 10.0f * unit;
+    const SDL_FRect rect = { area.x + area.w - 10.0f * unit - w, top + 8.0f * unit, w, 40.0f * unit };
+    draw_panel( rect );
+    draw_icon( "axe", rect.x + 7.0f * unit, rect.y + 9.0f * unit, 22.0f * unit, col_accent );
+    const float x = rect.x + 37.0f * unit;
+    draw_text( face::bold, 13.0f, shown_name, x, rect.y + 5.0f * unit, col_fg );
+    draw_text( face::body, 12.0f, detail, x, rect.y + 20.0f * unit, col_muted );
+}
+
+// The last three messages, newest at the bottom, older ones dimmed.
+static void draw_log( const SDL_FRect &area, const bool landscape )
+{
+    static constexpr size_t rows = 3;
+    std::vector<std::pair<std::string, std::string>> messages = Messages::recent_messages( rows );
+    const float w = std::min( ( landscape ? 320.0f : 366.0f ) * unit, area.w - 20.0f * unit );
+    const float line = 17.0f * unit;
+    const SDL_FRect rect = { area.x + 10.0f * unit,
+                             area.y + area.h - ( landscape ? 20.0f : 100.0f ) *unit -
+                             ( static_cast<float>( rows ) * line + 12.0f * unit ),
+                             w, static_cast<float>( rows ) *line + 12.0f * unit
+                           };
+    draw_panel( rect );
+    const float pad_y = ( line - text_height( face::body, 13.0f ) ) * 0.5f;
+    // fill from the bottom, so a short log leaves the top rows empty
+    float y = rect.y + 6.0f * unit + static_cast<float>( rows - messages.size() ) * line;
     for( size_t i = 0; i < messages.size(); ++i ) {
-        const std::string text = fit_text( font, remove_color_tags( messages[i].second ), text_height,
-                                           room );
-        // older lines are dimmed
-        draw_text( renderer, font, text, static_cast<float>( rect.x ) + pad, y, text_height,
-                   i + 1 == messages.size() ? color_white : color_light_gray );
+        const std::string text = fit_text( face::body, 13.0f, remove_color_tags( messages[i].second ),
+                                           w - 20.0f * unit );
+        const bool old = i + 2 < messages.size();
+        draw_text( face::body, 13.0f, text, rect.x + 10.0f * unit, y + pad_y,
+                   old ? rgba{ col_fg.r, col_fg.g, col_fg.b, 158 } : col_fg );
         y += line;
     }
 }
 
-// Buttons for the actions you need most, as in the canvas's Quick actions piece:
-// a column at the bottom right in landscape, a row along the bottom in portrait.
-static void draw_quick_buttons( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
-                                const float unit, const bool landscape )
+// The context actions: a column at the bottom right in landscape, a row along
+// the bottom in portrait.  The last one opens the action menu.
+static void draw_quick_actions( const SDL_FRect &area, const bool landscape )
 {
-    static const std::vector<std::pair<action_id, translation>> actions = {
-        { ACTION_PICKUP, to_translation( "mobile HUD button", "Get" ) },
-        { ACTION_INVENTORY, to_translation( "mobile HUD button", "Items" ) },
-        { ACTION_CRAFT, to_translation( "mobile HUD button", "Craft" ) },
-        { ACTION_MAP, to_translation( "mobile HUD button", "Map" ) },
-        { ACTION_WAIT, to_translation( "mobile HUD button", "Wait" ) },
-        { ACTION_ACTIONMENU, to_translation( "mobile HUD button", "Menu" ) },
+    struct entry {
+        action_id act;
+        const char *icon;
+        translation label;
     };
-    const int size = static_cast<int>( 48.0f * unit );
-    const int gap = static_cast<int>( 6.0f * unit );
-    const int count = static_cast<int>( actions.size() );
-    const int length = count * size + ( count - 1 ) * gap;
-    const float text_height = 12.0f * unit;
-    const int border = std::max( 1, static_cast<int>( unit ) );
-    // Portrait: one row, bottom center, 34 up (canvas).  Landscape: two columns at
-    // the bottom right, 20 up, which leaves the top right corner free.
-    const int rows = ( count + 1 ) / 2;
-    const int origin_x = landscape ?
-                         safe.x + safe.w - 2 * size - gap - static_cast<int>( margin_units * unit ) :
-                         safe.x + ( safe.w - length ) / 2;
-    const int origin_y = landscape ?
-                         safe.y + safe.h - rows * size - ( rows - 1 ) * gap - static_cast<int>( 20.0f * unit ) :
-                         safe.y + safe.h - size - static_cast<int>( 34.0f * unit );
-    int index = 0;
-    for( const std::pair<action_id, translation> &action : actions ) {
-        const int x = landscape ? origin_x + ( index % 2 ) * ( size + gap ) :
-                      origin_x + index * ( size + gap );
-        const int y = landscape ? origin_y + ( index / 2 ) * ( size + gap ) : origin_y;
-        const SDL_Rect rect = { x, y, size, size };
-        fill_rect( renderer, rect, 233, 236, 223, 60 );
-        const SDL_Rect inner = { rect.x + border, rect.y + border, rect.w - 2 * border, rect.h - 2 * border };
-        fill_rect( renderer, inner, panel_r, panel_g, panel_b, 230 );
-        const std::string label = fit_text( font, action.second.translated(), text_height,
-                                            static_cast<float>( size ) );
-        draw_text( renderer, font, label,
-                   static_cast<float>( x ) + ( static_cast<float>( size ) - text_width( font, label,
-                                               text_height ) ) * 0.5f,
-                   static_cast<float>( y ) + ( static_cast<float>( size ) - text_height ) * 0.5f,
-                   text_height, color_white );
-        quick_buttons.push_back( { rect, action.first } );
-        ++index;
-    }
-}
-
-// Draws a bar filled to fraction, in green, yellow or red depending on how full it is.
-static void draw_bar( const SDL_Renderer_Ptr &renderer, const SDL_Rect &rect, const float fraction )
-{
-    const float f = std::clamp( fraction, 0.0f, 1.0f );
-    fill_rect( renderer, rect, 255, 255, 255, 40 );
-    SDL_Rect filled = rect;
-    filled.w = static_cast<int>( static_cast<float>( rect.w ) * f );
-    if( f > 0.66f ) {
-        fill_rect( renderer, filled, 108, 191, 85, 255 );
-    } else if( f > 0.33f ) {
-        fill_rect( renderer, filled, 216, 187, 66, 255 );
+    static const std::vector<entry> all = {
+        { ACTION_EXAMINE, "examine", to_translation( "mobile HUD button", "Examine" ) },
+        { ACTION_PICKUP, "pickup", to_translation( "mobile HUD button", "Pick up" ) },
+        { ACTION_WAIT, "wait", to_translation( "mobile HUD button", "Wait" ) },
+        { ACTION_INVENTORY, "inventory", to_translation( "mobile HUD button", "Inventory" ) },
+        { ACTION_CRAFT, "craft", to_translation( "mobile HUD button", "Craft" ) },
+        { ACTION_ACTIONMENU, "menu", to_translation( "mobile HUD button", "Menu" ) },
+    };
+    // Balanced preset: four in landscape (the first three and Menu), six in portrait
+    std::vector<entry> shown;
+    if( landscape ) {
+        shown = { all[0], all[1], all[2], all[5] };
     } else {
-        fill_rect( renderer, filled, 224, 73, 43, 255 );
+        shown = all;
     }
-}
-
-// Health of each main body part, stamina, and what is wielded, at the top right.
-static void draw_vitals( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
-                         const float unit )
-{
-    const avatar &you = get_avatar();
-    const std::vector<bodypart_id> parts = you.get_all_body_parts(
-            get_body_part_flags::only_main );
-    const float text_height = text_units * unit;
-    const float line = line_units * unit;
-    const float pad = pad_units * unit;
-    const int w = std::min( static_cast<int>( 190.0f * unit ),
-                            safe.w - static_cast<int>( 2.0f * margin_units * unit ) );
-    const int h = static_cast<int>( 3.0f * line + 2.0f * pad * 0.6f );
-    const SDL_Rect rect = { safe.x + safe.w - w - static_cast<int>( margin_units * unit ),
-                            safe.y + static_cast<int>( margin_units * unit ), w, h
-                          };
-    fill_rect( renderer, rect, panel_r, panel_g, panel_b, panel_a );
-    const float inner_x = static_cast<float>( rect.x ) + pad;
-    const float inner_w = static_cast<float>( rect.w ) - 2.0f * pad;
-    float y = static_cast<float>( rect.y ) + pad * 0.6f;
-
-    // row 1: one health bar per body part
-    if( !parts.empty() ) {
-        const float bar_gap = 3.0f * unit;
-        const float bar_w = ( inner_w - bar_gap * static_cast<float>( parts.size() - 1 ) ) /
-                            static_cast<float>( parts.size() );
-        float x = inner_x;
-        for( const bodypart_id &part : parts ) {
-            const int hp_max = you.get_part_hp_max( part );
-            const float fraction = hp_max > 0 ? static_cast<float>( you.get_part_hp_cur( part ) ) /
-                                   static_cast<float>( hp_max ) : 0.0f;
-            const SDL_Rect bar = { static_cast<int>( x ), static_cast<int>( y + line * 0.2f ),
-                                   static_cast<int>( bar_w ), static_cast<int>( line * 0.6f )
-                                 };
-            draw_bar( renderer, bar, fraction );
-            x += bar_w + bar_gap;
+    const float button = 46.0f * unit;
+    const float gap = 6.0f * unit;
+    const float pad = 4.0f * unit;
+    const float count = static_cast<float>( shown.size() );
+    const float length = count * button + ( count - 1.0f ) * gap + 2.0f * pad;
+    const float thickness = button + 2.0f * pad;
+    const SDL_FRect panel = landscape ?
+                            SDL_FRect{ area.x + area.w - 10.0f * unit - thickness, area.y + area.h - 20.0f * unit - length, thickness, length } :
+                            SDL_FRect{ area.x + ( area.w - length ) * 0.5f, area.y + area.h - 34.0f * unit - thickness, length, thickness };
+    draw_panel( panel );
+    float x = panel.x + pad;
+    float y = panel.y + pad;
+    for( const entry &e : shown ) {
+        const SDL_FRect rect = { x, y, button, button };
+        fill_round( rect, 10.0f * unit, { 255, 255, 255, 13 } );
+        stroke_round( rect, 10.0f * unit, std::max( 1.0f, unit ), col_line );
+        draw_icon( e.icon, x + ( button - 20.0f * unit ) * 0.5f, y + 7.0f * unit, 20.0f * unit, col_fg );
+        const std::string label = fit_text( face::body, 9.0f, e.label.translated(), button - 2.0f * unit );
+        draw_text( face::body, 9.0f, label, x + ( button - text_width( face::body, 9.0f, label ) ) * 0.5f,
+                   y + 30.0f * unit, col_muted );
+        quick_buttons.push_back( { to_rect( rect ), e.act } );
+        if( landscape ) {
+            y += button + gap;
+        } else {
+            x += button + gap;
         }
     }
-    y += line;
-
-    // row 2: stamina
-    const std::string stamina_label = _( "Stamina" );
-    draw_text( renderer, font, stamina_label, inner_x, y + ( line - text_height ) * 0.5f, text_height,
-               color_light_gray );
-    const float label_w = text_width( font, stamina_label, text_height ) + 6.0f * unit;
-    const int stamina_max = you.get_stamina_max();
-    const SDL_Rect stamina_bar = { static_cast<int>( inner_x + label_w ),
-                                   static_cast<int>( y + line * 0.3f ),
-                                   static_cast<int>( inner_w - label_w ), static_cast<int>( line * 0.4f )
-                                 };
-    draw_bar( renderer, stamina_bar, stamina_max > 0 ? static_cast<float>( you.get_stamina() ) /
-              static_cast<float>( stamina_max ) : 0.0f );
-    y += line;
-
-    // row 3: wielded item
-    draw_text( renderer, font, fit_text( font, remove_color_tags( you.weapname() ), text_height,
-                                         inner_w ), inner_x, y + ( line - text_height ) * 0.5f, text_height, color_white );
 }
 
-void draw( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &view, const int window_w,
+// Shown while the view is panned away from the player.
+static void draw_recenter( const SDL_FRect &area, const bool landscape )
+{
+    const std::string label = _( "Recenter" );
+    const float label_w = text_width( face::bold, 13.0f, label );
+    const float w = 10.0f * unit + 18.0f * unit + 6.0f * unit + label_w + 13.0f * unit;
+    const float h = 36.0f * unit;
+    // Balanced preset: top center and 40 down in landscape, top right and 236 down in portrait
+    const SDL_FRect rect = landscape ?
+                           SDL_FRect{ area.x + ( area.w - w ) * 0.5f, area.y + 40.0f * unit, w, h } :
+                           SDL_FRect{ area.x + area.w - 12.0f * unit - w, area.y + 236.0f * unit, w, h };
+    fill_round( rect, h * 0.5f, col_panel_solid );
+    stroke_round( rect, h * 0.5f, std::max( 1.0f, unit ), col_line );
+    draw_icon( "target", rect.x + 10.0f * unit, rect.y + 9.0f * unit, 18.0f * unit, col_accent );
+    draw_text( face::bold, 13.0f, label, rect.x + 34.0f * unit,
+               rect.y + ( h - text_height( face::bold, 13.0f ) ) * 0.5f, col_fg );
+    recenter_rect = to_rect( rect );
+}
+
+void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const int window_w,
            const int window_h, const bool default_mode )
 {
     recenter_rect = { 0, 0, 0, 0 };
     quick_buttons.clear();
-    if( !g || !default_mode || window_w <= 0 || window_h <= 0 || font.width <= 0 ||
-        font.height <= 0 ) {
+    if( !g || !default_mode || !renderer || window_w <= 0 || window_h <= 0 ) {
         return;
     }
-    const SDL_Rect safe = hud_area( view, window_w, window_h );
-    const float unit = static_cast<float>( std::min( safe.w, safe.h ) ) / 390.0f;
-    const bool landscape = safe.w > safe.h;
+    sdl = renderer.get();
+    flush_caches_if_renderer_changed();
+    const SDL_FRect area = hud_area( view, window_w, window_h );
+    unit = std::min( area.w, area.h ) / 390.0f;
     if( unit <= 0.0f ) {
         return;
     }
+    const bool landscape = area.w > area.h;
 
     if( touch_input::hud_enabled() ) {
-        const int location_bottom = draw_location( renderer, font, safe, unit );
-        draw_status( renderer, font, safe, unit, location_bottom );
-        draw_log( renderer, font, safe, unit, landscape );
-        draw_quick_buttons( renderer, font, safe, unit, landscape );
-        draw_vitals( renderer, font, safe, unit );
+        const float location_bottom = draw_location( area );
+        draw_status( area, location_bottom, landscape );
+        const float body_bottom = draw_body( area, landscape );
+        draw_wielded( area, body_bottom );
+        draw_log( area, landscape );
+        draw_quick_actions( area, landscape );
     }
     if( touch_input::view_is_panned() ) {
-        draw_recenter_button( renderer, font, safe, unit, landscape );
+        draw_recenter( area, landscape );
     }
+    SDL_SetRenderDrawBlendMode( sdl, SDL_BLENDMODE_NONE );
 }
 
 std::optional<action_id> button_at( const float x, const float y )

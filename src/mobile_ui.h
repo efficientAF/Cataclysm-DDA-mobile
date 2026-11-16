@@ -8,6 +8,8 @@
 
 #include "imgui/imgui.h"
 
+struct SDL_Texture;
+
 // Shared look of the mobile UI fork: the colors, type, icons and basic controls
 // of the UI canvas, for the screens in mobile_menu.cpp and friends.
 //
@@ -63,6 +65,9 @@ void text( ImDrawList *draw, face f, float size_units, const ImVec2 &pos, ImU32 
 // --- Icons (data/mobile_ui/icons/<name>.svg) ---
 void icon( ImDrawList *draw, const std::string &name, const ImVec2 &pos, float size_units,
            ImU32 color );
+
+// The icon as a white texture to tint, or nullptr.  Owned by the cache here.
+SDL_Texture *icon_texture( const std::string &name );
 
 // --- Controls ---
 
