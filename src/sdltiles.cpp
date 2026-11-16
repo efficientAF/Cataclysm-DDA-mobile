@@ -1170,6 +1170,15 @@ static bool mobile_in_default_mode()
 #endif
 }
 
+#if !defined(__ANDROID__)
+// Mobile UI: whether the current input context takes mouse selection.
+static bool mobile_context_takes_select()
+{
+    input_context *const ctx = input_context::input_context_stack.back();
+    return ctx != nullptr && ctx->is_registered_action( "SELECT" );
+}
+#endif
+
 void refresh_display()
 {
     needupdate = false;
@@ -5745,6 +5754,18 @@ static bool android_touch_map_click( uint32_t ticks )
     return true;
 }
 
+// Mobile UI: a tap in a text menu that takes mouse selection, such as the main
+// menu, picks what is under the finger.  Returns true if the tap was handled here.
+static bool android_touch_menu_click( uint32_t ticks )
+{
+    if( !touch_input::menu_tap() || !touch_input_context.is_action_registered( "SELECT" ) ||
+        ticks - finger_down_time > static_cast<uint32_t>( get_option<int>( "ANDROID_INITIAL_DELAY" ) ) ) {
+        return false;
+    }
+    android_send_map_click( touch_input::click_kind::none );
+    return true;
+}
+
 // Mobile UI: a finger lifted after the tap window but before the long press
 // fired, without leaving the deadzone, still counts as a tap.
 static bool android_touch_slow_tap()
@@ -5772,6 +5793,8 @@ void handle_finger_input( uint32_t ticks )
         last_input = touch_direction_input( dir );
     } else if( is_default_mode && android_touch_map_click( ticks ) ) {
         // Mobile UI: handled as a tap or long press on the map
+    } else if( !is_default_mode && android_touch_menu_click( ticks ) ) {
+        // Mobile UI: handled as a tap on a menu item
     } else {
         if( ticks - finger_down_time >= static_cast<uint32_t>
             ( get_option<int>( "ANDROID_INITIAL_DELAY" ) ) ) {
@@ -6854,7 +6877,8 @@ static void CheckMessages()
                 case CATA_FINGERCANCELED:
                     // Mobile UI on desktop, for testing; see touch_input.h
                     if( touch_input::desktop_finger_event( ev, WindowWidth, WindowHeight,
-                                                           mobile_in_default_mode(), last_input ) ) {
+                                                           mobile_in_default_mode(),
+                                                           mobile_context_takes_select(), last_input ) ) {
                         needupdate = true;
                     }
                     break;

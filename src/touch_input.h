@@ -84,6 +84,7 @@ bool two_finger_pan();
 bool recenter_on_move();
 bool zoom_no_wrap();
 bool imgui_pointer();
+bool menu_tap();
 // True if any option that takes over two-finger gestures on the map is on.
 bool owns_two_finger_gestures();
 // The MOBILE_HUD option: no sidebar, the map fills the screen (see mobile_hud.h).
@@ -176,8 +177,9 @@ bool take_wake_frame();
 // fractions of the window size.
 
 // Returns true if the event needs a redraw.  May set out to an input to deliver.
+// menu_select is true if the current input context takes mouse selection.
 bool desktop_finger_event( const SDL_Event &ev, int window_w, int window_h, bool default_mode,
-                           input_event &out );
+                           bool menu_select, input_event &out );
 // Long-press timer and script playback.  May set out to an input to deliver.
 void desktop_poll( bool default_mode, input_event &out );
 // How long the event loop may sleep before desktop_poll has work, if at all.

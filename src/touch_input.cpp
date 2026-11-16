@@ -172,6 +172,11 @@ bool imgui_pointer()
     return bool_option( "TOUCH_IMGUI_POINTER" );
 }
 
+bool menu_tap()
+{
+    return bool_option( "TOUCH_MENU_TAP" );
+}
+
 bool owns_two_finger_gestures()
 {
     return live_pinch_zoom() || two_finger_pan();
@@ -927,7 +932,7 @@ static int desktop_slot( const SDL_FingerID id )
 }
 
 bool desktop_finger_event( const SDL_Event &ev, const int window_w, const int window_h,
-                           const bool default_mode, input_event &out )
+                           const bool default_mode, const bool menu_select, input_event &out )
 {
     const float fx = ev.tfinger.x * static_cast<float>( window_w );
     const float fy = ev.tfinger.y * static_cast<float>( window_h );
@@ -997,6 +1002,9 @@ bool desktop_finger_event( const SDL_Event &ev, const int window_w, const int wi
         two_finger_end();
     } else if( !desk.moved && !desk.done && default_mode && tap_to_act() ) {
         desktop_click( click_kind::tap, out );
+    } else if( !desk.moved && !default_mode && menu_select && menu_tap() ) {
+        // a tap in a text menu that takes mouse selection
+        desktop_click( click_kind::none, out );
     }
     desk = desktop_state();
     return true;
