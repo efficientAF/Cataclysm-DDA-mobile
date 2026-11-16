@@ -167,12 +167,19 @@ std::string part_name( const bodypart_id &part )
     return uppercase_first_letter( body_part_name( part ) );
 }
 
+// The item's name without the durability and fit marks in front of it.
+std::string item_name( const item &it )
+{
+    return uppercase_first_letter( remove_color_tags( it.tname( 1, false ) ) );
+}
+
 tab body_tab( const avatar &you )
 {
     tab t;
     t.label = _( "Body" );
     t.blocks.push_back( make_title( _( "Hit points" ) ) );
-    for( const bodypart_id &part : you.get_all_body_parts( get_body_part_flags::only_main ) ) {
+    for( const bodypart_id &part : you.get_all_body_parts( get_body_part_flags::only_main |
+            get_body_part_flags::sorted ) ) {
         const int cur = you.get_part_hp_cur( part );
         const int max = you.get_part_hp_max( part );
         const float fraction = max > 0 ? static_cast<float>( cur ) / static_cast<float>( max ) : 0.0f;
@@ -273,7 +280,7 @@ tab gear_tab( const avatar &you )
     t.blocks.push_back( make_title( _( "Wielded" ) ) );
     const item_location weapon = you.get_wielded_item();
     if( weapon ) {
-        t.blocks.push_back( make_row( remove_color_tags( weapon->tname() ),
+        t.blocks.push_back( make_row( item_name( *weapon ),
                                       weapon->is_two_handed( you ) ? _( "2-handed" ) : "" ) );
     } else {
         t.blocks.push_back( make_row( _( "Nothing" ), "" ) );
@@ -290,7 +297,7 @@ tab gear_tab( const avatar &you )
                                     format_volume( it->get_contents_volume() ),
                                     format_volume( it->get_volume_capacity() ), volume_units_abbr() );
         }
-        t.blocks.push_back( make_row( remove_color_tags( it->tname() ), detail ) );
+        t.blocks.push_back( make_row( item_name( *it ), detail ) );
     }
     if( worn.empty() ) {
         t.blocks.push_back( make_row( _( "Nothing" ), "" ) );
@@ -322,7 +329,8 @@ tab area_tab( const avatar &you )
     }
     t.blocks.push_back( make_row( _( "Weather" ), weather ) );
     t.blocks.push_back( make_row( _( "Light" ),
-                                  get_light_level( you.fine_detail_vision_mod() ).first ) );
+                                  uppercase_first_letter( get_light_level(
+                                          you.fine_detail_vision_mod() ).first ) ) );
 
     t.blocks.push_back( make_title( _( "Threats" ) ) );
     std::vector<std::pair<int, const Creature *>> seen;
