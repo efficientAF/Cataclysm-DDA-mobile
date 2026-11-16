@@ -69,6 +69,7 @@
 #include "math_parser_diag_value.h"
 #include "mdarray.h"
 #include "messages.h"
+#include "mobile_menu.h"
 #include "monster.h"
 #include "move_mode.h"
 #include "mtype.h"
@@ -2837,7 +2838,11 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
             break;
 
         case ACTION_WAIT:
-            wait();
+            if( mobile_menu::enabled() ) {
+                mobile_menu::wait_sheet();
+            } else {
+                wait();
+            }
             break;
 
         case ACTION_CRAFT:
@@ -3281,7 +3286,11 @@ bool game::handle_action()
             // No auto-move actions have or can be set at this point.
             player_character.clear_destination();
             destination_preview.clear();
-            act = handle_action_menu( here );
+            // Mobile UI: the pause sheet first; it can still open the full menu
+            act = mobile_menu::enabled() ? mobile_menu::pause_sheet() : ACTION_ACTIONMENU;
+            if( act == ACTION_ACTIONMENU ) {
+                act = handle_action_menu( here );
+            }
             if( act == ACTION_NULL ) {
                 return false;
             }

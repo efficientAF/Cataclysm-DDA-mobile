@@ -1,5 +1,6 @@
 #include "mobile_menu.h"
 
+#include "action.h"
 #include "options.h"
 
 #if defined(TILES)
@@ -7,10 +8,14 @@
 #include <array>
 #include <utility>
 
+#include "activity_actor_definitions.h"
+#include "avatar.h"
+#include "calendar.h"
 #include "cata_imgui.h"
 #include "imgui/imgui.h"
 #include "mobile_ui.h"
 #include "translations.h"
+#include "units.h"
 #endif
 
 namespace mobile_menu
@@ -42,13 +47,6 @@ enum class sheet : int {
     worlds,
     settings,
     credits,
-};
-
-struct sheet_row {
-    std::string icon;
-    std::string title;
-    std::string detail;
-    choice result;
 };
 } // namespace
 
@@ -362,118 +360,47 @@ void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &si
 
 void main_menu_view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
 {
-    std::string title;
-    std::vector<sheet_row> rows;
-    std::string body;
+    mobile_ui::sheet_spec spec;
+    std::vector<choice> results;
     switch( open_sheet ) {
         case sheet::load:
-            title = _( "Load game" );
+            spec.title = _( "Load game" );
             for( int i = 0; i < static_cast<int>( model.worlds.size() ); ++i ) {
-                rows.push_back( { "folder", model.worlds[i].name, model.worlds[i].detail, { choice_kind::load_world, i } } );
+                spec.rows.push_back( { "folder", model.worlds[i].name, model.worlds[i].detail } );
+                results.push_back( { choice_kind::load_world, i } );
             }
-            if( rows.empty() ) {
-                body = _( "There are no saved games yet." );
+            if( spec.rows.empty() ) {
+                spec.description = _( "There are no saved games yet." );
             }
             break;
         case sheet::worlds:
-            title = _( "Worlds" );
+            spec.title = _( "Worlds" );
             for( int i = 0; i < static_cast<int>( model.worlds.size() ); ++i ) {
-                rows.push_back( { "globe", model.worlds[i].name, model.worlds[i].detail, { choice_kind::edit_world, i } } );
+                spec.rows.push_back( { "globe", model.worlds[i].name, model.worlds[i].detail } );
+                results.push_back( { choice_kind::edit_world, i } );
             }
-            rows.push_back( { "plus", _( "Create a world" ), _( "Choose mods and world options" ), { choice_kind::edit_world, -1 } } );
+            spec.rows.push_back( { "plus", _( "Create a world" ), _( "Choose mods and world options" ) } );
+            results.push_back( { choice_kind::edit_world, -1 } );
             break;
         case sheet::settings:
-            title = _( "Settings" );
+            spec.title = _( "Settings" );
             for( int i = 0; i < static_cast<int>( model.settings.size() ); ++i ) {
-                rows.push_back( { "gear", model.settings[i], "", { choice_kind::settings, i } } );
+                spec.rows.push_back( { "gear", model.settings[i], "" } );
+                results.push_back( { choice_kind::settings, i } );
             }
             break;
         case sheet::credits:
-            title = _( "Credits" );
-            body = model.credits;
+            spec.title = _( "Credits" );
+            spec.description = model.credits;
             break;
         case sheet::none:
             return;
     }
-
-    const float u = mobile_ui::unit();
-    const ImVec4 safe = mobile_ui::safe_insets();
-    const bool landscape = size.x > size.y;
-    ImDrawList *const draw = ImGui::GetWindowDrawList();
-    const ImVec2 screen_max( origin.x + size.x, origin.y + size.y );
-
-    // dim the screen behind; a tap there closes the sheet
-    draw->AddRectFilled( origin, screen_max, mobile_ui::col_dim );
-    const bool outside = mobile_ui::pressable( "##sheet_outside", origin, size );
-
-    const float sheet_w = landscape ? std::min( 520.0f * u, size.x * 0.76f ) : size.x;
-    const float max_h = ( size.y - safe.y ) * ( landscape ? 0.92f : 0.84f );
-    const float head_h = 22.0f * u + 36.0f * u;
-    const float row_h = 54.0f * u;
-    const float body_w = sheet_w - 36.0f * u;
-    const float content_h = rows.empty() ?
-                            mobile_ui::text_size( face::body, 13.5f, body, body_w ).y + 24.0f * u :
-                            row_h * static_cast<float>( rows.size() );
-    const float sheet_h = std::min( max_h, head_h + content_h + safe.w + 6.0f * u );
-    const ImVec2 pos( origin.x + ( size.x - sheet_w ) * 0.5f, screen_max.y - sheet_h );
-    draw->AddRectFilled( pos, ImVec2( pos.x + sheet_w, screen_max.y ), mobile_ui::col_sheet,
-                         22.0f * u, ImDrawFlags_RoundCornersTop );
-    draw->AddRect( pos, ImVec2( pos.x + sheet_w, screen_max.y + 30.0f * u ), mobile_ui::col_line,
-                   22.0f * u, ImDrawFlags_RoundCornersTop, std::max( 1.0f, u ) );
-    // grab handle
-    draw->AddRectFilled( ImVec2( pos.x + sheet_w * 0.5f - 21.0f * u, pos.y + 9.0f * u ),
-                         ImVec2( pos.x + sheet_w * 0.5f + 21.0f * u, pos.y + 14.0f * u ),
-                         IM_COL32( 255, 255, 255, 71 ), 3.0f * u );
-    mobile_ui::text( draw, face::display, 21.0f, ImVec2( pos.x + 18.0f * u, pos.y + 24.0f * u ),
-                     mobile_ui::col_fg, title );
-
-    ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + head_h ) );
-    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##sheet_scroll", ImVec2( sheet_w, sheet_h - head_h - safe.w - 6.0f * u ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
-    ImDrawList *const inner = ImGui::GetWindowDrawList();
-    const ImVec2 base = ImGui::GetCursorScreenPos();
-    float y = base.y;
-    for( int i = 0; i < static_cast<int>( rows.size() ); ++i ) {
-        const sheet_row &row = rows[i];
-        const ImVec2 row_pos( base.x, y );
-        bool held = false;
-        const bool tapped = mobile_ui::pressable( "##sheet_row" + std::to_string( i ), row_pos,
-                            ImVec2( sheet_w, row_h ), &held );
-        if( held ) {
-            inner->AddRectFilled( row_pos, ImVec2( row_pos.x + sheet_w, row_pos.y + row_h ),
-                                  mobile_ui::col_button_down );
-        }
-        inner->AddLine( row_pos, ImVec2( row_pos.x + sheet_w, row_pos.y ), IM_COL32( 255, 255, 255, 13 ) );
-        mobile_ui::icon( inner, row.icon, ImVec2( row_pos.x + 18.0f * u, row_pos.y + 16.5f * u ), 21.0f,
-                         mobile_ui::col_muted );
-        const float text_x = row_pos.x + 53.0f * u;
-        if( row.detail.empty() ) {
-            mobile_ui::text( inner, face::bold, 15.0f, ImVec2( text_x, row_pos.y + 17.0f * u ),
-                             mobile_ui::col_fg, row.title );
-        } else {
-            mobile_ui::text( inner, face::bold, 15.0f, ImVec2( text_x, row_pos.y + 9.0f * u ),
-                             mobile_ui::col_fg, row.title );
-            mobile_ui::text( inner, face::body, 12.0f, ImVec2( text_x, row_pos.y + 30.0f * u ),
-                             mobile_ui::col_muted, row.detail );
-        }
-        if( tapped ) {
-            picked = row.result;
-            open_sheet = sheet::none;
-        }
-        y += row_h;
-    }
-    if( rows.empty() ) {
-        mobile_ui::text( inner, face::body, 13.5f, ImVec2( base.x + 18.0f * u, y + 4.0f * u ),
-                         IM_COL32( 201, 207, 191, 255 ), body, body_w );
-        y += content_h;
-    }
-    ImGui::SetCursorScreenPos( base );
-    ImGui::Dummy( ImVec2( 1.0f, y - base.y ) );
-    ImGui::EndChild();
-    ImGui::PopStyleVar();
-
-    if( outside && picked == std::nullopt && ImGui::GetIO().MousePos.y < pos.y ) {
+    const int tapped = mobile_ui::draw_sheet( spec, origin, size );
+    if( tapped == mobile_ui::sheet_dismissed ) {
+        open_sheet = sheet::none;
+    } else if( tapped >= 0 && tapped < static_cast<int>( results.size() ) ) {
+        picked = results[tapped];
         open_sheet = sheet::none;
     }
 }
@@ -497,6 +424,54 @@ void main_menu_view::impl::draw_controls()
     }
     if( open_sheet != sheet::none ) {
         draw_sheet( origin, size );
+    }
+}
+
+action_id pause_sheet()
+{
+    mobile_ui::sheet_spec spec;
+    spec.title = _( "Paused" );
+    const std::vector<std::pair<mobile_ui::sheet_row, action_id>> rows = {
+        { { "play", _( "Resume" ), "" }, ACTION_NULL },
+        { { "person", _( "Character" ), "" }, ACTION_PL_INFO },
+        { { "inventory", _( "Inventory" ), "" }, ACTION_INVENTORY },
+        { { "craft", _( "Craft" ), "" }, ACTION_CRAFT },
+        { { "globe", _( "Map" ), "" }, ACTION_MAP },
+        { { "lines", _( "Messages" ), "" }, ACTION_MESSAGES },
+        { { "gear", _( "Settings" ), "" }, ACTION_OPTIONS },
+        { { "menu", _( "All actions" ), "" }, ACTION_ACTIONMENU },
+        { { "save", _( "Save game" ), "" }, ACTION_QUICKSAVE },
+        { { "exit", _( "Save and quit to menu" ), "" }, ACTION_SAVE },
+    };
+    for( const std::pair<mobile_ui::sheet_row, action_id> &row : rows ) {
+        spec.rows.push_back( row.first );
+    }
+    const int tapped = mobile_ui::show_sheet( spec );
+    return tapped >= 0 ? rows[tapped].second : ACTION_NULL;
+}
+
+void wait_sheet()
+{
+    mobile_ui::sheet_spec spec;
+    spec.title = _( "Wait" );
+    spec.description = _( "Waiting stops early if a monster comes into view." );
+    spec.grid = true;
+    const time_point dawn = sunrise( calendar::turn ) > calendar::turn ? sunrise( calendar::turn ) :
+                            sunrise( calendar::turn + 1_days );
+    const std::vector<std::pair<std::string, time_duration>> options = {
+        { _( "Wait 5 minutes" ), 5_minutes },
+        { _( "Wait 30 minutes" ), 30_minutes },
+        { _( "Wait 1 hour" ), 1_hours },
+        { _( "Wait 3 hours" ), 3_hours },
+        { _( "Wait until dawn" ), dawn - calendar::turn },
+        { _( "Wait until something happens" ), 12_hours },
+    };
+    for( const std::pair<std::string, time_duration> &option : options ) {
+        spec.rows.push_back( { "", option.first, "" } );
+    }
+    const int tapped = mobile_ui::show_sheet( spec );
+    if( tapped >= 0 ) {
+        get_avatar().assign_activity( wait_activity_actor( options[tapped].second ) );
     }
 }
 
@@ -530,6 +505,13 @@ bool main_menu_view::back()
 }
 
 #else // !TILES
+
+action_id pause_sheet()
+{
+    return ACTION_ACTIONMENU;
+}
+
+void wait_sheet() {}
 
 class main_menu_view::impl
 {

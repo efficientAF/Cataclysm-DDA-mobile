@@ -5,6 +5,7 @@
 #if defined(TILES)
 
 #include <string>
+#include <vector>
 
 #include "imgui/imgui.h"
 
@@ -83,6 +84,35 @@ void box( ImDrawList *draw, const ImVec2 &min, const ImVec2 &max, ImU32 fill, Im
 // The bar at the top of a full screen: back arrow and title.  Returns true if
 // back was tapped.  height_out receives the height it took.
 bool app_bar( const std::string &title, const ImVec2 &pos, float width, float *height_out );
+
+// --- Bottom sheet ---
+
+struct sheet_row {
+    std::string icon;
+    std::string title;
+    std::string detail;
+};
+
+struct sheet_spec {
+    std::string title;
+    // a paragraph under the title
+    std::string description;
+    std::vector<sheet_row> rows;
+    // rows as a two-column grid of buttons instead of a list
+    bool grid = false;
+};
+
+constexpr int sheet_nothing = -2;
+constexpr int sheet_dismissed = -1;
+
+// Draws a sheet rising from the bottom edge over a dimmed screen.  Returns the
+// index of the row that was tapped, sheet_dismissed for a tap outside, or
+// sheet_nothing.
+int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size );
+
+// Shows a sheet over the game and waits for a choice.  Returns the row index,
+// or sheet_dismissed.
+int show_sheet( const sheet_spec &spec );
 
 } // namespace mobile_ui
 

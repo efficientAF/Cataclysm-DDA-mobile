@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+enum action_id : int;
+
 // Screens of the mobile UI fork that replace upstream's menus, behind the
 // MOBILE_MENUS option.  They follow the UI canvas.
 //
@@ -16,6 +18,13 @@ namespace mobile_menu
 {
 
 bool enabled();
+
+// The pause sheet of the play screen.  Returns the action to perform:
+// ACTION_NULL to resume, ACTION_ACTIONMENU for upstream's full action menu.
+action_id pause_sheet();
+
+// The wait sheet: pick how long to wait, and start waiting.
+void wait_sheet();
 
 struct world_info {
     std::string name;
