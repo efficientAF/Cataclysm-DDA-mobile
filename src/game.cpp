@@ -3415,6 +3415,10 @@ void game::draw( ui_adaptor &ui )
 
 void game::draw_panels( bool force_draw )
 {
+    if( touch_input::hud_enabled() ) {
+        // Mobile HUD: the sidebar is replaced by the overlay in mobile_hud.cpp
+        return;
+    }
     static int previous_turn = -1;
     const int current_turn = to_turns<int>( calendar::turn - calendar::turn_zero );
     const bool draw_this_turn = current_turn > previous_turn || force_draw;

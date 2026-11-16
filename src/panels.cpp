@@ -38,6 +38,7 @@
 #include "path_info.h"
 #include "point.h"
 #include "string_formatter.h"
+#include "touch_input.h"
 #include "translations.h"
 #include "type_id.h"
 #include "ui_manager.h"
@@ -458,6 +459,10 @@ std::string panel_manager::get_current_layout_id() const
 
 int panel_manager::get_width_right() const
 {
+    if( touch_input::hud_enabled() ) {
+        // Mobile HUD: no sidebar, the map gets the whole width
+        return 0;
+    }
     if( get_option<std::string>( "SIDEBAR_POSITION" ) == "left" ) {
         return width_left;
     }
@@ -466,6 +471,9 @@ int panel_manager::get_width_right() const
 
 int panel_manager::get_width_left() const
 {
+    if( touch_input::hud_enabled() ) {
+        return 0;
+    }
     if( get_option<std::string>( "SIDEBAR_POSITION" ) == "left" ) {
         return width_right;
     }
