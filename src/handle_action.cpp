@@ -69,6 +69,7 @@
 #include "math_parser_diag_value.h"
 #include "mdarray.h"
 #include "messages.h"
+#include "mobile_drawer.h"
 #include "mobile_menu.h"
 #include "monster.h"
 #include "move_mode.h"
@@ -2307,6 +2308,12 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
         }
     }
 
+    // Mobile UI: the Log drawer instead of the message screen.  It comes back
+    // with ACTION_MAP when its "Open the full map" button was tapped.
+    if( act == ACTION_MESSAGES && mobile_menu::enabled() ) {
+        act = mobile_drawer::show( mobile_drawer::drawer::log );
+    }
+
     switch( act ) {
         case ACTION_NULL: // dummy entry
         case NUM_ACTIONS: // dummy entry
@@ -2983,7 +2990,12 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
             return false;
 
         case ACTION_PL_INFO:
-            player_character.disp_info( true );
+            // Mobile UI: the Info drawer instead of the character screen
+            if( mobile_menu::enabled() ) {
+                mobile_drawer::show( mobile_drawer::drawer::info );
+            } else {
+                player_character.disp_info( true );
+            }
             break;
 
         case ACTION_MAP:
