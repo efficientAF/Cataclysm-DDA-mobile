@@ -46,7 +46,9 @@ struct list_row {
     std::string detail;
     // shown on the right
     std::string hotkey;
+    // disabled rows are dimmed
     bool enabled = true;
+    bool tappable = true;
 };
 
 struct list_spec {

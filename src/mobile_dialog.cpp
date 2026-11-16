@@ -254,7 +254,7 @@ int draw_list( const list_spec &spec )
             continue;
         }
         bool held = false;
-        if( row.enabled ) {
+        if( row.tappable ) {
             if( mobile_ui::pressable( "##list_row" + std::to_string( i ), row_pos, ImVec2( sheet_w, row_h ),
                                       &held ) ) {
                 result = i;

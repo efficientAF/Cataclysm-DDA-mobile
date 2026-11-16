@@ -16,6 +16,8 @@
 #include "game.h"
 #include "input.h"
 #include "memory_fast.h"
+#include "mobile_dialog.h"
+#include "mobile_menu.h"
 #include "output.h"
 #include "sdltiles.h"
 #include "input_popup.h"
@@ -35,6 +37,18 @@
 #include "sdl_wrappers.h"
 #endif
 
+// Mobile UI: menus that are a plain list of choices are drawn as the canvas's
+// bottom sheet, see mobile_dialog.h.  Menus with a callback (extra panes),
+// tabs or a place of their own keep upstream's window.
+static bool mobile_sheet( const uilist &menu, const bool has_categories )
+{
+    return mobile_menu::enabled() && menu.callback == nullptr && !has_categories &&
+           !menu.desired_bounds;
+}
+
+// Mobile UI: the menu whose bottom sheet was tapped outside, to cancel it
+static const uilist *mobile_cancelled = nullptr;
+
 void uilist_impl::draw_controls()
 {
 #if defined(TILES)
@@ -52,6 +66,45 @@ void uilist_impl::draw_controls()
 
 void uilist::draw_controls( uilist &parent )
 {
+    // Mobile UI: the bottom sheet instead of the window below
+    if( mobile_sheet( parent, !parent.categories.empty() ) ) {
+        mobile_dialog::list_spec spec;
+        spec.title = remove_color_tags( parent.text.empty() ? parent.title : parent.text );
+        if( parent.desc_enabled && !parent.footer_text.empty() ) {
+            spec.title += ( spec.title.empty() ? "" : "\n" ) + remove_color_tags( parent.footer_text );
+        }
+        for( const int index : parent.fentries ) {
+            uilist_entry &entry = parent.entries[index];
+            mobile_dialog::list_row row;
+            row.text = entry._txt_nocolor();
+            row.detail = entry._ctxt_nocolor();
+            if( parent.desc_enabled && parent.footer_text.empty() && !entry.desc.empty() ) {
+                row.detail += ( row.detail.empty() ? "" : "\n" ) + remove_color_tags( entry.desc );
+            }
+            while( !row.detail.empty() && row.detail.back() == '\n' ) {
+                row.detail.pop_back();
+            }
+            if( entry.hotkey.has_value() && entry.hotkey.value() != input_event() ) {
+                row.hotkey = entry.hotkey.value().short_description();
+            }
+            row.enabled = entry.enabled;
+            row.tappable = entry.enabled || parent.allow_disabled;
+            spec.rows.push_back( row );
+        }
+        spec.selected = parent.fselected;
+        spec.scroll_to_selected = parent.need_to_scroll;
+        spec.can_cancel = parent.allow_cancel;
+        parent.need_to_scroll = false;
+        const int tap = mobile_dialog::draw_list( spec );
+        if( tap >= 0 && tap < static_cast<int>( parent.fentries.size() ) ) {
+            parent.fselected = tap;
+            parent.selected = parent.previewing = parent.fentries[tap];
+            parent.clicked = true;
+        } else if( tap == mobile_dialog::tap_outside ) {
+            mobile_cancelled = &parent;
+        }
+        return;
+    }
     if( !parent.text.empty() ) {
         cataimgui::draw_colored_text( parent.text );
         ImGui::Separator();
@@ -777,6 +830,10 @@ void uilist::setup()
     }
 
     calc_data();
+    // Mobile UI: the bottom sheet draws over the whole screen
+    if( mobile_sheet( *this, !categories.empty() ) ) {
+        calculated_bounds = { 0.0f, 0.0f, 1.0f, 1.0f };
+    }
 
     started = true;
 }
@@ -890,6 +947,12 @@ shared_ptr_fast<uilist_impl> uilist::create_or_get_ui()
         } else {
             ui = current_ui = make_shared_fast<uilist_impl>( *this, title );
         }
+#if defined(TILES)
+        // Mobile UI: no window of its own around the bottom sheet
+        if( mobile_sheet( *this, !categories.empty() ) ) {
+            current_ui->window_flags = mobile_dialog::window_flags();
+        }
+#endif
     }
     return current_ui;
 }
@@ -924,7 +987,9 @@ shared_ptr_fast<uilist_impl> uilist::query( bool loop, int timeout, bool allow_u
 bool uilist::query_setup()
 {
 #if defined(__ANDROID__)
-    if( get_option<bool>( "ANDROID_NATIVE_UI" ) && !entries.empty() && !desired_bounds ) {
+    // Mobile UI: the bottom sheet instead of the native list
+    if( get_option<bool>( "ANDROID_NATIVE_UI" ) && !mobile_menu::enabled() && !entries.empty() &&
+        !desired_bounds ) {
         if( !started ) {
             calc_data();
             started = true;
@@ -1006,6 +1071,15 @@ void uilist::query_once( input_context &ctxt, int timeout,
     const auto iter = keymap.find( ret_evt );
 
     scrollby( scroll_amount_from_action( ret_act ) );
+
+    // Mobile UI: a tap outside the bottom sheet
+    if( mobile_cancelled == this ) {
+        mobile_cancelled = nullptr;
+        if( allow_cancel ) {
+            ret = UILIST_CANCEL;
+            return;
+        }
+    }
 
     if( filtering && ret_act == "UILIST.FILTER" ) {
         inputfilter();
