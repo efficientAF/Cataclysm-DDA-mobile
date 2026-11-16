@@ -1223,8 +1223,14 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
             if( button( draw, "##pick_all", button_pos, ImVec2( buttons_w, 48.0f * u ),
                         _( "Pick up everything" ), 15.0f, true, interactive && !list.empty() ) ) {
                 pending.kind = request_kind::pick_up;
+                // everything that is listed: the search and the chips narrow it
                 for( const entry &e : list ) {
-                    pending.locs.insert( pending.locs.end(), e.locs.begin(), e.locs.end() );
+                    if( shown( e ) ) {
+                        pending.locs.insert( pending.locs.end(), e.locs.begin(), e.locs.end() );
+                    }
+                }
+                if( pending.locs.empty() ) {
+                    pending.kind = request_kind::none;
                 }
             }
         } else {
