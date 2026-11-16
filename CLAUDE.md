@@ -56,26 +56,36 @@ This is a fork of CleverRaven/Cataclysm-DDA. Its goal is a mobile-first Android 
 
 Everything is behind options registered at the end of `add_options_android()` in `options.cpp` (`MOBILE_HUD`, `MOBILE_MENUS`, `TOUCH_*`), on by default on Android. Hooks in upstream files are marked `// Mobile UI:`.
 
-- `src/touch_input.{h,cpp}`: tap, long-press, pinch, pan, ImGui pointer input (tap = click, drag = scroll, raw-drag areas), zoom range, and the desktop stand-in for the Android gesture code.
+- `src/touch_input.{h,cpp}`: tap, long-press, the zoom and pan dials (`dial_motion`, `dial_poll`), pinch and two-finger pan (option `TOUCH_TWO_FINGER_GESTURES`, off by default; the map screen always pinches), ImGui pointer input (tap = click, drag = scroll, raw-drag areas), zoom range, and the desktop stand-in for the Android gesture code, including a stand-in for the floating joystick.
 - `src/mobile_ui.{h,cpp}`: the canvas look: palette, fonts (`data/font/Barlow*.ttf`, `JetBrainsMono-Medium.ttf`), icons (`data/mobile_ui/icons/*.svg`), `pressable`, `box`, `app_bar`, bottom sheets.
 - `src/mobile_prompt.{h,cpp}`: the prompt buttons that replace upstream's shortcut bar. Two general sources: key hints in an on-screen note (`input_context::get_desc` records the key lists it hands out; a note that contains one gets a button named after the hint's text, e.g. "Accept your fate"), and the registered actions of the input context on top of the stack (named buttons, overflow behind "More"). Mobile screens opt out with `mobile_prompt::own_controls`. Drawn on ImGui's foreground list at the end of each UI frame (`ui_manager.cpp`); fingers come from `touch_input.cpp`.
-- `src/mobile_hud.{h,cpp}`: play-screen overlay drawn with SDL in `refresh_display()`. Pieces: location, status icons, body, wielded, log, quick actions, zoom buttons, recenter, movement pad (toggle, always, or upstream's drag joystick), drawer handles.
+- `src/mobile_hud.{h,cpp}`: play-screen overlay drawn with SDL in `refresh_display()`. Pieces: location, status icons, body, wielded, log, quick actions, zoom dial, pan dial, recenter, movement pad, drawer handles.
+  - Zoom and pan (`zoom`, `pan` in the layout JSON, `size` 44–120) are round and worked by touch and drag. Zoom: one level per 48 units of travel, live in quarter levels, whole level at release. Pan: scrolls toward the drag at 3–40 tiles a second, top speed 70 units out; a tap recenters.
+  - Movement joystick: option `TOUCH_JOYSTICK_MODE`. `fixed` is the HUD's pad (the layout's `mode` says `toggle` or `always`); `floating` is upstream's drag-anywhere joystick, and the pad piece is not drawn.
+  - The zoom dial is not drawn while `USE_TILES` is off: the letter map cannot zoom.
 - `src/mobile_hud_layout.{h,cpp}`: layouts in the canvas's JSON format. Built-in presets are game data, `data/json/ui/mobile_hud/presets.json` (`"type": "mobile_hud_preset"`); the player's layout is `mobile_hud.json` in the config folder. Positions count from the edge of the canvas's phone; `place()` swaps the canvas's notch insets for the real ones.
 - `src/mobile_hud_edit.{h,cpp}`: Edit HUD mode (pause sheet and Settings): drag pieces and drawer handles, tap a piece for options, Presets, Pieces. Edits the orientation the phone is held in.
 - Screens (ImGui, one file pair each): `mobile_menu` (main menu, new game, pause and wait sheets), `mobile_chargen`, `mobile_inventory` (also replaces the pick-up menu), `mobile_crafting`, `mobile_drawer` (Info and Log drawers, minimap), `mobile_overmap`, `mobile_settings`, `mobile_death`, `mobile_dialog` (popups, yes/no, `uilist` as a sheet).
-- Tests: `tests/touch_input_test.cpp` (`[touch_input]`).
+- Tests: `tests/touch_input_test.cpp` (`[touch_input]`), `tests/mobile_prompt_test.cpp`.
 - `tools/mobile_ui/`: the desktop test kit (`run.sh`, `drive.sh`, `build.sh`), an NDK syntax check, and `BRIEF.md`, the brief used for workers building one screen each.
 
-### Status and open work (16 Nov 2026, second session)
+### Status and open work (16 Nov 2026, third session)
+
+`mobile-ui` holds all of the above. The session branches `ccr-df1babd3-3p6es0`, `ccr-eb648aad-5peoju` and `ccr-b8adc6d9-u8s16x` are merged into it and can be deleted.
+
+**Nothing has been run on a real phone.** Everything below was tested with scripted touches on the desktop build; the Android-only gesture code in `sdltiles.cpp` is only known to compile.
 
 Open, most important first:
 
-1. **Old screens** still upstream's: keybindings, full options list, `uilist` menus with tabs, callbacks or fixed positions, NPC dialogue, bionics, mutations, vehicles, construction, look-around. They now get the prompt buttons, but no mockups exist yet: a worker that was adding them to the canvas was cut off by a usage limit, and nothing is known to be published. Add the mockups to the canvas first, then build to them (`tools/mobile_ui/BRIEF.md`).
-2. **Not verified:** the safe-mode "Go back / Move anyway" prompt in a live game (the parsing is unit-tested with its exact text; the death-camera prompt was run), `tests/mobile_prompt_test.cpp` and the rest of the unit tests (not built this session), dragging a drawer handle in the editor, drawers on the bottom edge.
-3. Text entry prompts (e.g. "Damage for how much?") are upstream's field with no buttons; the soft keyboard has to do.
-4. Sheets cannot be dragged down. A plan: give `touch_input::set_raw_drag_rect` a frame stamp so it expires, and pull the sheet by its head.
-5. Smooth pinch scaling between zoom levels.
-6. The death camera shows no HUD; the prompt button floats over the bare map.
+1. **Try on a phone:** the zoom and pan dials, the fixed pad and the floating joystick (upstream's code path, which the desktop stand-in does not exercise), pinch with the setting off (must do nothing on the play screen) and on, the Tiles/ASCII switch in Settings.
+2. **ASCII map (`USE_TILES` off)** works with the HUD, taps, pan and the pad. Known gaps: no zoom at all (the dial hides); the letters are the size of the map font, small on a phone, and only the text size setting changes that; the start zoom of `touch_input::default_zoom` does not apply. The repo ships only `gfx/ASCIITileset`, so "Tiles" in a build made from git alone is a tileset of letters that can zoom; picture tilesets have to be added to `gfx/`.
+3. **Old screens** still upstream's: keybindings, full options list, `uilist` menus with tabs, callbacks or fixed positions, NPC dialogue, bionics, mutations, vehicles, construction, look-around. They get the prompt buttons, but no mockups exist yet. Add the mockups to the canvas first, then build to them (`tools/mobile_ui/BRIEF.md`).
+4. **Not verified:** the safe-mode "Go back / Move anyway" prompt in a live game, dragging a drawer handle in the editor, drawers on the bottom edge, the pan dial with an isometric tileset (it scrolls in map directions, not screen directions).
+5. Text entry prompts (e.g. "Damage for how much?") are upstream's field with no buttons; the soft keyboard has to do.
+6. Sheets cannot be dragged down. A plan: give `touch_input::set_raw_drag_rect` a frame stamp so it expires, and pull the sheet by its head. The pause sheet's scroll position also differs from one opening to the next.
+7. Pinch still jumps a whole zoom level at a time; the zoom dial moves in quarter levels (`dial_zoom`), and pinch could use the same.
+8. The death camera shows no HUD; the prompt button floats over the bare map.
+9. `tools/format/json_formatter` rejects `data/json/ui/mobile_hud/presets.json` (it takes `"rows"` for an array), so the file is formatted by hand.
 
 ## Suggested order of work (roadmap phases 0–3)
 

@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "avatar.h"
 #include "cached_options.h"
 #include "cata_imgui.h"
 #if defined(__ANDROID__)
@@ -448,12 +449,16 @@ void commit( bool changed )
     get_options().save();
     if( g ) {
         g->on_options_changed();
-        if( use_tiles != was_tiles ) {
+        if( use_tiles != was_tiles && !get_avatar().name.empty() ) {
             // Tiles and letters differ in size, so the map window is laid out
-            // again, as upstream's options screen does.  The tileset itself is
-            // loaded at startup either way.
-            g->reset_zoom();
-            g->mark_main_ui_adaptor_resize();
+            // again.  A game started with letters has only checked the
+            // tileset, not loaded it; without a game it is loaded with the world.
+            if( use_tiles ) {
+                g->reload_tileset();
+            } else {
+                g->reset_zoom();
+                g->mark_main_ui_adaptor_resize();
+            }
         }
     }
 #if defined(__ANDROID__)
