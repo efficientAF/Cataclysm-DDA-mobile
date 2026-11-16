@@ -743,16 +743,32 @@ static ImGuiKey cata_key_to_imgui( int cata_key )
         case KEY_RIGHT:
             return ImGuiKey_RightArrow;
         case KEY_ENTER:
+        case '\n':
+        case '\r':
             return ImGuiKey_Enter;
         case KEY_ESCAPE:
             return ImGuiKey_Escape;
+        case '\t':
+            return ImGuiKey_Tab;
+        case ' ':
+            return ImGuiKey_Space;
+        case KEY_BACKSPACE:
+            return ImGuiKey_Backspace;
+        case KEY_HOME:
+            return ImGuiKey_Home;
+        case KEY_END:
+            return ImGuiKey_End;
+        case KEY_PPAGE:
+            return ImGuiKey_PageUp;
+        case KEY_NPAGE:
+            return ImGuiKey_PageDown;
         default:
             if( cata_key >= 'a' && cata_key <= 'z' ) {
                 return static_cast<ImGuiKey>( ImGuiKey_A + ( cata_key - 'a' ) );
             } else if( cata_key >= 'A' && cata_key <= 'Z' ) {
                 return static_cast<ImGuiKey>( ImGuiKey_A + ( cata_key - 'A' ) );
             } else if( cata_key >= '0' && cata_key <= '9' ) {
-                return static_cast<ImGuiKey>( ImGuiKey_A + ( cata_key - '0' ) );
+                return static_cast<ImGuiKey>( ImGuiKey_0 + ( cata_key - '0' ) );
             }
             return ImGuiKey_None;
     }
