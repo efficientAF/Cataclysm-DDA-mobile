@@ -17,6 +17,7 @@ This is a fork of CleverRaven/Cataclysm-DDA. Its goal is a mobile-first Android 
 - Work on `mobile-ui`. Keep `master` as a clean mirror of upstream.
 - The `upstream` remote is https://github.com/CleverRaven/Cataclysm-DDA. Upstream lands many commits a day, so merge `upstream/master` into `mobile-ui` regularly.
 - Clones in cloud sessions are shallow. Use bounded fetches such as `git fetch --depth=50 upstream master`.
+- **Never push to, or open pull requests or issues against, CleverRaven/Cataclysm-DDA.** `upstream` is fetch-only. In a fresh clone, run `git remote set-url --push upstream DISABLED`. Every pull request targets `efficientAF/Cataclysm-DDA-mobile` (usually `mobile-ui`), and you must check the base repository before creating one. Offering work upstream is the owner's decision, made by hand.
 
 ## Ground rules
 
