@@ -45,7 +45,21 @@ This is a fork of CleverRaven/Cataclysm-DDA. Its goal is a mobile-first Android 
 - **Desktop tiles:** needs SDL3 3.4 or newer, plus SDL3_image, SDL3_ttf and SDL3_mixer. Use CMake (`CMakePresets.json`) or `make TILES=1`. See `doc/c++/COMPILING.md`.
 - **Android:** `android/` (Gradle). Needs the Android SDK and NDK; the SDL3 AARs download automatically (`android/app/build.gradle`). CI builds bundles with `.github/workflows/release-android-bundle.yaml`.
 - **Tests:** `make tests` or the CMake test targets. The curses build (`make TILES=0`) needs no SDL and is the fastest way to compile-check logic.
-- **What was on the machine when this was set up (Nov 2026):** the default cloud environment had cmake, ninja, gcc and clang, but no SDL3 and no Android SDK. Set those up first, ideally saved as the environment's setup script.
+- **Cloud environment `cataclysm-dda-mobile` (Nov 2026):** allows `dl.google.com`. It has no setup script, so each new session installs the tools first (about two minutes):
+  - `apt-get install -y ccache gettext astyle glslang-tools`
+  - Android SDK into `/opt/android-sdk`: command-line tools from `https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip`, then `sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.1.13356709" "cmake;3.22.1"`, and `sdk.dir=/opt/android-sdk` in `android/local.properties`.
+- **APK:** `cd android && ./gradlew --no-daemon -Pj=4 -Plocalize=false -Pabi_arm_32=false assembleExperimentalDebug`. About 30 minutes from scratch on 4 cores. Output is in `android/app/build/outputs/apk/experimental/debug/`. After adding a source file, `touch android/app/jni/CMakeLists.txt` so it is picked up.
+  - App ID is `com.efficientaf.cddamobile` (plus `.experimental`); debug builds are signed with `android/app/debug.keystore`.
+  - Android-only code does not compile on desktop. Check it with the NDK before pushing; a full Gradle build is the real test.
+- **Desktop tiles:** Ubuntu 24.04 has no SDL3 packages. Build SDL3 3.4.10, SDL3_image 3.4.4 and SDL3_ttf 3.2.2 from the release tarballs on GitHub (`github.com/libsdl-org/<repo>/releases/download/...`) with CMake into `/usr/local`, then `make -j4 TILES=1 SOUND=0 LOCALIZE=0 RUNTESTS=0 ASTYLE=0 LINTJSON=0 cataclysm-tiles`.
+- **Testing touch without a phone:** run the desktop build under `Xvfb` with `SOFTWARE_RENDERING` on and the `TOUCH_*` options on, and feed it gestures through `CATA_TOUCH_SCRIPT` (format in `src/touch_input.h`). Take screenshots with ImageMagick's `import`. On X11, ImGui follows the real mouse pointer, so park it (`xdotool mousemove`) where a scripted tap on an ImGui window will land.
+
+## Mobile code (this fork)
+
+- `src/touch_input.{h,cpp}`: tap, long-press, pinch, pan and ImGui pointer logic, their options, and the desktop stand-in for the Android gesture code. Hooks are marked `Mobile UI` in `sdltiles.cpp`, `handle_action.cpp`, `game.cpp` and `uilist.cpp`.
+- `src/mobile_hud.{h,cpp}`: the overlay drawn in `refresh_display()`: Recenter button and, with `MOBILE_HUD`, location, status chips and messages. `panels.cpp` and `game::draw_panels` hide the sidebar.
+- Options are added at the end of `add_options_android()` in `options.cpp`.
+- Tests: `tests/touch_input_test.cpp` (`[touch_input]`).
 
 ## Suggested order of work (roadmap phases 0–3)
 
