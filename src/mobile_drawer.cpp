@@ -4,6 +4,7 @@
 
 #if defined(TILES)
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -27,7 +28,10 @@
 #include "line.h"
 #include "messages.h"
 #include "mobile_ui.h"
+#include "omdata.h"
 #include "output.h"
+#include "overmap.h"
+#include "overmapbuffer.h"
 #include "string_formatter.h"
 #include "translations.h"
 #include "type_id.h"
@@ -65,6 +69,11 @@ constexpr ImU32 col_behind = IM_COL32( 0, 0, 0, 64 );
 constexpr float text_px = 13.0f;
 constexpr float line_units = 19.0f;
 
+// overmap tiles shown each way from the player on the Map tab
+constexpr int minimap_radius = 17;
+// how long a drawer takes to slide in
+constexpr float slide_seconds = 0.2f;
+
 enum class edge : int {
     left,
     right,
@@ -88,6 +97,8 @@ enum class block_kind : int {
     note,
     // the "Open the full map" button
     map_button,
+    // a square picture of the overmap around the player
+    minimap,
 };
 
 struct pill {
@@ -104,6 +115,12 @@ struct block {
     ImU32 color = mobile_ui::col_fg;
     std::vector<pill> pills;
     std::vector<std::pair<std::string, std::string>> tiles;
+    // minimap: cells_side * cells_side colors, row by row from the north-west;
+    // a zero color is a tile not yet seen
+    int cells_side = 0;
+    std::vector<ImU32> cells;
+    // minimap: indices of the cells that carry a note
+    std::vector<int> notes;
 };
 
 struct tab {
@@ -383,7 +400,29 @@ tab map_tab()
     tab t;
     t.label = _( "Map" );
     t.blocks.push_back( make_title( _( "Nearby" ) ) );
-    t.blocks.push_back( make_note( _( "A quick look at the area." ) ) );
+    // The overmap around the player, as the full map colors it.
+    const tripoint_abs_omt center = get_avatar().pos_abs_omt();
+    block map;
+    map.kind = block_kind::minimap;
+    map.cells_side = 2 * minimap_radius + 1;
+    map.cells.reserve( static_cast<size_t>( map.cells_side * map.cells_side ) );
+    for( int dy = -minimap_radius; dy <= minimap_radius; ++dy ) {
+        for( int dx = -minimap_radius; dx <= minimap_radius; ++dx ) {
+            const tripoint_abs_omt at = center + point( dx, dy );
+            const om_vision_level vision = overmap_buffer.seen( at );
+            if( vision == om_vision_level::unseen ) {
+                map.cells.push_back( 0 );
+                continue;
+            }
+            if( overmap_buffer.has_note( at ) ) {
+                map.notes.push_back( static_cast<int>( map.cells.size() ) );
+            }
+            map.cells.push_back( cataimgui::ImU32_from_color( overmap_buffer.ter( at )->get_color(
+                                     vision ) ) | IM_COL32_A_MASK );
+        }
+    }
+    t.blocks.push_back( map );
+    t.blocks.push_back( make_note( remove_color_tags( display::current_position_text( center ) ) ) );
     block button;
     button.kind = block_kind::map_button;
     button.left = _( "Open the full map" );
@@ -439,6 +478,11 @@ class drawer_window : public cataimgui::window
         bool closed = false;
         bool open_map = false;
 
+        // Whether the drawer is still sliding in, so that it wants redrawing.
+        bool sliding() const {
+            return slide_progress() < 1.0f;
+        }
+
         void turn_page( const int by ) {
             current = std::clamp( current + by, 0, static_cast<int>( tabs.size() ) - 1 );
         }
@@ -453,9 +497,16 @@ class drawer_window : public cataimgui::window
         // Draws the blocks of a tab from pos down; returns the height they took.
         float draw_blocks( const tab &t, const ImVec2 &pos, float width );
 
+        // 0 when the drawer has just opened, 1 once it is fully in
+        float slide_progress() const {
+            const std::chrono::duration<float> passed = std::chrono::steady_clock::now() - opened;
+            return std::clamp( passed.count() / slide_seconds, 0.0f, 1.0f );
+        }
+
         drawer which;
         std::vector<tab> tabs;
         int current = 0;
+        std::chrono::steady_clock::time_point opened = std::chrono::steady_clock::now();
 };
 
 float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float width )
@@ -518,11 +569,16 @@ float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float w
             case block_kind::map_button:
                 height = 44.0f * u;
                 break;
+            case block_kind::minimap:
+                // square, as large as fits with the place name and the button under it
+                height = std::max( 96.0f * u, std::min( width, ImGui::GetWindowSize().y -
+                                                        ( 12.0f + 10.5f + 6.0f + 6.0f + line_units + 6.0f + 44.0f + 8.0f ) * u ) );
+                break;
             case block_kind::bar:
                 break;
         }
         const bool visible = y + height >= clip_top && y <= clip_bottom;
-        if( !visible && b.kind != block_kind::map_button ) {
+        if( !visible && b.kind != block_kind::map_button && b.kind != block_kind::minimap ) {
             y += height;
             continue;
         }
@@ -615,6 +671,44 @@ float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float w
                 mobile_ui::text( draw, face::body, text_px, ImVec2( pos.x, y + 1.5f * u ),
                                  mobile_ui::col_muted, b.left, width );
                 break;
+            case block_kind::minimap: {
+                const ImVec2 map_max( pos.x + height, y + height );
+                // a tap on the picture opens the full map too
+                if( mobile_ui::pressable( "##minimap", ImVec2( pos.x, y ), ImVec2( height, height ) ) ) {
+                    open_map = true;
+                }
+                draw->AddRectFilled( ImVec2( pos.x, y ), map_max, IM_COL32( 0, 0, 0, 255 ), 8.0f * u );
+                const float cell = height / static_cast<float>( b.cells_side );
+                const auto cell_min = [&]( const int index ) {
+                    return ImVec2( pos.x + static_cast<float>( index % b.cells_side ) * cell,
+                                   y + static_cast<float>( index / b.cells_side ) * cell );
+                };
+                for( int n = 0; n < static_cast<int>( b.cells.size() ); ++n ) {
+                    if( b.cells[n] == 0 ) {
+                        continue;
+                    }
+                    const ImVec2 at = cell_min( n );
+                    // a hair of the black shows between the tiles
+                    draw->AddRectFilled( ImVec2( at.x + 0.5f, at.y + 0.5f ),
+                                         ImVec2( at.x + cell - 0.5f, at.y + cell - 0.5f ), b.cells[n] );
+                }
+                for( const int n : b.notes ) {
+                    const ImVec2 at = cell_min( n );
+                    const ImVec2 middle( at.x + cell * 0.5f, at.y + cell * 0.5f );
+                    draw->AddCircleFilled( middle, cell * 0.5f, IM_COL32( 0, 0, 0, 255 ) );
+                    draw->AddCircleFilled( middle, cell * 0.34f, mobile_ui::col_title );
+                }
+                // the player, in the middle
+                const ImVec2 at = cell_min( static_cast<int>( b.cells.size() ) / 2 );
+                draw->AddRectFilled( ImVec2( at.x - cell * 0.35f, at.y - cell * 0.35f ),
+                                     ImVec2( at.x + cell * 1.35f, at.y + cell * 1.35f ),
+                                     IM_COL32( 0, 0, 0, 255 ), 2.0f * u );
+                draw->AddRectFilled( ImVec2( at.x - cell * 0.1f, at.y - cell * 0.1f ),
+                                     ImVec2( at.x + cell * 1.1f, at.y + cell * 1.1f ),
+                                     mobile_ui::col_accent, 1.5f * u );
+                draw->AddRect( ImVec2( pos.x, y ), map_max, mobile_ui::col_line, 8.0f * u, 0, hairline );
+                break;
+            }
             case block_kind::map_button: {
                 // drawn 36 high as on the canvas, inside a 44 high touch area
                 const float button_w = mobile_ui::text_size( face::bold, text_px, b.left ).x + 24.0f * u;
@@ -667,6 +761,17 @@ void drawer_window::draw_controls()
             min.x = max.x - depth;
             corners = ImDrawFlags_RoundCornersLeft;
         }
+    }
+
+    // sliding in from its edge, easing out
+    const float remaining = 1.0f - slide_progress();
+    const float hidden = remaining * remaining * remaining;
+    if( hidden > 0.0f ) {
+        const ImVec2 shift = from == edge::top ? ImVec2( 0.0f, -( max.y - origin.y ) * hidden ) :
+                             from == edge::left ? ImVec2( -( max.x - origin.x ) * hidden, 0.0f ) :
+                             ImVec2( ( origin.x + size.x - min.x ) * hidden, 0.0f );
+        min = ImVec2( min.x + shift.x, min.y + shift.y );
+        max = ImVec2( max.x + shift.x, max.y + shift.y );
     }
 
     // the game stays visible behind, a little darker
@@ -760,8 +865,15 @@ action_id show( const drawer which )
     ctxt.register_action( "LEFT" );
     ctxt.register_action( "RIGHT" );
     ctxt.register_action( "ANY_INPUT" );
+    ctxt.register_action( "TIMEOUT" );
     while( !window.closed && !window.open_map ) {
         ui_manager::redraw();
+        // while the drawer slides in, redraw without waiting for input
+        if( window.sliding() ) {
+            ctxt.set_timeout( 15 );
+        } else {
+            ctxt.reset_timeout();
+        }
         const std::string action = ctxt.handle_input();
         if( action == "QUIT" ) {
             break;
