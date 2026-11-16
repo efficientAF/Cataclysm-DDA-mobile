@@ -418,6 +418,8 @@ class crafting_window : public cataimgui::window
 
         const recipe *selected = nullptr;
         bool sheet_open = false;
+        // the layout that was drawn last
+        bool landscape = false;
         float sheet_content_height = 0.0f;
         std::optional<availability> detail_availability;
         detail_info detail;
@@ -441,7 +443,8 @@ class crafting_window : public cataimgui::window
 crafting_window::crafting_window( avatar &you ) : cataimgui::window( "MOBILE_CRAFTING",
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
-            ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground ), you( you )
+            ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground |
+            ImGuiWindowFlags_NoNav ), you( you )
 {
     known = &you.get_group_available_recipes();
     for( const crafting_category &cat : get_crafting_categories() ) {
@@ -458,7 +461,8 @@ bool crafting_window::back()
         sheet_open = false;
         return true;
     }
-    if( selected != nullptr ) {
+    // in portrait the sheet was the detail, so there is nothing more to close
+    if( selected != nullptr && landscape ) {
         selected = nullptr;
         return true;
     }
@@ -1070,6 +1074,12 @@ void crafting_window::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
 {
     const float u = mobile_ui::unit();
     const ImVec4 safe = mobile_ui::safe_insets();
+    // a layer of its own, so that the sheet covers the list
+    ImGui::SetCursorScreenPos( origin );
+    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+    ImGui::BeginChild( "##craft_sheet_layer", size, ImGuiChildFlags_None,
+                       ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
+                       ImGuiWindowFlags_NoScrollWithMouse );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     const ImVec2 screen_max( origin.x + size.x, origin.y + size.y );
     draw->AddRectFilled( origin, screen_max, mobile_ui::col_dim );
@@ -1103,6 +1113,8 @@ void crafting_window::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
         sheet_content_height = height;
         refresh = true;
     }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
     if( outside && ImGui::GetIO().MousePos.y < pos.y ) {
         sheet_open = false;
         refresh = true;
@@ -1122,7 +1134,7 @@ void crafting_window::draw_controls()
                          mobile_ui::col_screen );
     draw->PopClipRect();
 
-    const bool landscape = size.x > size.y;
+    landscape = size.x > size.y;
     const ImVec2 inner( origin.x + safe.x, origin.y + safe.y );
     const ImVec2 inner_size( size.x - safe.x - safe.z, size.y - safe.y );
     if( !landscape ) {
