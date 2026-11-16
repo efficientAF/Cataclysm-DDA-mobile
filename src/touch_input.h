@@ -147,8 +147,8 @@ bool two_finger_acted();
 // finger; the caller must then route its motion and release here and nowhere else.
 bool finger_down( float x, float y, bool default_mode );
 void finger_motion( float x, float y );
-// Returns a curses key code to send as input, or 0.
-int finger_up( float x, float y );
+// Returns true if it set out to an input to deliver.
+bool finger_up( float x, float y, input_event &out );
 void finger_cancel();
 // True while a finger is on an ImGui window or its tap is still being handled.
 // ImGui must accept pointer input for that long, even with the mouse disabled.

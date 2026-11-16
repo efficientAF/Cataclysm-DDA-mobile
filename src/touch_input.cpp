@@ -617,7 +617,7 @@ namespace
 enum class owner : int {
     none,
     imgui,
-    recenter_button,
+    hud_button,
 };
 
 struct owned_finger_state {
@@ -626,6 +626,8 @@ struct owned_finger_state {
     float down_y = 0.0f;
     float last_y = 0.0f;
     drag_axis drag = drag_axis::none;
+    // for owner::hud_button
+    action_id act = ACTION_NULL;
 };
 } // namespace
 
@@ -690,9 +692,12 @@ bool finger_down( const float x, const float y, const bool default_mode )
         tap_stage = tap_step::none;
     }
 
-    if( default_mode && mobile_hud::button_at( x, y ) == mobile_hud::button::recenter ) {
-        owned_finger.who = owner::recenter_button;
-        return true;
+    if( default_mode ) {
+        if( const std::optional<action_id> act = mobile_hud::button_at( x, y ) ) {
+            owned_finger.who = owner::hud_button;
+            owned_finger.act = *act;
+            return true;
+        }
     }
     if( imgui_pointer() ) {
         const ImVec2 pos = to_imgui( x, y );
@@ -732,19 +737,32 @@ void finger_motion( const float x, const float y )
     }
 }
 
-int finger_up( const float x, const float y )
+bool finger_up( const float x, const float y, input_event &out )
 {
     const owned_finger_state finger = owned_finger;
     owned_finger = owned_finger_state();
     int key = 0;
 
     switch( finger.who ) {
-        case owner::recenter_button:
-            if( mobile_hud::button_at( x, y ) == mobile_hud::button::recenter ) {
+        case owner::hud_button: {
+            // only if the finger is still on the button it went down on
+            const std::optional<action_id> act = mobile_hud::button_at( x, y );
+            if( !act || *act != finger.act ) {
+                break;
+            }
+            if( *act == ACTION_CENTER ) {
                 recenter_view();
                 ui_manager::redraw_invalidated();
+                break;
+            }
+            // send the key the action is bound to
+            const std::vector<input_event> keys = keys_bound_to( *act, -1, false );
+            if( !keys.empty() ) {
+                out = keys.front();
+                return true;
             }
             break;
+        }
         case owner::imgui: {
             ImGuiIO &io = ImGui::GetIO();
             io.AddMouseSourceEvent( ImGuiMouseSource_TouchScreen );
@@ -768,7 +786,11 @@ int finger_up( const float x, const float y )
         case owner::none:
             break;
     }
-    return key;
+    if( key != 0 ) {
+        out = input_event( key, input_event_t::keyboard_char );
+        return true;
+    }
+    return false;
 }
 
 void finger_cancel()
@@ -782,8 +804,30 @@ void finger_cancel()
 
 // --- Housekeeping ---
 
+// Fingers are blunter than a mouse pointer: give ImGui rows, buttons and
+// scrollbars more room while the pointer option is on.
+static void apply_touch_style()
+{
+    static bool applied = false;
+    if( applied || !imgui_pointer() || ImGui::GetCurrentContext() == nullptr ) {
+        return;
+    }
+    const float font = ImGui::GetFontSize();
+    if( font <= 0.0f ) {
+        return;
+    }
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.TouchExtraPadding = ImVec2( font * 0.25f, font * 0.25f );
+    style.CellPadding.y = std::max( style.CellPadding.y, font * 0.35f );
+    style.ItemSpacing.y = std::max( style.ItemSpacing.y, font * 0.45f );
+    style.FramePadding.y = std::max( style.FramePadding.y, font * 0.35f );
+    style.ScrollbarSize = std::max( style.ScrollbarSize, font * 1.2f );
+    applied = true;
+}
+
 bool poll()
 {
+    apply_touch_style();
     if( !g || !panned_by_touch || !recenter_on_move() ) {
         return false;
     }
@@ -994,10 +1038,7 @@ bool desktop_finger_event( const SDL_Event &ev, const int window_w, const int wi
         return false;
     }
     if( desk.owned ) {
-        const int key = finger_up( fx, fy );
-        if( key != 0 ) {
-            out = input_event( key, input_event_t::keyboard_char );
-        }
+        finger_up( fx, fy, out );
     } else if( desk.two_fingers ) {
         two_finger_end();
     } else if( !desk.moved && !desk.done && default_mode && tap_to_act() ) {

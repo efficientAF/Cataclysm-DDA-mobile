@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "action.h"
 #include "avatar.h"
 #include "catacharset.h"
 #include "color.h"
@@ -44,6 +45,17 @@ static constexpr Uint8 panel_a = 204;
 
 // Rectangle of the Recenter button in window pixels; empty while it is hidden.
 static SDL_Rect recenter_rect = { 0, 0, 0, 0 };
+
+namespace
+{
+struct quick_button {
+    SDL_Rect rect;
+    action_id act;
+};
+} // namespace
+
+// Quick action buttons drawn in the last frame.
+static std::vector<quick_button> quick_buttons;
 
 static bool contains( const SDL_Rect &rect, const float x, const float y )
 {
@@ -276,10 +288,56 @@ static void draw_log( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Re
     }
 }
 
+// Buttons for the actions you need most, as in the canvas's Quick actions piece:
+// a column at the bottom right in landscape, a row along the bottom in portrait.
+static void draw_quick_buttons( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
+                                const float unit, const bool landscape )
+{
+    static const std::vector<std::pair<action_id, translation>> actions = {
+        { ACTION_PICKUP, to_translation( "mobile HUD button", "Get" ) },
+        { ACTION_INVENTORY, to_translation( "mobile HUD button", "Items" ) },
+        { ACTION_CRAFT, to_translation( "mobile HUD button", "Craft" ) },
+        { ACTION_MAP, to_translation( "mobile HUD button", "Map" ) },
+        { ACTION_WAIT, to_translation( "mobile HUD button", "Wait" ) },
+        { ACTION_ACTIONMENU, to_translation( "mobile HUD button", "Menu" ) },
+    };
+    const int size = static_cast<int>( 48.0f * unit );
+    const int gap = static_cast<int>( 6.0f * unit );
+    const int count = static_cast<int>( actions.size() );
+    const int length = count * size + ( count - 1 ) * gap;
+    const float text_height = 12.0f * unit;
+    const int border = std::max( 1, static_cast<int>( unit ) );
+    // canvas: bottom right, 20 up, in landscape; bottom center, 34 up, in portrait
+    int x = landscape ? safe.x + safe.w - size - static_cast<int>( margin_units * unit ) :
+            safe.x + ( safe.w - length ) / 2;
+    int y = landscape ? safe.y + safe.h - length - static_cast<int>( 20.0f * unit ) :
+            safe.y + safe.h - size - static_cast<int>( 34.0f * unit );
+    for( const std::pair<action_id, translation> &action : actions ) {
+        const SDL_Rect rect = { x, y, size, size };
+        fill_rect( renderer, rect, 233, 236, 223, 60 );
+        const SDL_Rect inner = { rect.x + border, rect.y + border, rect.w - 2 * border, rect.h - 2 * border };
+        fill_rect( renderer, inner, panel_r, panel_g, panel_b, 230 );
+        const std::string label = fit_text( font, action.second.translated(), text_height,
+                                            static_cast<float>( size ) );
+        draw_text( renderer, font, label,
+                   static_cast<float>( x ) + ( static_cast<float>( size ) - text_width( font, label,
+                                               text_height ) ) * 0.5f,
+                   static_cast<float>( y ) + ( static_cast<float>( size ) - text_height ) * 0.5f,
+                   text_height, color_white );
+        quick_buttons.push_back( { rect, action.first } );
+        if( landscape ) {
+            y += size + gap;
+        } else {
+            x += size + gap;
+        }
+    }
+}
+
 void draw( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &view, const int window_w,
            const int window_h, const bool default_mode )
 {
     recenter_rect = { 0, 0, 0, 0 };
+    quick_buttons.clear();
     if( !g || !default_mode || window_w <= 0 || window_h <= 0 || font.width <= 0 ||
         font.height <= 0 ) {
         return;
@@ -295,18 +353,24 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &view, c
         const int location_bottom = draw_location( renderer, font, safe, unit );
         draw_status( renderer, font, safe, unit, location_bottom );
         draw_log( renderer, font, safe, unit, landscape );
+        draw_quick_buttons( renderer, font, safe, unit, landscape );
     }
     if( touch_input::view_is_panned() ) {
         draw_recenter_button( renderer, font, safe, unit, landscape );
     }
 }
 
-button button_at( const float x, const float y )
+std::optional<action_id> button_at( const float x, const float y )
 {
     if( contains( recenter_rect, x, y ) ) {
-        return button::recenter;
+        return ACTION_CENTER;
     }
-    return button::none;
+    for( const quick_button &button : quick_buttons ) {
+        if( contains( button.rect, x, y ) ) {
+            return button.act;
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace mobile_hud

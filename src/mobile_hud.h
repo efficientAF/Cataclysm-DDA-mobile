@@ -4,7 +4,11 @@
 
 #if defined(TILES)
 
+#include <optional>
+
 #include "sdl_wrappers.h"
+
+enum action_id : int;
 
 class Font;
 
@@ -22,10 +26,6 @@ class Font;
 namespace mobile_hud
 {
 
-enum class button : int {
-    none,
-    recenter,
-};
 
 // view is where the game screen was just drawn in the window; the HUD stays
 // inside it, so it does not cover the Android quick shortcuts.
@@ -33,8 +33,9 @@ enum class button : int {
 void draw( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &view, int window_w,
            int window_h, bool default_mode );
 
-// The HUD button under a point in window pixels, as of the last draw.
-button button_at( float x, float y );
+// The action of the HUD button under a point in window pixels, as of the last
+// draw.  The Recenter button reports ACTION_CENTER.
+std::optional<action_id> button_at( float x, float y );
 
 } // namespace mobile_hud
 

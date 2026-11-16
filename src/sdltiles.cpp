@@ -6678,10 +6678,7 @@ static void CheckMessages()
                         if( touch_claimed ) {
                             // Mobile UI: release of a finger on an ImGui window or HUD button
                             touch_claimed = false;
-                            const int key = touch_input::finger_up( finger_curr_x, finger_curr_y );
-                            if( key != 0 ) {
-                                last_input = input_event( key, input_event_t::keyboard_char );
-                            }
+                            touch_input::finger_up( finger_curr_x, finger_curr_y, last_input );
                         } else if( is_quick_shortcut_touch ) {
                             input_event *quick_shortcut = get_quick_shortcut_under_finger();
                             if( quick_shortcut ) {
