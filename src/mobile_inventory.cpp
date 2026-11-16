@@ -1,5 +1,8 @@
 #include "mobile_inventory.h"
 
+#include "coordinates.h"
+#include "item_location.h"
+
 #if defined(TILES)
 
 #include <algorithm>
@@ -46,6 +49,10 @@
 #include "translations.h"
 #include "ui_manager.h"
 #include "uistate.h"
+#include "vehicle.h"
+#include "vehicle_selector.h"
+#include "veh_type.h"
+#include "vpart_position.h"
 #include "units.h"
 #include "units_utility.h"
 
@@ -152,6 +159,9 @@ struct screen_state {
     std::string filter;
     std::string search;
     std::string toast;
+    // Not empty while the screen only offers what is at these tiles, to pick up.
+    std::set<tripoint_bub_ms> targets;
+    std::string title;
     // the newest message before an action that closed the screen for a while
     std::optional<std::string> message_before;
     bool select_wielded = false;
@@ -420,29 +430,44 @@ static std::vector<entry> read_worn( avatar &you )
 }
 
 // Items on the avatar's tile and the tiles around it that can be reached, as
-// upstream's pick-up menu collects them (without vehicle cargo).
-static std::vector<entry> read_nearby( avatar &you )
+// upstream's pick-up menu collects them: what lies on the map, and what is in
+// vehicle cargo there.  With targets, only those tiles.
+static std::vector<entry> read_nearby( avatar &you, const std::set<tripoint_bub_ms> &targets )
 {
     std::vector<entry> list;
     map &here = get_map();
     const tripoint_bub_ms center = you.pos_bub();
-    for( const tripoint_bub_ms &pos : closest_points_first( center, 1 ) ) {
-        if( pos != center && !here.clear_path( center, pos, rl_dist( center, pos ), 1, 100 ) ) {
-            continue;
+    std::vector<tripoint_bub_ms> tiles( targets.begin(), targets.end() );
+    if( tiles.empty() ) {
+        for( const tripoint_bub_ms &pos : closest_points_first( center, 1 ) ) {
+            if( pos == center || here.clear_path( center, pos, rl_dist( center, pos ), 1, 100 ) ) {
+                tiles.push_back( pos );
+            }
         }
-        if( !here.accessible_items( pos ) ) {
-            continue;
-        }
+    }
+    const auto can_pick = []( const item & it ) {
+        return !it.made_of_from_type( phase_id::GAS ) &&
+               ( !it.made_of_from_type( phase_id::LIQUID ) || it.is_frozen_liquid() );
+    };
+    for( const tripoint_bub_ms &pos : tiles ) {
         const std::string direction = pos == center ? std::string() :
                                       direction_name_short( direction_from( center.raw(), pos.raw() ) );
-        // stacks are made per tile
+        // stacks are made per tile, and apart for the map and the vehicle
         std::vector<entry> tile;
-        for( item &it : here.i_at( pos ) ) {
-            if( it.made_of_from_type( phase_id::GAS ) ||
-                ( it.made_of_from_type( phase_id::LIQUID ) && !it.is_frozen_liquid() ) ) {
-                continue;
+        if( here.accessible_items( pos ) ) {
+            for( item &it : here.i_at( pos ) ) {
+                if( can_pick( it ) ) {
+                    add_item( tile, item_location( map_cursor( pos ), &it ), place::ground, &here );
+                }
             }
-            add_item( tile, item_location( map_cursor( pos ), &it ), place::ground, nullptr );
+        }
+        if( const std::optional<vpart_reference> cargo = here.veh_at( pos ).cargo() ) {
+            const vehicle_cursor cursor( cargo->vehicle(), cargo->part_index() );
+            for( item &it : cargo->items() ) {
+                if( can_pick( it ) ) {
+                    add_item( tile, item_location( cursor, &it ), place::ground, &cargo->vehicle() );
+                }
+            }
         }
         for( entry &e : tile ) {
             fill_entry_text( e, you, direction );
@@ -451,6 +476,18 @@ static std::vector<entry> read_nearby( avatar &you )
     }
     sort_entries( list );
     return list;
+}
+
+// What to call a place that things are picked up from.
+static std::string place_name( const tripoint_bub_ms &pos )
+{
+    map &here = get_map();
+    if( const std::optional<vpart_reference> cargo = here.veh_at( pos ).cargo() ) {
+        if( here.i_at( pos ).empty() ) {
+            return uppercase_first_letter( remove_color_tags( cargo->part().name() ) );
+        }
+    }
+    return uppercase_first_letter( here.name( pos ) );
 }
 
 static item_detail read_detail( const entry &e, avatar &you )
@@ -703,7 +740,7 @@ void inventory_window::reload()
     avatar &you = get_avatar();
     lists[static_cast<size_t>( tab::carried )] = read_carried( you );
     lists[static_cast<size_t>( tab::worn )] = read_worn( you );
-    lists[static_cast<size_t>( tab::nearby )] = read_nearby( you );
+    lists[static_cast<size_t>( tab::nearby )] = read_nearby( you, state.targets );
     picks.clear();
     selected = -1;
     sheet_open = false;
@@ -986,8 +1023,11 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
     const float right = pos.x + size.x;
     float y = pos.y;
 
+    // only one place to pick up from: no tabs, and its name as the title
+    const bool limited = !state.targets.empty();
     float bar_h = 0.0f;
-    if( mobile_ui::app_bar( _( "Inventory" ), pos, size.x, &bar_h ) && interactive ) {
+    if( mobile_ui::app_bar( limited ? state.title : _( "Inventory" ), pos, size.x, &bar_h ) &&
+        interactive ) {
         pending.kind = request_kind::close;
     }
     y += bar_h;
@@ -1017,8 +1057,8 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
     y += 18.0f * u;
 
     // tabs
-    y += 10.0f * u;
-    {
+    if( !limited ) {
+        y += 10.0f * u;
         const ImVec2 tabs_min( pos.x + 12.0f * u, y );
         const ImVec2 tabs_max( right - 12.0f * u, y + 44.0f * u );
         mobile_ui::box( draw, tabs_min, tabs_max, mobile_ui::col_fill_soft, 0, 12.0f );
@@ -1428,9 +1468,41 @@ static std::string last_message()
     return recent.empty() ? std::string() : remove_color_tags( recent.back().second );
 }
 
+// Shows the screen until something is asked of it.
+static request ask()
+{
+    inventory_window window;
+    input_context ctxt( "default" );
+    ctxt.register_action( "QUIT" );
+    ctxt.register_action( "LEFT" );
+    ctxt.register_action( "RIGHT" );
+    ctxt.register_action( "ANY_INPUT" );
+    while( window.pending.kind == request_kind::none ) {
+        ui_manager::redraw();
+        const std::string action = ctxt.handle_input();
+        if( action == "QUIT" ) {
+            if( imclient->want_text_input() ) {
+                // back first leaves the search field
+                imclient->clear_text_focus();
+            } else if( !window.back() ) {
+                window.pending.kind = request_kind::close;
+            }
+        } else if( action == "LEFT" || action == "RIGHT" ) {
+            if( !imclient->want_text_input() ) {
+                window.scroll_chips( action == "LEFT" ? 120.0f : -120.0f );
+            }
+        }
+        if( window.pending.kind != request_kind::none ) {
+            state.toast.clear();
+        }
+    }
+    return window.pending;
+}
+
 void show( const tab start )
 {
     state.current = start;
+    state.targets.clear();
     avatar &you = get_avatar();
     if( state.message_before ) {
         // back from an action that took game time: show what the game said
@@ -1439,35 +1511,7 @@ void show( const tab start )
         state.message_before.reset();
     }
     while( true ) {
-        request req;
-        {
-            inventory_window window;
-            input_context ctxt( "default" );
-            ctxt.register_action( "QUIT" );
-            ctxt.register_action( "LEFT" );
-            ctxt.register_action( "RIGHT" );
-            ctxt.register_action( "ANY_INPUT" );
-            while( window.pending.kind == request_kind::none ) {
-                ui_manager::redraw();
-                const std::string action = ctxt.handle_input();
-                if( action == "QUIT" ) {
-                    if( imclient->want_text_input() ) {
-                        // back first leaves the search field
-                        imclient->clear_text_focus();
-                    } else if( !window.back() ) {
-                        window.pending.kind = request_kind::close;
-                    }
-                } else if( action == "LEFT" || action == "RIGHT" ) {
-                    if( !imclient->want_text_input() ) {
-                        window.scroll_chips( action == "LEFT" ? 120.0f : -120.0f );
-                    }
-                }
-                if( window.pending.kind != request_kind::none ) {
-                    state.toast.clear();
-                }
-            }
-            req = window.pending;
-        }
+        request req = ask();
         // The screen is gone now, so that upstream's prompts and menus can show.
         if( req.kind == request_kind::close ) {
             state.toast.clear();
@@ -1499,6 +1543,44 @@ void show( const tab start )
     }
 }
 
+drop_locations pick_up_from( const std::set<tripoint_bub_ms> &targets )
+{
+    drop_locations picked;
+    state.current = tab::nearby;
+    state.targets = targets;
+    state.title = targets.size() == 1 ? place_name( *targets.begin() ) : _( "Pick up" );
+    state.filter.clear();
+    state.search.clear();
+    state.toast.clear();
+    state.message_before.reset();
+    if( targets.empty() ) {
+        state.title = _( "Nearby" );
+        const tripoint_bub_ms center = get_avatar().pos_bub();
+        for( const tripoint_bub_ms &pos : closest_points_first( center, 1 ) ) {
+            if( pos == center || get_map().clear_path( center, pos, rl_dist( center, pos ), 1, 100 ) ) {
+                state.targets.insert( pos );
+            }
+        }
+    }
+    const request req = ask();
+    state.targets.clear();
+    if( req.kind == request_kind::pick_up ) {
+        // the caller picks them up, as it does with upstream's menu
+        for( const item_location &loc : req.locs ) {
+            picked.emplace_back( loc, loc->count() );
+        }
+    } else if( req.kind == request_kind::action ) {
+        if( req.what == act::pick_up ) {
+            for( const item_location &loc : req.locs ) {
+                picked.emplace_back( loc, loc->count() );
+            }
+        } else {
+            perform( req );
+        }
+    }
+    return picked;
+}
+
 } // namespace mobile_inventory
 
 #else // !TILES
@@ -1508,6 +1590,11 @@ namespace mobile_inventory
 
 void show( tab )
 {
+}
+
+drop_locations pick_up_from( const std::set<tripoint_bub_ms> & )
+{
+    return drop_locations();
 }
 
 } // namespace mobile_inventory

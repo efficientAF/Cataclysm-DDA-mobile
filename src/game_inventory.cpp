@@ -50,6 +50,8 @@
 #include "map.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_inventory.h"
+#include "mobile_menu.h"
 #include "npc.h"
 #include "npctrade.h"
 #include "options.h"
@@ -2540,6 +2542,11 @@ drop_locations game_menus::inv::pickup( const std::set<tripoint_bub_ms> &targets
                                         const std::vector<drop_location> &selection,
                                         Pickup::pick_info &info )
 {
+    // Mobile UI: the mobile inventory screen is the pick-up menu
+    if( mobile_menu::enabled() && selection.empty() && info.max_volume == -1_ml &&
+        info.max_mass == -1_gram ) {
+        return mobile_inventory::pick_up_from( targets );
+    }
     avatar &you = get_avatar();
     pickup_inventory_preset preset( you, /*skip_wield_check=*/true, /*ignore_liquidcont=*/true );
     preset.save_state = &pickup_ui_default_state;
