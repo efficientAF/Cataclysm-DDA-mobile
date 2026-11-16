@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 
 #include "cached_options.h"
 #include "cata_imgui.h"
@@ -10,6 +11,8 @@
 #include "color.h"
 #include "imgui/imgui.h"
 #include "input_context.h"
+#include "mobile_dialog.h"
+#include "mobile_menu.h"
 #include "output.h"
 #include "string_formatter.h"
 #include "ui_manager.h"
@@ -30,9 +33,11 @@ class query_popup_impl : public cataimgui::window
     public:
         short keyboard_selected_option;
 
+        // Mobile UI: the dialog of the canvas covers the screen, see mobile_dialog.h
         explicit query_popup_impl( query_popup *parent ) : cataimgui::window( "QUERY_POPUP",
+                    mobile_menu::enabled() ? mobile_dialog::window_flags() :
                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize ),
-            default_text_color( c_white ) {
+            default_text_color( c_white ), mobile( mobile_menu::enabled() ) {
             msg_width = 400;
             this->parent = parent;
             keyboard_selected_option = 0;
@@ -45,17 +50,61 @@ class query_popup_impl : public cataimgui::window
         int get_mouse_selected_option() const {
             return mouse_selected_option;
         }
+
+        // Mobile UI: the action for a tap on the mobile dialog, once
+        std::optional<std::string> take_mobile_action();
     protected:
         void draw_controls() override;
         cataimgui::bounds get_bounds() override {
+            if( mobile ) {
+                return { 0.0f, 0.0f, 1.0f, 1.0f };
+            }
             return { -1.f, parent->ontop ? 0 : -1.f, -1.f, -1.f};
         }
+    private:
+        // Mobile UI: drawn as the mobile dialog; its button labels and last tap
+        bool mobile;
+        std::vector<std::string> mobile_labels;
+        int mobile_tap = mobile_dialog::tap_nothing;
 };
+
+std::optional<std::string> query_popup_impl::take_mobile_action()
+{
+    const int tap = mobile_tap;
+    mobile_tap = mobile_dialog::tap_nothing;
+    if( tap >= 0 && static_cast<size_t>( tap ) < parent->options.size() ) {
+        parent->cur = static_cast<size_t>( tap );
+        keyboard_selected_option = static_cast<short>( tap );
+        return "CONFIRM";
+    }
+    if( tap == mobile_dialog::tap_ok && parent->anykey ) {
+        return "ANY_INPUT";
+    }
+    if( ( tap == mobile_dialog::tap_ok || tap == mobile_dialog::tap_outside ) && parent->cancel ) {
+        return "QUIT";
+    }
+    return std::nullopt;
+}
 
 void query_popup_impl::draw_controls()
 {
-    ImGui::SetNavCursorVisible( true );
     mouse_selected_option = -1;
+    // Mobile UI: the canvas's dialog instead of the window below
+    if( mobile ) {
+        mobile_dialog::popup_spec spec;
+        spec.message = remove_color_tags( parent->text );
+        spec.buttons = mobile_labels;
+        spec.selected = keyboard_selected_option;
+        spec.on_top = parent->ontop;
+        spec.waits = parent->anykey || parent->cancel;
+        spec.can_cancel = parent->cancel;
+        const int tap = mobile_dialog::draw_popup( spec );
+        if( tap != mobile_dialog::tap_nothing ) {
+            mobile_tap = tap;
+        }
+        return;
+    }
+    ImGui::SetNavCursorVisible( true );
 
     for( const std::string &line : parent->folded_msg ) {
         cataimgui::draw_colored_text( line, parent->default_text_color );
@@ -87,6 +136,15 @@ void query_popup_impl::on_resized()
     size_t item_padding = size_t( ImGui::GetStyle().ItemSpacing.x );
     // constexpr size_t vert_padding = 1;
     size_t max_line_width = str_width_to_pixels( FULL_SCREEN_WIDTH - 3 );
+
+    // Mobile UI: the plain names of the choices, for the buttons of the mobile dialog
+    mobile_labels.clear();
+    if( mobile ) {
+        input_context ctxt( parent->category, parent->pref_kbd_mode );
+        for( const query_popup::query_option &opt : parent->options ) {
+            mobile_labels.emplace_back( ctxt.get_action_name( opt.action ) );
+        }
+    }
 
     // Fold message text
     parent->folded_msg = foldstring( parent->text, FULL_SCREEN_WIDTH - 3 );
@@ -325,6 +383,12 @@ query_popup::result query_popup::query_once()
         ui_manager::redraw();
         res.action = ctxt.handle_input( 50 );
         res.evt = ctxt.get_raw_input();
+
+        // Mobile UI: a tap on a button of the mobile dialog, or outside it
+        if( const std::optional<std::string> tapped = impl->take_mobile_action() ) {
+            res.action = *tapped;
+            break;
+        }
 
         // If we're tracking mouse movement
         if( !options.empty() && res.action == "SELECT" && impl->get_mouse_selected_option() != -1 ) {

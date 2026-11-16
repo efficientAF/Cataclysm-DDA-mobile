@@ -31,6 +31,7 @@
 #include "item.h"
 #include "line.h"
 #include "game.h"
+#include "mobile_menu.h"
 #include "options.h"
 #include "point.h"
 #include "popup.h"
@@ -836,7 +837,8 @@ int border_helper::border_connection::as_curses_line() const
 bool query_yn( const std::string &text )
 {
 #if defined(__ANDROID__)
-    if( get_option<bool>( "ANDROID_NATIVE_UI" ) ) {
+    // Mobile UI: the mobile dialog instead of the native one, see mobile_dialog.h
+    if( get_option<bool>( "ANDROID_NATIVE_UI" ) && !mobile_menu::enabled() ) {
         JNIEnv *env = ( JNIEnv * )GetAndroidJNIEnv();
         jobject activity = ( jobject )GetAndroidActivity();
         jclass clazz( env->GetObjectClass( activity ) );
@@ -949,7 +951,8 @@ PopupFlags popup_flag_from_string( const std::string &str )
 int popup( const std::string &text, PopupFlags flags )
 {
 #if defined(__ANDROID__)
-    if( get_option<bool>( "ANDROID_NATIVE_UI" ) && flags == PF_NONE ) {
+    // Mobile UI: the mobile dialog instead of the native one, see mobile_dialog.h
+    if( get_option<bool>( "ANDROID_NATIVE_UI" ) && !mobile_menu::enabled() && flags == PF_NONE ) {
         JNIEnv *env = ( JNIEnv * )GetAndroidJNIEnv();
         jobject activity = ( jobject )GetAndroidActivity();
         jclass clazz( env->GetObjectClass( activity ) );
