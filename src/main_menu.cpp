@@ -677,58 +677,101 @@ bool main_menu::opening_screen()
     EM_ASM( window.dispatchEvent( new Event( 'menuready' ) ); );
 #endif
 
-    // Mobile UI: the same entries as large buttons, see mobile_menu.h
+    // Mobile UI: the main menu and new game screens of the canvas, see mobile_menu.h
     std::unique_ptr<mobile_menu::main_menu_view> mobile_view;
     if( mobile_menu::enabled() ) {
         mobile_view = std::make_unique<mobile_menu::main_menu_view>();
     }
-    const auto mobile_groups = [&]() {
-        const auto plain = []( const std::string & text ) {
-            return remove_color_tags( shortcut_text( c_white, text ) );
-        };
-        std::vector<mobile_menu::menu_group> groups;
-        for( const main_menu_opts opt : {
-                 main_menu_opts::LOADCHAR, main_menu_opts::NEWCHAR, main_menu_opts::WORLD,
-                 main_menu_opts::TUTORIAL, main_menu_opts::SETTINGS, main_menu_opts::HELP,
-                 main_menu_opts::QUIT
-             } ) {
-            mobile_menu::menu_group group;
-            group.id = getopt( opt );
-            if( static_cast<size_t>( group.id ) >= vMenuItems.size() ) {
-                continue;
-            }
-            group.label = plain( vMenuItems[group.id] );
-            if( opt == main_menu_opts::NEWCHAR ) {
-                for( const std::string &item : vNewGameSubItems ) {
-                    group.sub_entries.push_back( plain( item ) );
-                }
-            } else if( opt == main_menu_opts::SETTINGS ) {
-                for( const std::string &item : vSettingsSubItems ) {
-                    group.sub_entries.push_back( plain( item ) );
-                }
-            } else if( opt == main_menu_opts::LOADCHAR ) {
-                group.sub_entries = world_generator->all_worldnames();
-            } else if( opt == main_menu_opts::WORLD ) {
-                group.sub_entries = world_generator->all_worldnames();
-                group.sub_entries.insert( group.sub_entries.begin(), _( "Create World" ) );
-            }
-            groups.push_back( group );
+    // the save Continue would load: the last character played, in the last world
+    const auto continue_save = [&]() -> std::optional<std::pair<std::string, save_t>> {
+        const std::string &world_name = world_generator->last_world_name;
+        if( world_name.empty() || !world_generator->has_world( world_name ) )
+        {
+            return std::nullopt;
         }
-        return groups;
+        const std::vector<save_t> &saves = world_generator->get_world( world_name )->world_saves;
+        if( saves.empty() )
+        {
+            return std::nullopt;
+        }
+        for( const save_t &save : saves )
+        {
+            if( save.decoded_name() == world_generator->last_character_name ) {
+                return std::make_pair( world_name, save );
+            }
+        }
+        return std::make_pair( world_name, saves.front() );
+    };
+    const auto mobile_model = [&]() {
+        mobile_menu::main_menu_model model;
+        model.version = getVersionString();
+        model.motd = remove_color_tags( mmenu_motd );
+        model.credits = remove_color_tags( mmenu_credits );
+        if( const std::optional<std::pair<std::string, save_t>> save = continue_save() ) {
+            model.continue_title = save->second.decoded_name();
+            model.continue_detail = string_format( "%s · %s", save->second.decoded_name(), save->first );
+        }
+        for( const std::string &name : world_generator->all_worldnames() ) {
+            const size_t saves = world_generator->get_world( name )->world_saves.size();
+            model.worlds.push_back( { name, string_format( n_gettext( "%d character", "%d characters", saves ),
+                                      static_cast<int>( saves ) )
+                                    } );
+        }
+        for( const std::string &item : vSettingsSubItems ) {
+            model.settings.push_back( remove_color_tags( shortcut_text( c_white, item ) ) );
+        }
+        return model;
     };
 
     while( !start ) {
         if( mobile_view ) {
-            mobile_view->set_groups( mobile_groups(), getVersionString() );
+            mobile_view->set_model( mobile_model() );
         }
         ui_manager::redraw();
         std::string action = ctxt.handle_input();
         input_event sInput = ctxt.get_raw_input();
         if( mobile_view ) {
-            if( const std::optional<std::pair<int, int>> choice = mobile_view->take_choice() ) {
-                sel1 = choice->first;
-                sel2 = choice->second;
+            if( action == "QUIT" && mobile_view->back() ) {
+                // the back button closed a sheet or left the new game screen
+                continue;
+            }
+            if( const std::optional<mobile_menu::choice> choice = mobile_view->take_choice() ) {
                 action = "CONFIRM";
+                switch( choice->kind ) {
+                    case mobile_menu::choice_kind::continue_game:
+                        action.clear();
+                        if( const std::optional<std::pair<std::string, save_t>> save = continue_save() ) {
+                            start = main_menu::load_game( save->first, save->second );
+                            if( start ) {
+                                load_game = true;
+                            }
+                        }
+                        break;
+                    case mobile_menu::choice_kind::new_game:
+                        sel1 = getopt( main_menu_opts::NEWCHAR );
+                        sel2 = choice->index;
+                        break;
+                    case mobile_menu::choice_kind::load_world:
+                        sel1 = getopt( main_menu_opts::LOADCHAR );
+                        sel2 = choice->index;
+                        break;
+                    case mobile_menu::choice_kind::edit_world:
+                        sel1 = getopt( main_menu_opts::WORLD );
+                        sel2 = choice->index + 1;
+                        break;
+                    case mobile_menu::choice_kind::tutorial:
+                        sel1 = getopt( main_menu_opts::TUTORIAL );
+                        sel2 = 0;
+                        break;
+                    case mobile_menu::choice_kind::settings:
+                        sel1 = getopt( main_menu_opts::SETTINGS );
+                        sel2 = choice->index;
+                        break;
+                    case mobile_menu::choice_kind::help:
+                        sel1 = getopt( main_menu_opts::HELP );
+                        sel2 = 0;
+                        break;
+                }
             }
         }
 

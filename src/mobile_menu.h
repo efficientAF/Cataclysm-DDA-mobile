@@ -5,25 +5,53 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-// Touch-friendly menus of the mobile UI fork, behind the MOBILE_MENUS option.
+// Screens of the mobile UI fork that replace upstream's menus, behind the
+// MOBILE_MENUS option.  They follow the UI canvas.
 //
-// So far this is the main menu from the UI canvas: large buttons instead of the
-// row of text hotkeys.  It only draws and reports taps; main_menu.cpp keeps
-// deciding what each entry does.
+// So far: the main menu and the new game screen.  The views only draw and report
+// what was tapped; main_menu.cpp keeps deciding what each entry does.
 namespace mobile_menu
 {
 
 bool enabled();
 
-// One main menu button.  If it has sub-entries, tapping it opens them as a list.
-struct menu_group {
-    // the caller's number for this entry, handed back by take_choice
-    int id = 0;
-    std::string label;
-    std::vector<std::string> sub_entries;
+struct world_info {
+    std::string name;
+    // for example "2 characters"
+    std::string detail;
+};
+
+struct main_menu_model {
+    std::string version;
+    std::string motd;
+    std::string credits;
+    // What Continue would load; the title is empty if there is nothing to continue.
+    std::string continue_title;
+    std::string continue_detail;
+    std::vector<world_info> worlds;
+    // names of the settings screens, in upstream's order
+    std::vector<std::string> settings;
+};
+
+enum class choice_kind : int {
+    continue_game,
+    // index: 0 custom, 1 preset, 2 random, 3 play now (default scenario), 4 play now
+    new_game,
+    // index into worlds
+    load_world,
+    // index into worlds, or -1 to create one
+    edit_world,
+    tutorial,
+    // index into settings
+    settings,
+    help,
+};
+
+struct choice {
+    choice_kind kind = choice_kind::help;
+    int index = 0;
 };
 
 class main_menu_view
@@ -34,11 +62,13 @@ class main_menu_view
         main_menu_view( const main_menu_view & ) = delete;
         main_menu_view &operator=( const main_menu_view & ) = delete;
 
-        // The buttons to show, in main menu order.  Call before each redraw.
-        void set_groups( const std::vector<menu_group> &groups, const std::string &version );
-        // The entry tapped since the last call: the id of its group and the
-        // index of the sub-entry (0 if the group has none).
-        std::optional<std::pair<int, int>> take_choice();
+        // Call before each redraw.
+        void set_model( const main_menu_model &model );
+        // What was tapped since the last call.
+        std::optional<choice> take_choice();
+        // Go back one step (close a sheet, leave the new game screen).  Returns
+        // false if already on the main menu.
+        bool back();
     private:
         class impl;
         std::unique_ptr<impl> pimpl;

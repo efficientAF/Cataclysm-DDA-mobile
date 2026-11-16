@@ -10,6 +10,8 @@
 
 #include "action.h"
 #include "avatar.h"
+#include "bodypart.h"
+#include "creature.h"
 #include "catacharset.h"
 #include "color.h"
 #include "cursesport.h"
@@ -307,12 +309,20 @@ static void draw_quick_buttons( const SDL_Renderer_Ptr &renderer, Font &font, co
     const int length = count * size + ( count - 1 ) * gap;
     const float text_height = 12.0f * unit;
     const int border = std::max( 1, static_cast<int>( unit ) );
-    // canvas: bottom right, 20 up, in landscape; bottom center, 34 up, in portrait
-    int x = landscape ? safe.x + safe.w - size - static_cast<int>( margin_units * unit ) :
-            safe.x + ( safe.w - length ) / 2;
-    int y = landscape ? safe.y + safe.h - length - static_cast<int>( 20.0f * unit ) :
-            safe.y + safe.h - size - static_cast<int>( 34.0f * unit );
+    // Portrait: one row, bottom center, 34 up (canvas).  Landscape: two columns at
+    // the bottom right, 20 up, which leaves the top right corner free.
+    const int rows = ( count + 1 ) / 2;
+    const int origin_x = landscape ?
+                         safe.x + safe.w - 2 * size - gap - static_cast<int>( margin_units * unit ) :
+                         safe.x + ( safe.w - length ) / 2;
+    const int origin_y = landscape ?
+                         safe.y + safe.h - rows * size - ( rows - 1 ) * gap - static_cast<int>( 20.0f * unit ) :
+                         safe.y + safe.h - size - static_cast<int>( 34.0f * unit );
+    int index = 0;
     for( const std::pair<action_id, translation> &action : actions ) {
+        const int x = landscape ? origin_x + ( index % 2 ) * ( size + gap ) :
+                      origin_x + index * ( size + gap );
+        const int y = landscape ? origin_y + ( index / 2 ) * ( size + gap ) : origin_y;
         const SDL_Rect rect = { x, y, size, size };
         fill_rect( renderer, rect, 233, 236, 223, 60 );
         const SDL_Rect inner = { rect.x + border, rect.y + border, rect.w - 2 * border, rect.h - 2 * border };
@@ -325,12 +335,83 @@ static void draw_quick_buttons( const SDL_Renderer_Ptr &renderer, Font &font, co
                    static_cast<float>( y ) + ( static_cast<float>( size ) - text_height ) * 0.5f,
                    text_height, color_white );
         quick_buttons.push_back( { rect, action.first } );
-        if( landscape ) {
-            y += size + gap;
-        } else {
-            x += size + gap;
+        ++index;
+    }
+}
+
+// Draws a bar filled to fraction, in green, yellow or red depending on how full it is.
+static void draw_bar( const SDL_Renderer_Ptr &renderer, const SDL_Rect &rect, const float fraction )
+{
+    const float f = std::clamp( fraction, 0.0f, 1.0f );
+    fill_rect( renderer, rect, 255, 255, 255, 40 );
+    SDL_Rect filled = rect;
+    filled.w = static_cast<int>( static_cast<float>( rect.w ) * f );
+    if( f > 0.66f ) {
+        fill_rect( renderer, filled, 108, 191, 85, 255 );
+    } else if( f > 0.33f ) {
+        fill_rect( renderer, filled, 216, 187, 66, 255 );
+    } else {
+        fill_rect( renderer, filled, 224, 73, 43, 255 );
+    }
+}
+
+// Health of each main body part, stamina, and what is wielded, at the top right.
+static void draw_vitals( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &safe,
+                         const float unit )
+{
+    const avatar &you = get_avatar();
+    const std::vector<bodypart_id> parts = you.get_all_body_parts(
+            get_body_part_flags::only_main );
+    const float text_height = text_units * unit;
+    const float line = line_units * unit;
+    const float pad = pad_units * unit;
+    const int w = std::min( static_cast<int>( 190.0f * unit ),
+                            safe.w - static_cast<int>( 2.0f * margin_units * unit ) );
+    const int h = static_cast<int>( 3.0f * line + 2.0f * pad * 0.6f );
+    const SDL_Rect rect = { safe.x + safe.w - w - static_cast<int>( margin_units * unit ),
+                            safe.y + static_cast<int>( margin_units * unit ), w, h
+                          };
+    fill_rect( renderer, rect, panel_r, panel_g, panel_b, panel_a );
+    const float inner_x = static_cast<float>( rect.x ) + pad;
+    const float inner_w = static_cast<float>( rect.w ) - 2.0f * pad;
+    float y = static_cast<float>( rect.y ) + pad * 0.6f;
+
+    // row 1: one health bar per body part
+    if( !parts.empty() ) {
+        const float bar_gap = 3.0f * unit;
+        const float bar_w = ( inner_w - bar_gap * static_cast<float>( parts.size() - 1 ) ) /
+                            static_cast<float>( parts.size() );
+        float x = inner_x;
+        for( const bodypart_id &part : parts ) {
+            const int hp_max = you.get_part_hp_max( part );
+            const float fraction = hp_max > 0 ? static_cast<float>( you.get_part_hp_cur( part ) ) /
+                                   static_cast<float>( hp_max ) : 0.0f;
+            const SDL_Rect bar = { static_cast<int>( x ), static_cast<int>( y + line * 0.2f ),
+                                   static_cast<int>( bar_w ), static_cast<int>( line * 0.6f )
+                                 };
+            draw_bar( renderer, bar, fraction );
+            x += bar_w + bar_gap;
         }
     }
+    y += line;
+
+    // row 2: stamina
+    const std::string stamina_label = _( "Stamina" );
+    draw_text( renderer, font, stamina_label, inner_x, y + ( line - text_height ) * 0.5f, text_height,
+               color_light_gray );
+    const float label_w = text_width( font, stamina_label, text_height ) + 6.0f * unit;
+    const int stamina_max = you.get_stamina_max();
+    const SDL_Rect stamina_bar = { static_cast<int>( inner_x + label_w ),
+                                   static_cast<int>( y + line * 0.3f ),
+                                   static_cast<int>( inner_w - label_w ), static_cast<int>( line * 0.4f )
+                                 };
+    draw_bar( renderer, stamina_bar, stamina_max > 0 ? static_cast<float>( you.get_stamina() ) /
+              static_cast<float>( stamina_max ) : 0.0f );
+    y += line;
+
+    // row 3: wielded item
+    draw_text( renderer, font, fit_text( font, remove_color_tags( you.weapname() ), text_height,
+                                         inner_w ), inner_x, y + ( line - text_height ) * 0.5f, text_height, color_white );
 }
 
 void draw( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &view, const int window_w,
@@ -354,6 +435,7 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &font, const SDL_Rect &view, c
         draw_status( renderer, font, safe, unit, location_bottom );
         draw_log( renderer, font, safe, unit, landscape );
         draw_quick_buttons( renderer, font, safe, unit, landscape );
+        draw_vitals( renderer, font, safe, unit );
     }
     if( touch_input::view_is_panned() ) {
         draw_recenter_button( renderer, font, safe, unit, landscape );

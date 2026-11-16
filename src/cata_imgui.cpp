@@ -264,6 +264,7 @@ RGBTuple color_loader<RGBTuple>::from_rgb( const int r, const int g, const int b
 #include "sdltiles.h"
 #include "sdl_wrappers.h"
 #include "font_loader.h"
+#include "mobile_ui.h"
 #include <imgui/imgui_impl_sdl3.h>
 #include <imgui/imgui_impl_sdlrenderer3.h>
 
@@ -440,6 +441,8 @@ void cataimgui::add_cata_fonts( ImGuiIO &io, const std::vector<font_config> &gui
     for( int i = 0; i < io.Fonts->Fonts.Size; i++ ) {
         check_font( io.Fonts->Fonts[i] );
     }
+    // Mobile UI: the canvas fonts go after the game's, which code finds by index
+    mobile_ui::add_fonts( io );
 }
 
 void cataimgui::font_reload::request( const std::vector<font_config> &gui_typefaces,

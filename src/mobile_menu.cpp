@@ -1,11 +1,17 @@
 #include "mobile_menu.h"
 
+#include "options.h"
+
+#if defined(TILES)
 #include <algorithm>
+#include <array>
+#include <utility>
 
 #include "cata_imgui.h"
 #include "imgui/imgui.h"
-#include "options.h"
+#include "mobile_ui.h"
 #include "translations.h"
+#endif
 
 namespace mobile_menu
 {
@@ -19,18 +25,46 @@ bool enabled()
 #endif
 }
 
+#if defined(TILES)
+
+using mobile_ui::face;
+
+namespace
+{
+enum class page : int {
+    title,
+    new_game,
+};
+
+enum class sheet : int {
+    none,
+    load,
+    worlds,
+    settings,
+    credits,
+};
+
+struct sheet_row {
+    std::string icon;
+    std::string title;
+    std::string detail;
+    choice result;
+};
+} // namespace
+
 class main_menu_view::impl : public cataimgui::window
 {
     public:
         impl() : cataimgui::window( "MOBILE_MAIN_MENU",
                                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings ) {}
+                                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                                        ImGuiWindowFlags_NoBackground ) {}
 
-        std::vector<menu_group> groups;
-        std::string version;
-        // group whose sub-entries are showing, or -1
-        int open_group = -1;
-        std::optional<std::pair<int, int>> choice;
+        main_menu_model model;
+        page current_page = page::title;
+        sheet open_sheet = sheet::none;
+        std::optional<choice> picked;
 
     protected:
         cataimgui::bounds get_bounds() override {
@@ -39,107 +73,484 @@ class main_menu_view::impl : public cataimgui::window
         void draw_controls() override;
 
     private:
-        bool big_button( const std::string &label, const std::string &id, float width, bool primary );
+        void draw_title( const ImVec2 &origin, const ImVec2 &size, bool interactive );
+        void draw_new_game( const ImVec2 &origin, const ImVec2 &size, bool interactive );
+        void draw_sheet( const ImVec2 &origin, const ImVec2 &size );
+        // A main menu button: icon, label and an optional second line.
+        bool menu_button( const std::string &id, const ImVec2 &pos, const ImVec2 &size,
+                          const std::string &icon, const std::string &label, const std::string &detail,
+                          bool primary, bool centered, bool interactive );
 };
 
-bool main_menu_view::impl::big_button( const std::string &label, const std::string &id,
-                                       const float width, const bool primary )
+bool main_menu_view::impl::menu_button( const std::string &id, const ImVec2 &pos,
+                                        const ImVec2 &size, const std::string &icon, const std::string &label,
+                                        const std::string &detail, const bool primary, const bool centered,
+                                        const bool interactive )
 {
-    if( primary ) {
-        // the canvas's accent: orange with dark text
-        ImGui::PushStyleColor( ImGuiCol_Button, ImVec4( 0.94f, 0.57f, 0.25f, 1.0f ) );
-        ImGui::PushStyleColor( ImGuiCol_ButtonHovered, ImVec4( 0.98f, 0.66f, 0.36f, 1.0f ) );
-        ImGui::PushStyleColor( ImGuiCol_ButtonActive, ImVec4( 0.80f, 0.45f, 0.16f, 1.0f ) );
-        ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.10f, 0.06f, 0.02f, 1.0f ) );
+    const float u = mobile_ui::unit();
+    ImDrawList *const draw = ImGui::GetWindowDrawList();
+    bool held = false;
+    const bool tapped = interactive && mobile_ui::pressable( id, pos, size, &held );
+    const ImVec2 max( pos.x + size.x, pos.y + size.y );
+    const ImU32 fill = primary ? ( held ? mobile_ui::col_accent_down : mobile_ui::col_accent ) :
+                       ( held ? mobile_ui::col_button_down : mobile_ui::col_button );
+    mobile_ui::box( draw, pos, max, fill, primary ? 0 : mobile_ui::col_line, 14.0f );
+    const ImU32 ink = primary ? mobile_ui::col_on_accent : mobile_ui::col_fg;
+    const float label_size = centered ? 14.0f : 16.0f;
+    const ImVec2 label_px = mobile_ui::text_size( face::bold, label_size, label );
+    if( centered ) {
+        mobile_ui::text( draw, face::bold, label_size,
+                         ImVec2( pos.x + ( size.x - label_px.x ) * 0.5f, pos.y + ( size.y - label_px.y ) * 0.5f ),
+                         ink, label );
+        return tapped;
     }
-    const float height = ImGui::GetFontSize() * 3.0f;
-    ImGui::SetWindowFontScale( 1.25f );
-    const bool pressed = ImGui::Button( ( label + "##" + id ).c_str(), ImVec2( width, height ) );
-    ImGui::SetWindowFontScale( 1.0f );
-    if( primary ) {
-        ImGui::PopStyleColor( 4 );
+    float x = pos.x + 16.0f * u;
+    if( !icon.empty() ) {
+        mobile_ui::icon( draw, icon, ImVec2( x, pos.y + ( size.y - 22.0f * u ) * 0.5f ), 22.0f, ink );
+        x += 34.0f * u;
     }
-    return pressed;
+    if( detail.empty() ) {
+        mobile_ui::text( draw, face::bold, label_size, ImVec2( x, pos.y + ( size.y - label_px.y ) * 0.5f ),
+                         ink, label );
+    } else {
+        const ImVec2 detail_px = mobile_ui::text_size( face::body, 12.0f, detail );
+        const float top = pos.y + ( size.y - label_px.y - detail_px.y - 2.0f * u ) * 0.5f;
+        mobile_ui::text( draw, face::bold, label_size, ImVec2( x, top ), ink, label );
+        mobile_ui::text( draw, face::body, 12.0f, ImVec2( x, top + label_px.y + 2.0f * u ),
+                         primary ? mobile_ui::col_on_accent : mobile_ui::col_muted, detail );
+    }
+    return tapped;
+}
+
+void main_menu_view::impl::draw_title( const ImVec2 &origin, const ImVec2 &size,
+                                       const bool interactive )
+{
+    const float u = mobile_ui::unit();
+    ImDrawList *const draw = ImGui::GetWindowDrawList();
+    const bool landscape = size.x > size.y;
+    const ImVec4 safe = mobile_ui::safe_insets();
+    const float left = origin.x + safe.x + 20.0f * u;
+    const float right = origin.x + size.x - safe.z - 20.0f * u;
+    const float top = origin.y + safe.y + 30.0f * u;
+    const float bottom = origin.y + size.y - safe.w - 18.0f * u;
+
+    // the menu: a column of buttons at the bottom, on the right in landscape
+    const bool can_continue = !model.continue_title.empty();
+    const float gap = 8.0f * u;
+    const float menu_w = landscape ? std::min( 360.0f * u, ( right - left ) * 0.5f ) : right - left;
+    const float menu_x = landscape ? right - menu_w : left;
+    const float menu_h = ( can_continue ? 64.0f * u + gap : 0.0f ) + 56.0f * u + gap +
+                         2.0f * 46.0f * u + gap;
+    float y = std::max( top, bottom - menu_h );
+    const float menu_top = y;
+
+    // the title block
+    {
+        const std::string name = "CATACLYSM";
+        const std::string sub = "DARK DAYS AHEAD";
+        const float name_size = landscape ? 58.0f : std::min( 58.0f, ( right - left ) / u / 5.2f );
+        const ImVec2 version_px = mobile_ui::text_size( face::mono, 11.0f, model.version );
+        const ImVec2 name_px = mobile_ui::text_size( face::display, name_size, name );
+        const ImVec2 sub_px = mobile_ui::text_size( face::display, 21.0f, sub );
+        const float motd_w = std::min( 300.0f * u, menu_x - left - 20.0f * u );
+        const bool show_motd = landscape && !model.motd.empty() && motd_w > 120.0f * u;
+        const ImVec2 motd_px = show_motd ? mobile_ui::text_size( face::body, 13.0f, model.motd,
+                               motd_w - 24.0f * u ) : ImVec2( 0.0f, 0.0f );
+        const float motd_h = show_motd ? std::min( motd_px.y + 38.0f * u, 150.0f * u ) : 0.0f;
+        const float block_h = version_px.y + 8.0f * u + name_px.y + 4.0f * u + sub_px.y +
+                              ( show_motd ? 18.0f * u + motd_h : 0.0f );
+        // centered vertically in landscape, at the top in portrait
+        float ty = landscape ? std::max( top, origin.y + ( size.y - block_h ) * 0.5f ) : top;
+        mobile_ui::text( draw, face::mono, 11.0f, ImVec2( left, ty ), mobile_ui::col_muted,
+                         model.version );
+        ty += version_px.y + 8.0f * u;
+        mobile_ui::text( draw, face::display, name_size, ImVec2( left, ty ), mobile_ui::col_title, name );
+        ty += name_px.y + 4.0f * u;
+        mobile_ui::text( draw, face::display, 21.0f, ImVec2( left, ty ), mobile_ui::col_accent, sub );
+        ty += sub_px.y;
+        if( show_motd ) {
+            ty += 18.0f * u;
+            const ImVec2 box_max( left + motd_w, ty + motd_h );
+            mobile_ui::box( draw, ImVec2( left, ty ), box_max, IM_COL32( 14, 17, 13, 204 ),
+                            mobile_ui::col_line, 12.0f );
+            mobile_ui::text( draw, face::mono, 10.5f, ImVec2( left + 12.0f * u, ty + 10.0f * u ),
+                             mobile_ui::col_muted, _( "MESSAGE OF THE DAY" ) );
+            draw->PushClipRect( ImVec2( left, ty ), ImVec2( box_max.x, box_max.y - 8.0f * u ), true );
+            mobile_ui::text( draw, face::body, 13.0f, ImVec2( left + 12.0f * u, ty + 28.0f * u ),
+                             IM_COL32( 195, 201, 185, 255 ), model.motd, motd_w - 24.0f * u );
+            draw->PopClipRect();
+        }
+    }
+
+    y = menu_top;
+    if( can_continue ) {
+        if( menu_button( "##continue", ImVec2( menu_x, y ), ImVec2( menu_w, 64.0f * u ), "play",
+                         _( "Continue" ), model.continue_detail, true, false, interactive ) ) {
+            picked = choice{ choice_kind::continue_game, 0 };
+        }
+        y += 64.0f * u + gap;
+    }
+    if( menu_button( "##newgame", ImVec2( menu_x, y ), ImVec2( menu_w, 56.0f * u ), "user",
+                     _( "New game" ), "", !can_continue, false, interactive ) ) {
+        current_page = page::new_game;
+    }
+    y += 56.0f * u + gap;
+
+    // three columns, two rows
+    const std::array<std::string, 6> labels = {
+        _( "Load" ), _( "World" ), _( "Tutorial" ), _( "Settings" ), _( "Help" ), _( "Credits" )
+    };
+    const float cell_w = ( menu_w - 2.0f * gap ) / 3.0f;
+    for( int i = 0; i < 6; ++i ) {
+        const ImVec2 pos( menu_x + static_cast<float>( i % 3 ) * ( cell_w + gap ),
+                          y + static_cast<float>( i / 3 ) * ( 46.0f * u + gap ) );
+        if( !menu_button( "##row" + std::to_string( i ), pos, ImVec2( cell_w, 46.0f * u ), "", labels[i],
+                          "", false, true, interactive ) ) {
+            continue;
+        }
+        switch( i ) {
+            case 0:
+                open_sheet = sheet::load;
+                break;
+            case 1:
+                open_sheet = sheet::worlds;
+                break;
+            case 2:
+                picked = choice{ choice_kind::tutorial, 0 };
+                break;
+            case 3:
+                open_sheet = sheet::settings;
+                break;
+            case 4:
+                picked = choice{ choice_kind::help, 0 };
+                break;
+            default:
+                open_sheet = sheet::credits;
+                break;
+        }
+    }
+}
+
+void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &size,
+        const bool interactive )
+{
+    struct option {
+        const char *icon;
+        std::string title;
+        std::string text;
+    };
+    const std::array<option, 5> options = { {
+            { "user", _( "Custom character" ), _( "Choose your scenario, profession, stats, traits and skills." ) },
+            { "folder", _( "Preset character" ), _( "Start from a character template you saved before." ) },
+            { "shuffle", _( "Random character" ), _( "Roll a random character, then review and change anything before you start." ) },
+            { "play", _( "Play now (default scenario)" ), _( "Jump straight in with a random character.  The scenario is the default one." ) },
+            { "bolt", _( "Play now (random scenario)" ), _( "Jump straight in with a random character and scenario." ) }
+        }
+    };
+
+    const float u = mobile_ui::unit();
+    const ImVec4 safe = mobile_ui::safe_insets();
+    const bool landscape = size.x > size.y;
+    const float left = origin.x + safe.x;
+    const float width = size.x - safe.x - safe.z;
+    float bar_h = 0.0f;
+    ImGui::BeginDisabled( !interactive );
+    if( mobile_ui::app_bar( _( "New game" ), ImVec2( left, origin.y + safe.y ), width, &bar_h ) ) {
+        current_page = page::title;
+    }
+    ImGui::EndDisabled();
+
+    // everything below the bar scrolls
+    const ImVec2 scroll_pos( left, origin.y + safe.y + bar_h );
+    const ImVec2 scroll_size( width, size.y - safe.y - safe.w - bar_h );
+    ImGui::SetCursorScreenPos( scroll_pos );
+    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+    ImGui::BeginChild( "##newgame_scroll", scroll_size, ImGuiChildFlags_None,
+                       ImGuiWindowFlags_NoBackground );
+    ImDrawList *const draw = ImGui::GetWindowDrawList();
+    const ImVec2 base = ImGui::GetCursorScreenPos();
+    const float pad = 12.0f * u;
+    float y = base.y;
+
+    const auto section = [&]( const std::string & label ) {
+        mobile_ui::text( draw, face::mono, 10.5f, ImVec2( base.x + 16.0f * u, y + 16.0f * u ),
+                         mobile_ui::col_muted, label );
+        y += 16.0f * u + mobile_ui::text_size( face::mono, 10.5f, label ).y + 6.0f * u;
+    };
+
+    section( _( "WORLD" ) );
+    {
+        const ImVec2 pos( base.x + pad, y );
+        const ImVec2 card( width - 2.0f * pad, 62.0f * u );
+        bool held = false;
+        const bool tapped = interactive && mobile_ui::pressable( "##world", pos, card, &held );
+        mobile_ui::box( draw, pos, ImVec2( pos.x + card.x, pos.y + card.y ),
+                        held ? mobile_ui::col_button_down : mobile_ui::col_fill_soft, mobile_ui::col_line, 14.0f );
+        mobile_ui::icon( draw, "globe", ImVec2( pos.x + 14.0f * u, pos.y + 19.0f * u ), 24.0f,
+                         mobile_ui::col_accent );
+        const bool has_world = !model.worlds.empty();
+        const std::string name = has_world ? model.worlds.front().name : _( "A new world" );
+        const std::string detail = has_world ? model.worlds.front().detail :
+                                   _( "Created with the default settings when you start" );
+        mobile_ui::text( draw, face::bold, 15.0f, ImVec2( pos.x + 50.0f * u, pos.y + 12.0f * u ),
+                         mobile_ui::col_fg, name );
+        mobile_ui::text( draw, face::body, 12.5f, ImVec2( pos.x + 50.0f * u, pos.y + 33.0f * u ),
+                         mobile_ui::col_muted, detail );
+        const std::string link = _( "Change" );
+        const ImVec2 link_px = mobile_ui::text_size( face::bold, 13.0f, link );
+        mobile_ui::text( draw, face::bold, 13.0f,
+                         ImVec2( pos.x + card.x - 14.0f * u - link_px.x, pos.y + ( card.y - link_px.y ) * 0.5f ),
+                         mobile_ui::col_accent, link );
+        if( tapped ) {
+            open_sheet = sheet::worlds;
+        }
+        y += card.y;
+    }
+
+    section( _( "HOW DO YOU WANT TO START?" ) );
+    y += 4.0f * u;
+    {
+        const int columns = landscape ? 2 : 1;
+        const float gap = 8.0f * u;
+        const float card_w = ( width - 2.0f * pad - static_cast<float>( columns - 1 ) * gap ) /
+                             static_cast<float>( columns );
+        const float text_w = card_w - 14.0f * u - 38.0f * u - 12.0f * u - 14.0f * u;
+        float row_h = 0.0f;
+        for( int i = 0; i < static_cast<int>( options.size() ); ++i ) {
+            const option &opt = options[i];
+            const int col = i % columns;
+            if( col == 0 ) {
+                // cards in a row share the height of the taller one
+                row_h = 0.0f;
+                for( int j = i; j < std::min( i + columns, static_cast<int>( options.size() ) ); ++j ) {
+                    const float text_h = mobile_ui::text_size( face::body, 13.0f, options[j].text, text_w ).y;
+                    row_h = std::max( row_h, 12.0f * u + 20.0f * u + text_h + 12.0f * u );
+                }
+                row_h = std::max( row_h, 62.0f * u );
+            }
+            const ImVec2 pos( base.x + pad + static_cast<float>( col ) * ( card_w + gap ), y );
+            bool held = false;
+            const bool tapped = interactive &&
+                                mobile_ui::pressable( "##start" + std::to_string( i ), pos, ImVec2( card_w, row_h ), &held );
+            mobile_ui::box( draw, pos, ImVec2( pos.x + card_w, pos.y + row_h ),
+                            held ? mobile_ui::col_button_down : IM_COL32( 255, 255, 255, 8 ), mobile_ui::col_line, 14.0f );
+            const ImVec2 icon_pos( pos.x + 14.0f * u, pos.y + 12.0f * u );
+            mobile_ui::box( draw, icon_pos, ImVec2( icon_pos.x + 38.0f * u, icon_pos.y + 38.0f * u ),
+                            mobile_ui::col_accent_soft, 0, 10.0f );
+            mobile_ui::icon( draw, opt.icon, ImVec2( icon_pos.x + 9.0f * u, icon_pos.y + 9.0f * u ), 20.0f,
+                             mobile_ui::col_accent );
+            const float text_x = icon_pos.x + 38.0f * u + 12.0f * u;
+            mobile_ui::text( draw, face::bold, 15.0f, ImVec2( text_x, pos.y + 11.0f * u ),
+                             mobile_ui::col_fg, opt.title );
+            mobile_ui::text( draw, face::body, 13.0f, ImVec2( text_x, pos.y + 32.0f * u ),
+                             mobile_ui::col_text_soft, opt.text, text_w );
+            if( tapped ) {
+                picked = choice{ choice_kind::new_game, i };
+            }
+            if( col == columns - 1 || i + 1 == static_cast<int>( options.size() ) ) {
+                y += row_h + gap;
+            }
+        }
+    }
+    y += 16.0f * u;
+    // tell ImGui how tall the content is, so it can scroll
+    ImGui::SetCursorScreenPos( base );
+    ImGui::Dummy( ImVec2( 1.0f, y - base.y ) );
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+}
+
+void main_menu_view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
+{
+    std::string title;
+    std::vector<sheet_row> rows;
+    std::string body;
+    switch( open_sheet ) {
+        case sheet::load:
+            title = _( "Load game" );
+            for( int i = 0; i < static_cast<int>( model.worlds.size() ); ++i ) {
+                rows.push_back( { "folder", model.worlds[i].name, model.worlds[i].detail, { choice_kind::load_world, i } } );
+            }
+            if( rows.empty() ) {
+                body = _( "There are no saved games yet." );
+            }
+            break;
+        case sheet::worlds:
+            title = _( "Worlds" );
+            for( int i = 0; i < static_cast<int>( model.worlds.size() ); ++i ) {
+                rows.push_back( { "globe", model.worlds[i].name, model.worlds[i].detail, { choice_kind::edit_world, i } } );
+            }
+            rows.push_back( { "plus", _( "Create a world" ), _( "Choose mods and world options" ), { choice_kind::edit_world, -1 } } );
+            break;
+        case sheet::settings:
+            title = _( "Settings" );
+            for( int i = 0; i < static_cast<int>( model.settings.size() ); ++i ) {
+                rows.push_back( { "gear", model.settings[i], "", { choice_kind::settings, i } } );
+            }
+            break;
+        case sheet::credits:
+            title = _( "Credits" );
+            body = model.credits;
+            break;
+        case sheet::none:
+            return;
+    }
+
+    const float u = mobile_ui::unit();
+    const ImVec4 safe = mobile_ui::safe_insets();
+    const bool landscape = size.x > size.y;
+    ImDrawList *const draw = ImGui::GetWindowDrawList();
+    const ImVec2 screen_max( origin.x + size.x, origin.y + size.y );
+
+    // dim the screen behind; a tap there closes the sheet
+    draw->AddRectFilled( origin, screen_max, mobile_ui::col_dim );
+    const bool outside = mobile_ui::pressable( "##sheet_outside", origin, size );
+
+    const float sheet_w = landscape ? std::min( 520.0f * u, size.x * 0.76f ) : size.x;
+    const float max_h = ( size.y - safe.y ) * ( landscape ? 0.92f : 0.84f );
+    const float head_h = 22.0f * u + 36.0f * u;
+    const float row_h = 54.0f * u;
+    const float body_w = sheet_w - 36.0f * u;
+    const float content_h = rows.empty() ?
+                            mobile_ui::text_size( face::body, 13.5f, body, body_w ).y + 24.0f * u :
+                            row_h * static_cast<float>( rows.size() );
+    const float sheet_h = std::min( max_h, head_h + content_h + safe.w + 6.0f * u );
+    const ImVec2 pos( origin.x + ( size.x - sheet_w ) * 0.5f, screen_max.y - sheet_h );
+    draw->AddRectFilled( pos, ImVec2( pos.x + sheet_w, screen_max.y ), mobile_ui::col_sheet,
+                         22.0f * u, ImDrawFlags_RoundCornersTop );
+    draw->AddRect( pos, ImVec2( pos.x + sheet_w, screen_max.y + 30.0f * u ), mobile_ui::col_line,
+                   22.0f * u, ImDrawFlags_RoundCornersTop, std::max( 1.0f, u ) );
+    // grab handle
+    draw->AddRectFilled( ImVec2( pos.x + sheet_w * 0.5f - 21.0f * u, pos.y + 9.0f * u ),
+                         ImVec2( pos.x + sheet_w * 0.5f + 21.0f * u, pos.y + 14.0f * u ),
+                         IM_COL32( 255, 255, 255, 71 ), 3.0f * u );
+    mobile_ui::text( draw, face::display, 21.0f, ImVec2( pos.x + 18.0f * u, pos.y + 24.0f * u ),
+                     mobile_ui::col_fg, title );
+
+    ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + head_h ) );
+    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+    ImGui::BeginChild( "##sheet_scroll", ImVec2( sheet_w, sheet_h - head_h - safe.w - 6.0f * u ),
+                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+    ImDrawList *const inner = ImGui::GetWindowDrawList();
+    const ImVec2 base = ImGui::GetCursorScreenPos();
+    float y = base.y;
+    for( int i = 0; i < static_cast<int>( rows.size() ); ++i ) {
+        const sheet_row &row = rows[i];
+        const ImVec2 row_pos( base.x, y );
+        bool held = false;
+        const bool tapped = mobile_ui::pressable( "##sheet_row" + std::to_string( i ), row_pos,
+                            ImVec2( sheet_w, row_h ), &held );
+        if( held ) {
+            inner->AddRectFilled( row_pos, ImVec2( row_pos.x + sheet_w, row_pos.y + row_h ),
+                                  mobile_ui::col_button_down );
+        }
+        inner->AddLine( row_pos, ImVec2( row_pos.x + sheet_w, row_pos.y ), IM_COL32( 255, 255, 255, 13 ) );
+        mobile_ui::icon( inner, row.icon, ImVec2( row_pos.x + 18.0f * u, row_pos.y + 16.5f * u ), 21.0f,
+                         mobile_ui::col_muted );
+        const float text_x = row_pos.x + 53.0f * u;
+        if( row.detail.empty() ) {
+            mobile_ui::text( inner, face::bold, 15.0f, ImVec2( text_x, row_pos.y + 17.0f * u ),
+                             mobile_ui::col_fg, row.title );
+        } else {
+            mobile_ui::text( inner, face::bold, 15.0f, ImVec2( text_x, row_pos.y + 9.0f * u ),
+                             mobile_ui::col_fg, row.title );
+            mobile_ui::text( inner, face::body, 12.0f, ImVec2( text_x, row_pos.y + 30.0f * u ),
+                             mobile_ui::col_muted, row.detail );
+        }
+        if( tapped ) {
+            picked = row.result;
+            open_sheet = sheet::none;
+        }
+        y += row_h;
+    }
+    if( rows.empty() ) {
+        mobile_ui::text( inner, face::body, 13.5f, ImVec2( base.x + 18.0f * u, y + 4.0f * u ),
+                         IM_COL32( 201, 207, 191, 255 ), body, body_w );
+        y += content_h;
+    }
+    ImGui::SetCursorScreenPos( base );
+    ImGui::Dummy( ImVec2( 1.0f, y - base.y ) );
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+
+    if( outside && picked == std::nullopt && ImGui::GetIO().MousePos.y < pos.y ) {
+        open_sheet = sheet::none;
+    }
 }
 
 void main_menu_view::impl::draw_controls()
 {
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float font = ImGui::GetFontSize();
-    const bool landscape = avail.x > avail.y;
-    const float gap = font * 0.5f;
+    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    const ImVec2 origin = viewport->Pos;
+    const ImVec2 size = viewport->Size;
+    ImDrawList *const draw = ImGui::GetWindowDrawList();
+    draw->PushClipRectFullScreen();
+    draw->AddRectFilled( origin, ImVec2( origin.x + size.x, origin.y + size.y ),
+                         current_page == page::title ? mobile_ui::col_bg : mobile_ui::col_screen );
+    draw->PopClipRect();
 
-    ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, ImVec2( gap, gap ) );
-    ImGui::PushStyleVar( ImGuiStyleVar_FrameRounding, font * 0.5f );
-
-    // In landscape the title sits on the left and the buttons on the right; in
-    // portrait the title is on top.
-    const float column_w = landscape ? std::min( avail.x * 0.5f, font * 26.0f ) : avail.x;
-    if( landscape ) {
-        ImGui::BeginChild( "brand", ImVec2( avail.x - column_w - gap, 0.0f ) );
-    }
-    ImGui::Dummy( ImVec2( 0.0f, landscape ? avail.y * 0.25f : font ) );
-    ImGui::SetWindowFontScale( 2.4f );
-    ImGui::TextUnformatted( "CATACLYSM" );
-    ImGui::SetWindowFontScale( 1.2f );
-    ImGui::TextColored( ImVec4( 0.94f, 0.57f, 0.25f, 1.0f ), "%s", "DARK DAYS AHEAD" );
-    ImGui::SetWindowFontScale( 1.0f );
-    ImGui::TextDisabled( "%s", version.c_str() );
-    if( landscape ) {
-        ImGui::EndChild();
-        ImGui::SameLine();
+    const bool interactive = open_sheet == sheet::none;
+    if( current_page == page::title ) {
+        draw_title( origin, size, interactive );
     } else {
-        ImGui::Dummy( ImVec2( 0.0f, font ) );
+        draw_new_game( origin, size, interactive );
     }
-
-    ImGui::BeginChild( "buttons", ImVec2( column_w, 0.0f ) );
-    const float width = ImGui::GetContentRegionAvail().x;
-    if( open_group >= 0 && open_group < static_cast<int>( groups.size() ) ) {
-        // sub-entries of one group, with a way back
-        const menu_group &group = groups[open_group];
-        ImGui::SetWindowFontScale( 1.3f );
-        ImGui::TextUnformatted( group.label.c_str() );
-        ImGui::SetWindowFontScale( 1.0f );
-        for( int i = 0; i < static_cast<int>( group.sub_entries.size() ); ++i ) {
-            if( big_button( group.sub_entries[i], std::to_string( i ), width, i == 0 ) ) {
-                choice = std::make_pair( group.id, i );
-            }
-        }
-        if( big_button( _( "Back" ), "back", width, false ) ) {
-            open_group = -1;
-        }
-    } else {
-        open_group = -1;
-        for( int i = 0; i < static_cast<int>( groups.size() ); ++i ) {
-            const menu_group &group = groups[i];
-            if( big_button( group.label, std::to_string( i ), width, i == 0 ) ) {
-                if( group.sub_entries.empty() ) {
-                    choice = std::make_pair( group.id, 0 );
-                } else {
-                    open_group = i;
-                }
-            }
-        }
+    if( open_sheet != sheet::none ) {
+        draw_sheet( origin, size );
     }
-    ImGui::EndChild();
-    ImGui::PopStyleVar( 2 );
 }
 
 main_menu_view::main_menu_view() : pimpl( std::make_unique<impl>() ) {}
 
 main_menu_view::~main_menu_view() = default;
 
-void main_menu_view::set_groups( const std::vector<menu_group> &groups, const std::string &version )
+void main_menu_view::set_model( const main_menu_model &model )
 {
-    pimpl->groups = groups;
-    pimpl->version = version;
+    pimpl->model = model;
 }
 
-std::optional<std::pair<int, int>> main_menu_view::take_choice()
+std::optional<choice> main_menu_view::take_choice()
 {
-    std::optional<std::pair<int, int>> ret = pimpl->choice;
-    pimpl->choice.reset();
+    std::optional<choice> ret = pimpl->picked;
+    pimpl->picked.reset();
     return ret;
 }
+
+bool main_menu_view::back()
+{
+    if( pimpl->open_sheet != sheet::none ) {
+        pimpl->open_sheet = sheet::none;
+        return true;
+    }
+    if( pimpl->current_page != page::title ) {
+        pimpl->current_page = page::title;
+        return true;
+    }
+    return false;
+}
+
+#else // !TILES
+
+class main_menu_view::impl
+{
+};
+
+main_menu_view::main_menu_view() = default;
+
+main_menu_view::~main_menu_view() = default;
+
+void main_menu_view::set_model( const main_menu_model & ) {}
+
+std::optional<choice> main_menu_view::take_choice()
+{
+    return std::nullopt;
+}
+
+bool main_menu_view::back()
+{
+    return false;
+}
+
+#endif // TILES
 
 } // namespace mobile_menu
