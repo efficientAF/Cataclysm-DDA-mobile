@@ -85,7 +85,11 @@ Open, most important first:
 2. **Touch plumbing:**
    - Tap next to you acts in that direction; tap further away previews a route, and a second tap travels (reuse `ACTION_SELECT`).
    - Long-press opens the action ring.
-   - Pinch zooms live and snaps to steps; two-finger drag pans, with a Recenter button.
+   - Zoom and pan are round HUD pieces (`zoom`, `pan`) that you touch and drag, as in the canvas:
+     - Zoom: drag up or down; the zoom changes live and snaps to a step on release.
+     - Pan: drag in any direction to scroll the view, faster the further you drag; a tap recenters. The Recenter button stays.
+     - Both are movable and resizable (`size`) in Edit HUD.
+     - Pinch and two-finger drag become a setting, off by default.
    - Feed finger events to ImGui as pointer input, and fix the `cata_key_to_imgui` bugs.
    - Remove the 300 ms double-tap wait where double-tap is not bound.
 3. **`MOBILE_HUD` option:**
