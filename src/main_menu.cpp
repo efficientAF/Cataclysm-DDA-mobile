@@ -41,6 +41,7 @@
 #include "mapbuffer.h"
 #include "mapsharing.h"
 #include "messages.h"
+#include "mobile_menu.h"
 #include "music.h"
 #include "options.h"
 #include "output.h"
@@ -676,10 +677,60 @@ bool main_menu::opening_screen()
     EM_ASM( window.dispatchEvent( new Event( 'menuready' ) ); );
 #endif
 
+    // Mobile UI: the same entries as large buttons, see mobile_menu.h
+    std::unique_ptr<mobile_menu::main_menu_view> mobile_view;
+    if( mobile_menu::enabled() ) {
+        mobile_view = std::make_unique<mobile_menu::main_menu_view>();
+    }
+    const auto mobile_groups = [&]() {
+        const auto plain = []( const std::string & text ) {
+            return remove_color_tags( shortcut_text( c_white, text ) );
+        };
+        std::vector<mobile_menu::menu_group> groups;
+        for( const main_menu_opts opt : {
+                 main_menu_opts::LOADCHAR, main_menu_opts::NEWCHAR, main_menu_opts::WORLD,
+                 main_menu_opts::TUTORIAL, main_menu_opts::SETTINGS, main_menu_opts::HELP,
+                 main_menu_opts::QUIT
+             } ) {
+            mobile_menu::menu_group group;
+            group.id = getopt( opt );
+            if( static_cast<size_t>( group.id ) >= vMenuItems.size() ) {
+                continue;
+            }
+            group.label = plain( vMenuItems[group.id] );
+            if( opt == main_menu_opts::NEWCHAR ) {
+                for( const std::string &item : vNewGameSubItems ) {
+                    group.sub_entries.push_back( plain( item ) );
+                }
+            } else if( opt == main_menu_opts::SETTINGS ) {
+                for( const std::string &item : vSettingsSubItems ) {
+                    group.sub_entries.push_back( plain( item ) );
+                }
+            } else if( opt == main_menu_opts::LOADCHAR ) {
+                group.sub_entries = world_generator->all_worldnames();
+            } else if( opt == main_menu_opts::WORLD ) {
+                group.sub_entries = world_generator->all_worldnames();
+                group.sub_entries.insert( group.sub_entries.begin(), _( "Create World" ) );
+            }
+            groups.push_back( group );
+        }
+        return groups;
+    };
+
     while( !start ) {
+        if( mobile_view ) {
+            mobile_view->set_groups( mobile_groups(), getVersionString() );
+        }
         ui_manager::redraw();
         std::string action = ctxt.handle_input();
         input_event sInput = ctxt.get_raw_input();
+        if( mobile_view ) {
+            if( const std::optional<std::pair<int, int>> choice = mobile_view->take_choice() ) {
+                sel1 = choice->first;
+                sel2 = choice->second;
+                action = "CONFIRM";
+            }
+        }
 
         // check automatic menu shortcuts
         bool match = false;

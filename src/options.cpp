@@ -3423,6 +3423,11 @@ void options_manager::add_options_android()
          mobile_default
        );
 
+    add( "MOBILE_MENUS", mobile_page, to_translation( "Mobile menus" ),
+         to_translation( "If true, the main menu is shown as large buttons you can tap instead of a row of text." ),
+         mobile_default
+       );
+
     add_option_group( mobile_page, Group( "mobile_touch_opts",
                                           to_translation( "Mobile touch controls" ),
                                           to_translation( "Touch controls of the mobile UI: tapping the map, the long-press menu, pinch zoom and panning." ) ),
@@ -3460,6 +3465,11 @@ void options_manager::add_options_android()
         add( "TOUCH_RECENTER_ON_MOVE", page_id, to_translation( "Recenter when you move" ),
              to_translation( "If true, taking a step brings a panned view back to your character." ),
              true
+           );
+
+        add( "TOUCH_MENU_TAP", page_id, to_translation( "Tap items in text menus" ),
+             to_translation( "If true, a tap in a text menu that supports the mouse, such as the main menu, the options or the inventory, picks the item under your finger at once, instead of pressing Enter after a short wait." ),
+             mobile_default
            );
 
         add( "TOUCH_IMGUI_POINTER", page_id, to_translation( "Tap and drag in menus" ),
