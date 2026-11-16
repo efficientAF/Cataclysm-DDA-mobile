@@ -126,7 +126,7 @@ struct fact {
 };
 
 // What the detail pane shows; built once when an item is selected.
-struct detail {
+struct item_detail {
     std::string description;
     std::vector<fact> facts;
     std::vector<action> actions;
@@ -453,9 +453,9 @@ static std::vector<entry> read_nearby( avatar &you )
     return list;
 }
 
-static detail read_detail( const entry &e, avatar &you )
+static item_detail read_detail( const entry &e, avatar &you )
 {
-    detail d;
+    item_detail d;
     item_location loc = e.locs.front();
     item &it = *loc;
 
@@ -667,7 +667,7 @@ class inventory_window : public cataimgui::window
         std::array<std::vector<entry>, 3> lists;
         // index into the current tab's list
         int selected = -1;
-        detail selected_detail;
+        item_detail selected_detail;
         bool sheet_open = false;
         bool landscape = true;
         // indexes into the nearby list
@@ -1227,7 +1227,7 @@ float inventory_window::detail_content( ImDrawList *const draw, const ImVec2 &ba
         return size.y + 56.0f * u;
     }
     const entry &e = list[selected];
-    const detail &d = selected_detail;
+    const item_detail &d = selected_detail;
     const float inner_w = width - 32.0f * u;
     float y = base.y + 4.0f * u;
 
