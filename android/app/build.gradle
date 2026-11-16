@@ -419,6 +419,18 @@ android {
                 throw new GradleException("Keystore file " + keystoreProperties.getProperty("storeFile") + " was not found.\n")
             }
         }
+        // Mobile fork: debug builds are signed with the debug key kept in the repo,
+        // so an APK built on any machine installs over the previous one and keeps
+        // its saves.  It is a throwaway debug key, not a release key.
+        def forkDebugKeystore = file('debug.keystore')
+        if (keystoreProperties.getProperty('debug_storeFile') == null && forkDebugKeystore.exists()) {
+            debug {
+                storeFile forkDebugKeystore
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
         if (keystoreProperties.getProperty('debug_storeFile') != null) {
             if (file(keystoreProperties.getProperty('debug_storeFile')).exists()) {
                 debug {
