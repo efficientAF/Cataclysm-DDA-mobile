@@ -49,6 +49,8 @@
 #include "mapsharing.h"
 #include "martialarts.h"
 #include "mission.h"
+#include "mobile_chargen.h"
+#include "mobile_menu.h"
 #include "mod_manager.h"
 #include "monster.h"
 #include "mutation.h"
@@ -302,6 +304,20 @@ static int points_used_total( const Character &u )
 static int has_unspent_points( const Character &u )
 {
     return points_used_total( u ) < point_pool_total();
+}
+
+// Mobile UI: forwarding functions for src/mobile_chargen.cpp
+character_creator_uistate &mobile_chargen::upstream_state()
+{
+    return cc_uistate;
+}
+int mobile_chargen::upstream_points_left( const Character &u )
+{
+    return point_pool_total() - points_used_total( u );
+}
+bool mobile_chargen::upstream_outfit_male()
+{
+    return outfit;
 }
 
 namespace
@@ -821,7 +837,12 @@ bool avatar::create( character_type type, const std::string &tempname )
         }
         character_creator_ui ccui;
         cc_uistate.generation_type = type;
-        ccui.display();
+        // Mobile UI: the canvas's creator screen replaces upstream's tab loop
+        if( mobile_menu::enabled() ) {
+            mobile_chargen::run( ccui );
+        } else {
+            ccui.display();
+        }
         if( cc_uistate.quit_to_main_menu ) {
             return false;
         }
