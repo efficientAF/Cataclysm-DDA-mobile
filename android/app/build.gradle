@@ -335,9 +335,11 @@ android {
         versionCode Integer.valueOf(override_versionCode)
         versionName new File("$version_header_path").text.split('\"')[1]
         if (buildAsApplication) {
-            applicationId "com.cleverraven.cataclysmdda"
+            // Mobile fork: own application ID so it installs next to the official app.
+            // The Java/JNI namespace stays com.cleverraven.cataclysmdda.
+            applicationId "com.efficientaf.cddamobile"
         }
-        resValue "string", "app_name", "Cataclysm DDA"
+        resValue "string", "app_name", "CDDA Mobile"
 
         splits {
             // Configures multiple APKs based on ABI.
@@ -395,12 +397,12 @@ android {
     productFlavors {
         stable {
             dimension "version"
-            resValue "string", "app_name", "Cataclysm DDA"
+            resValue "string", "app_name", "CDDA Mobile"
         }
         experimental {
             dimension "version"
             applicationIdSuffix ".experimental"
-            resValue "string", "app_name", "Cataclysm DDA (experimental)"
+            resValue "string", "app_name", "CDDA Mobile (experimental)"
         }
     }
 
@@ -457,9 +459,17 @@ android {
             }
             externalNativeBuild {
                 cmake {
-                    arguments "-DCMAKE_BUILD_TYPE=Debug"
-                    cFlags "-g"
-                    cppFlags "-g"
+                    // Mobile fork: debug-signed but optimized, because an -O0 build
+                    // is too slow to play on a phone. Pass -Pdebug_native=true for a real debug build.
+                    if (project.hasProperty('debug_native')) {
+                        arguments "-DCMAKE_BUILD_TYPE=Debug"
+                        cFlags "-g"
+                        cppFlags "-g"
+                    } else {
+                        arguments "-DCMAKE_BUILD_TYPE=Release"
+                        cFlags "-Os"
+                        cppFlags "-Os"
+                    }
                 }
             }
             ndk {
