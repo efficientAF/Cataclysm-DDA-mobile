@@ -72,6 +72,7 @@
 #include "mobile_crafting.h"
 #include "mobile_drawer.h"
 #include "mobile_menu.h"
+#include "mobile_settings.h"
 #include "monster.h"
 #include "move_mode.h"
 #include "mtype.h"
@@ -3062,6 +3063,11 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
         }
 
         case ACTION_OPTIONS:
+            // Mobile UI: the canvas's settings screen; it opens the full options
+            if( mobile_menu::enabled() ) {
+                mobile_settings::show();
+                break;
+            }
             get_options().show( true );
             break;
 

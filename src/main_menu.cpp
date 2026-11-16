@@ -41,7 +41,9 @@
 #include "mapbuffer.h"
 #include "mapsharing.h"
 #include "messages.h"
+#include "mobile_death.h"
 #include "mobile_menu.h"
+#include "mobile_settings.h"
 #include "music.h"
 #include "options.h"
 #include "output.h"
@@ -83,6 +85,8 @@ enum class main_menu_opts : int {
 } // namespace
 
 std::string main_menu::queued_world_to_load;
+// Mobile UI: the world new_character_tab() uses instead of asking, see mobile_death.h
+static std::string mobile_new_character_world;
 std::string main_menu::queued_save_id_to_load;
 
 static int getopt( main_menu_opts o )
@@ -677,6 +681,17 @@ bool main_menu::opening_screen()
     EM_ASM( window.dispatchEvent( new Event( 'menuready' ) ); );
 #endif
 
+    // Mobile UI: "New character in this world" on the death screen, see mobile_death.h
+    if( const std::optional<std::string> world = mobile_death::take_new_character_world() ) {
+        if( !start && mobile_menu::enabled() && world_generator->has_world( *world ) ) {
+            sel1 = getopt( main_menu_opts::NEWCHAR );
+            sel2 = 0;
+            mobile_new_character_world = *world;
+            start = new_character_tab();
+            mobile_new_character_world.clear();
+        }
+    }
+
     // Mobile UI: the main menu and new game screens of the canvas, see mobile_menu.h
     std::unique_ptr<mobile_menu::main_menu_view> mobile_view;
     if( mobile_menu::enabled() ) {
@@ -971,7 +986,17 @@ bool main_menu::opening_screen()
                     break;
                 case main_menu_opts::SETTINGS:
                     if( sel2 == 0 ) {        /// Options
-                        get_options().show( false );
+                        // Mobile UI: the canvas's settings screen; it opens the full options
+                        if( mobile_menu::enabled() ) {
+                            // the menu would draw over the full options
+                            mobile_view.reset();
+                            mobile_settings::show();
+                            if( mobile_menu::enabled() ) {
+                                mobile_view = std::make_unique<mobile_menu::main_menu_view>();
+                            }
+                        } else {
+                            get_options().show( false );
+                        }
                         // The language may have changed- gracefully handle this.
                         init_strings();
                     } else if( sel2 == 1 ) { /// Keybindings
@@ -1116,7 +1141,10 @@ bool main_menu::new_character_tab()
         // loading the world.
         // Pick a world, suppressing prompts if it's "play now" mode.
         const bool is_play_now = sel2 == 3 || sel2 == 4;
-        WORLD *world = world_generator->pick_world( !is_play_now, is_play_now );
+        // Mobile UI: the death screen has already chosen the world
+        WORLD *world = !mobile_new_character_world.empty() ?
+                       world_generator->get_world( mobile_new_character_world ) :
+                       world_generator->pick_world( !is_play_now, is_play_now );
         if( world == nullptr ) {
             return false;
         }

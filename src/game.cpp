@@ -156,6 +156,8 @@
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
+#include "mobile_death.h"
+#include "mobile_menu.h"
 #include "mod_manager.h"
 #include "monexamine.h"
 #include "mongroup.h"
@@ -2928,8 +2930,13 @@ bool game::is_game_over()
 
 void game::bury_screen() const
 {
-    end_screen_data new_instance;
-    new_instance.draw_end_screen_ui();
+    // Mobile UI: no tombstone; the death screen comes at the end, see death_screen()
+    if( mobile_menu::enabled() ) {
+        mobile_death::note_death();
+    } else {
+        end_screen_data new_instance;
+        new_instance.draw_end_screen_ui();
+    }
 
     sfx::do_player_death_hurt( get_player_character(), true );
     sfx::fade_audio_group( sfx::group::weather, 2000 );
@@ -2941,11 +2948,20 @@ void game::bury_screen() const
 void game::death_screen()
 {
     gamemode->game_over();
-    Messages::display_messages();
+    // Mobile UI: the canvas's death screen, last, in place of the message log and scores
+    const bool mobile = mobile_menu::enabled();
+    if( !mobile ) {
+        Messages::display_messages();
+    }
     u.get_avatar_diary()->death_entry();
-    show_scores_ui();
+    if( !mobile ) {
+        show_scores_ui();
+    }
     disp_NPC_epilogues();
     display_faction_epilogues();
+    if( mobile ) {
+        mobile_death::show();
+    }
 }
 
 // A timestamp that can be used to make unique file names
