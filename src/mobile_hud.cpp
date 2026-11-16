@@ -524,6 +524,8 @@ static float draw_body( const SDL_FRect &area, const bool landscape )
     part( 29.5f, 15.0f, 6.0f, 20.0f, 3.0f, hp_color( you, "arm_l" ) );
     part( 12.5f, 37.0f, 6.5f, 24.0f, 3.0f, hp_color( you, "leg_r" ) );
     part( 21.0f, 37.0f, 6.5f, 24.0f, 3.0f, hp_color( you, "leg_l" ) );
+    // tapping the figure opens the Info drawer
+    quick_buttons.push_back( { to_rect( rect ), ACTION_PL_INFO } );
     return rect.y + rect.h;
 }
 
@@ -551,6 +553,50 @@ static void draw_wielded( const SDL_FRect &area, const float top )
     const float x = rect.x + 37.0f * unit;
     draw_text( face::bold, 13.0f, shown_name, x, rect.y + 5.0f * unit, col_fg );
     draw_text( face::body, 12.0f, detail, x, rect.y + 20.0f * unit, col_muted );
+    quick_buttons.push_back( { to_rect( rect ), ACTION_PL_INFO } );
+}
+
+// The tabs at the screen edges that open the two drawers.  Balanced preset: in
+// landscape Info hangs from the top edge and Log from the left; in portrait
+// Info is on the right and Log on the left.
+static void draw_drawer_handles( const SDL_FRect &area, const bool landscape )
+{
+    const float thick = 27.0f * unit;
+    const float length = 66.0f * unit;
+    const auto handle = [&]( const SDL_FRect & rect, const bool horizontal, const char *icon,
+    const action_id act ) {
+        fill_round( rect, 12.0f * unit, col_panel_solid );
+        stroke_round( rect, 12.0f * unit, std::max( 1.0f, unit ), col_line );
+        const float icon_size = 16.0f * unit;
+        if( horizontal ) {
+            const float y = rect.y + ( rect.h - icon_size ) * 0.5f;
+            draw_icon( "gripH", rect.x + rect.w * 0.5f - icon_size - 2.0f * unit, y, icon_size, col_muted );
+            draw_icon( icon, rect.x + rect.w * 0.5f + 2.0f * unit, y, icon_size, col_fg );
+        } else {
+            const float x = rect.x + ( rect.w - icon_size ) * 0.5f;
+            draw_icon( "gripV", x, rect.y + rect.h * 0.5f - icon_size - 2.0f * unit, icon_size, col_muted );
+            draw_icon( icon, x, rect.y + rect.h * 0.5f + 2.0f * unit, icon_size, col_fg );
+        }
+        // a generous touch target around the small tab
+        SDL_FRect target = rect;
+        const float grow = 10.0f * unit;
+        target.x -= grow;
+        target.y -= grow;
+        target.w += 2.0f * grow;
+        target.h += 2.0f * grow;
+        quick_buttons.push_back( { to_rect( target ), act } );
+    };
+    if( landscape ) {
+        handle( { area.x + area.w * 0.5f - length * 0.5f, area.y, length, thick }, true, "person",
+                ACTION_PL_INFO );
+        handle( { area.x, area.y + area.h * 0.42f - length * 0.5f, thick, length }, false, "lines",
+                ACTION_MESSAGES );
+    } else {
+        handle( { area.x + area.w - thick, area.y + area.h * 0.42f - length * 0.5f, thick, length },
+                false, "person", ACTION_PL_INFO );
+        handle( { area.x, area.y + area.h * 0.5f - length * 0.5f, thick, length }, false, "lines",
+                ACTION_MESSAGES );
+    }
 }
 
 // The last three messages, newest at the bottom, older ones dimmed.
@@ -675,6 +721,7 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
         draw_wielded( area, body_bottom );
         draw_log( area, landscape );
         draw_quick_actions( area, landscape );
+        draw_drawer_handles( area, landscape );
     }
     if( touch_input::view_is_panned() ) {
         draw_recenter( area, landscape );
