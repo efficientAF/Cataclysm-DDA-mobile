@@ -16,3 +16,6 @@
 /captures
 /local.properties
 keystore.properties
+
+# SDL3 AARs, downloaded by app/build.gradle
+/app/libs/
