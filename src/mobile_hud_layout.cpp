@@ -17,7 +17,7 @@ namespace mobile_hud
 
 static constexpr std::array<piece_id, num_pieces> all_pieces = { {
         piece_id::status, piece_id::location, piece_id::log, piece_id::body, piece_id::wield,
-        piece_id::quick, piece_id::zoom, piece_id::recenter, piece_id::joy
+        piece_id::quick, piece_id::zoom, piece_id::recenter, piece_id::joy, piece_id::pan
     }
 };
 static constexpr std::array<drawer_id, num_drawers> all_drawers = { { drawer_id::info, drawer_id::log } };
@@ -43,6 +43,8 @@ const char *json_name( const piece_id id )
             return "recenter";
         case piece_id::joy:
             return "joy";
+        case piece_id::pan:
+            return "pan";
         case piece_id::num:
             break;
     }
@@ -70,11 +72,13 @@ std::string display_name( const piece_id id )
         case piece_id::quick:
             return _( "Quick actions" );
         case piece_id::zoom:
-            return _( "Zoom buttons" );
+            return _( "Zoom" );
         case piece_id::recenter:
             return _( "Recenter button" );
         case piece_id::joy:
             return _( "Movement pad" );
+        case piece_id::pan:
+            return _( "Pan" );
         case piece_id::num:
             break;
     }
@@ -247,9 +251,11 @@ static preset make_balanced()
     p[piece_id::log].width = 366;
     p[piece_id::quick] = make_piece( true, anchor::bottom_center, 0, 34 );
     p[piece_id::quick].count = 6;
-    p[piece_id::zoom] = make_piece( false, anchor::top_right, 12, 140 );
-    p[piece_id::zoom].column = true;
-    p[piece_id::recenter] = make_piece( true, anchor::top_right, 12, 236 );
+    p[piece_id::zoom] = make_piece( true, anchor::top_right, 12, 150 );
+    p[piece_id::zoom].size = 56;
+    p[piece_id::pan] = make_piece( true, anchor::top_right, 12, 214 );
+    p[piece_id::pan].size = 56;
+    p[piece_id::recenter] = make_piece( true, anchor::top_right, 12, 278 );
     p[piece_id::joy] = make_piece( true, anchor::bottom_right, 14, 174 );
     p[piece_id::joy].size = 140;
     p[drawer_id::info] = { true, screen_edge::right, 0.42f, 0.8f };
@@ -271,7 +277,10 @@ static preset make_balanced()
     l[piece_id::quick] = make_piece( true, anchor::bottom_right, 58, 20 );
     l[piece_id::quick].column = true;
     l[piece_id::quick].count = 4;
-    l[piece_id::zoom] = make_piece( false, anchor::top_right, 126, 12 );
+    l[piece_id::zoom] = make_piece( true, anchor::top_right, 126, 12 );
+    l[piece_id::zoom].size = 56;
+    l[piece_id::pan] = make_piece( true, anchor::top_right, 190, 12 );
+    l[piece_id::pan].size = 56;
     l[piece_id::recenter] = make_piece( true, anchor::top_center, 0, 40 );
     l[piece_id::joy] = make_piece( true, anchor::bottom_left, 58, 100 );
     l[piece_id::joy].size = 130;
@@ -379,6 +388,9 @@ static void read_piece( const JsonObject &jo, const piece_id id, piece &p )
                          1, id == piece_id::location ? 3 : 10 );
     p.width = std::clamp( read_number( jo, "width", p.width ), 120.0f, 800.0f );
     p.size = std::clamp( read_number( jo, "size", p.size ), 20.0f, 240.0f );
+    if( id == piece_id::zoom || id == piece_id::pan ) {
+        p.size = std::clamp( p.size, dial_size_min, dial_size_max );
+    }
     if( jo.has_member( "dir" ) ) {
         p.column = jo.get_string( "dir" ) == "col";
     }
@@ -413,7 +425,14 @@ static void read_layout( const JsonObject &jo, layout &l )
     jo.allow_omitted_members();
     for( const piece_id id : all_pieces ) {
         if( jo.has_object( json_name( id ) ) ) {
-            read_piece( jo.get_object( json_name( id ) ), id, l[id] );
+            const JsonObject piece_jo = jo.get_object( json_name( id ) );
+            if( id == piece_id::zoom && !piece_jo.has_member( "size" ) ) {
+                // A layout saved when zoom was a pair of buttons, usually
+                // hidden: the dial keeps the place the preset gives it.
+                piece_jo.allow_omitted_members();
+                continue;
+            }
+            read_piece( piece_jo, id, l[id] );
         }
     }
     for( const drawer_id id : all_drawers ) {
@@ -468,7 +487,8 @@ static void write_layout( JsonOut &jsout, const layout &l )
                 jsout.member( "count", p.count );
                 break;
             case piece_id::zoom:
-                jsout.member( "dir", p.column ? "col" : "row" );
+            case piece_id::pan:
+                jsout.member( "size", static_cast<int>( std::lround( p.size ) ) );
                 break;
             case piece_id::joy:
                 jsout.member( "mode", mode_name( p.mode ) );

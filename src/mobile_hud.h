@@ -22,7 +22,8 @@ class Font;
 // With the MOBILE_HUD option the sidebar is hidden, the map fills the screen and
 // this overlay shows the pieces of the UI canvas instead: location and time,
 // status icons, the body figure, the wielded item, the last messages, quick
-// actions, zoom buttons, the movement pad and the handles of the two drawers.
+// actions, the round zoom and pan controls, the movement pad and the handles of
+// the two drawers.
 // Where each piece sits comes from the layout in use (mobile_hud_layout.h).
 // The Recenter button of the touch controls is drawn here too, with or without
 // the option.
@@ -47,6 +48,9 @@ enum class hit_kind : int {
     pad_toggle,
     // the movement pad itself
     pad,
+    // the round zoom and pan controls, worked by touch and drag
+    zoom_dial,
+    pan_dial,
 };
 
 struct hit {
@@ -59,13 +63,25 @@ std::optional<hit> hit_at( float x, float y );
 
 // --- The movement pad ---
 
-// How the pad shows; floating means upstream's drag-anywhere joystick is in use.
+// How the pad shows.  Floating means the joystick appears where a finger drags
+// on the map (upstream's); that is the Floating choice of the movement joystick
+// setting, and also what happens while the pad piece is hidden.
 pad_mode movement_pad_mode();
 void toggle_pad();
 // A thumb on the pad at a point in window pixels: moves the knob and returns
 // the direction to walk in, if it is past the dead zone.
 std::optional<point> pad_direction( float x, float y );
 void release_pad();
+
+// --- The zoom and pan dials ---
+
+// Where the thumb has pulled the knob of a dial (piece_id::zoom or pan), -1 to 1
+// each way, and whether it is being held.
+void set_dial( piece_id which, bool held, float knob_x, float knob_y );
+// Radius of a dial as last drawn, in window pixels; 0 if it was not drawn.
+float dial_radius( piece_id which );
+// Window pixels per canvas unit, as of the last draw.
+float unit_pixels();
 
 // --- For the editor (mobile_hud_edit.h) ---
 

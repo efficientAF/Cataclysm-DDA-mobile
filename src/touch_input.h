@@ -13,8 +13,9 @@ struct input_event;
 union SDL_Event;
 
 // Touch controls of the mobile UI fork: taps that act on the map tile under the
-// finger, a long-press action menu, live pinch zoom, two-finger panning and
-// pointer input for ImGui windows.
+// finger, a long-press action menu, the zoom and pan dials of the HUD, pinch
+// zoom and two-finger panning (a setting, off by default) and pointer input for
+// ImGui windows.
 //
 // The gestures themselves are still recognised in sdltiles.cpp, which calls in
 // here.  Everything is behind options (see add_options_android in options.cpp)
@@ -40,6 +41,17 @@ int snap_zoom( int start_zoom, float pinch_ratio, int min_zoom, int max_zoom );
 // The next zoom level in or out.  At either end it wraps around to the other end
 // if wrap is true, as upstream does, and stays put otherwise.
 int step_zoom( int zoom, bool zoom_in, int min_zoom, int max_zoom, bool wrap );
+
+// The zoom level while the zoom dial is dragged.  steps is how many zoom levels
+// the thumb has travelled, up being positive.  With substeps above 1 the result
+// also stops between the levels (four stops per level for 4), so the zoom
+// follows the thumb; with 1 it is the level to settle on at release.
+int dial_zoom( int start_zoom, float steps, int substeps, int min_zoom, int max_zoom );
+
+// How fast the pan dial scrolls the view, in tiles per second, for a thumb
+// that is distance away from where it went down.  Nothing inside dead_zone,
+// then faster the further out, up to the top speed at dead_zone + full_travel.
+float pan_speed( float distance, float dead_zone, float full_travel );
 
 // Turns a drag in pixels into whole map tiles, carrying the remainder over.
 class pan_accumulator
@@ -79,14 +91,23 @@ bool tap_to_act();
 bool long_press_menu();
 // How long a finger has to rest on the map before the menu opens.
 int long_press_delay_ms();
-bool live_pinch_zoom();
-bool two_finger_pan();
+// Pinch to zoom and two-finger drag to pan on the play screen.  Off by
+// default: the zoom and pan dials of the HUD do this.  The map screen always
+// pinches.
+bool two_finger_gestures();
+// The movement joystick setting: true for Floating (the joystick appears where
+// a finger drags on the map), false for Fixed (the HUD's pad).
+bool floating_joystick();
 bool recenter_on_move();
 bool zoom_no_wrap();
 bool imgui_pointer();
 bool menu_tap();
-// True if any option that takes over two-finger gestures on the map is on.
+// True if two fingers on the play screen zoom and pan live.
 bool owns_two_finger_gestures();
+// True if upstream's own pinch and two-finger swipe keys still apply.  With the
+// mobile HUD they do not on the play screen: there the gestures are either
+// ours or, with the setting off, do nothing.
+bool upstream_two_finger_swipes( bool default_mode );
 // The MOBILE_HUD option: no sidebar, the map fills the screen (see mobile_hud.h).
 bool hud_enabled();
 // The closest zoom level of the map: upstream's 64, or 256 with the mobile HUD,
@@ -180,6 +201,13 @@ void clear_raw_drag_rect();
 bool pad_poll( input_event &out );
 bool pad_held();
 
+// The zoom and pan dials of the HUD: applies what the thumb on one asks for.
+// Call on every pass of the event loop.  Returns true if the view changed.
+bool dial_poll();
+// How soon the event loop has to come round again while the pad or a dial is
+// held, if at all.
+std::optional<uint32_t> held_wait_ms();
+
 // True while a finger is on an ImGui window or its tap is still being handled.
 // ImGui must accept pointer input for that long, even with the mouse disabled.
 bool pointer_active();
@@ -198,8 +226,9 @@ bool take_wake_frame();
 //
 // The Android gesture code in sdltiles.cpp is compiled out on desktop, so this is
 // a small stand-in that turns SDL finger events into the same calls: tap, long
-// press, two-finger pinch and pan, and fingers on ImGui windows.  There is no
-// virtual joystick here: a one-finger drag does nothing.
+// press, two-finger pinch and pan, and fingers on ImGui windows.  With the
+// joystick set to Floating a one-finger drag on the map walks that way, like
+// upstream's virtual joystick, but nothing is drawn for it.
 //
 // Gestures can be scripted.  Point the CATA_TOUCH_SCRIPT environment variable at
 // a file path; whenever that file appears it is read, deleted and played back.

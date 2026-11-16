@@ -378,6 +378,7 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
             case piece_id::quick:
             case piece_id::body:
             case piece_id::zoom:
+            case piece_id::pan:
             case piece_id::joy:
                 rows += 2;
                 break;
@@ -486,16 +487,16 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
                 changed |= stepper( _( "Buttons" ), p.count, 3, 9 );
                 break;
             case piece_id::zoom:
-                if( choice( _( "Direction" ), column, row_or_column ) ) {
-                    p.column = column == 1;
-                    changed = true;
-                }
+            case piece_id::pan:
+                changed |= stepper( _( "Size" ), p.size, mobile_hud::dial_size_min,
+                                    mobile_hud::dial_size_max, 4.0f, units( p.size ) );
                 changed |= stepper( _( "Opacity" ), p.opacity, 0.4f, 1.0f, 0.1f, percent( p.opacity ) );
                 break;
             case piece_id::joy: {
-                int mode = static_cast<int>( p.mode );
-                if( choice( _( "Shows" ), mode, { _( "On drag" ), _( "Toggle" ), _( "Always" ) } ) ) {
-                    p.mode = static_cast<mobile_hud::pad_mode>( mode );
+                // Fixed or Floating is a setting; this is how the fixed pad shows
+                int always = p.mode == mobile_hud::pad_mode::always ? 1 : 0;
+                if( choice( _( "Shows" ), always, { _( "With its button" ), _( "Always" ) } ) ) {
+                    p.mode = always == 1 ? mobile_hud::pad_mode::always : mobile_hud::pad_mode::toggle;
                     changed = true;
                 }
                 changed |= stepper( _( "Size" ), p.size, 90.0f, 200.0f, 10.0f, units( p.size ) );

@@ -6267,6 +6267,10 @@ static void CheckMessages()
         touch_input::pad_poll( last_input ) ) {
         needupdate = true;
     }
+    // Mobile UI: the zoom and pan dials act for as long as they are held
+    if( touch_input::dial_poll() ) {
+        needupdate = true;
+    }
 
     using cata::options::mouse;
 
@@ -6758,7 +6762,7 @@ static void CheckMessages()
                                                longest_window_edge ) {
                                         last_input = input_event( get_key_event_from_string(
                                                                       get_option<std::string>( "ANDROID_2_TAP_KEY" ) ), input_event_t::keyboard_char );
-                                    } else if( !touch_input::owns_two_finger_gestures() ) {
+                                    } else if( touch_input::upstream_two_finger_swipes( is_default_mode ) ) {
                                         float dot = ( x1 * x2 + y1 * y2 ) / ( d1 * d2 ); // dot product of two finger vectors, -1 to +1
                                         if( dot > 0.0f ) { // both fingers mostly heading in same direction, check for double-finger swipe gesture
                                             float dratio = d1 / d2;
@@ -7319,7 +7323,12 @@ static std::optional<uint32_t> android_touch_wait_ms( const uint32_t now )
     t.multi_finger_touch = is_two_finger_touch || is_three_finger_touch;
     t.last_present = lastupdate;
     t.present_interval = interval;
-    return touch_wait_ms( t );
+    std::optional<uint32_t> wait = touch_wait_ms( t );
+    // Mobile UI: a held movement pad or dial needs the loop to keep turning
+    if( const std::optional<uint32_t> held = touch_input::held_wait_ms() ) {
+        wait = wait ? std::min( *wait, *held ) : *held;
+    }
+    return wait;
 #else
     static_cast<void>( now );
     return touch_input::desktop_wait_ms();

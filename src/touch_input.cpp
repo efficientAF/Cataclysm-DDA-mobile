@@ -22,6 +22,7 @@
 #include "uistate.h"
 
 #if defined(TILES)
+#include <array>
 #include <cfloat>
 #include <cstdio>
 #include <fstream>
@@ -89,6 +90,32 @@ int step_zoom( const int zoom, const bool zoom_in, const int min_zoom, const int
     return zoom / 2;
 }
 
+int dial_zoom( const int start_zoom, const float steps, const int substeps, const int min_zoom,
+               const int max_zoom )
+{
+    if( start_zoom <= 0 || min_zoom <= 0 || max_zoom < min_zoom ) {
+        return start_zoom;
+    }
+    const float lo = std::log2( static_cast<float>( min_zoom ) );
+    const float hi = std::log2( static_cast<float>( max_zoom ) );
+    const float stops = static_cast<float>( std::max( substeps, 1 ) );
+    const float wanted = std::clamp( std::log2( static_cast<float>( start_zoom ) ) + steps, lo, hi );
+    const float snapped = std::round( wanted * stops ) / stops;
+    return std::clamp( static_cast<int>( std::lround( std::exp2( snapped ) ) ), min_zoom, max_zoom );
+}
+
+float pan_speed( const float distance, const float dead_zone, const float full_travel )
+{
+    static constexpr float slowest = 3.0f;
+    static constexpr float fastest = 40.0f;
+    if( distance <= dead_zone || full_travel <= 0.0f ) {
+        return 0.0f;
+    }
+    const float reach = std::min( 1.0f, ( distance - dead_zone ) / full_travel );
+    // gentle near the middle, for lining the view up; quick at the rim
+    return slowest + ( fastest - slowest ) * reach * reach;
+}
+
 void pan_accumulator::reset()
 {
     rem_x = 0.0f;
@@ -150,14 +177,18 @@ int long_press_delay_ms()
 #endif
 }
 
-bool live_pinch_zoom()
+bool two_finger_gestures()
 {
-    return bool_option( "TOUCH_LIVE_PINCH_ZOOM" );
+    return bool_option( "TOUCH_TWO_FINGER_GESTURES" );
 }
 
-bool two_finger_pan()
+bool floating_joystick()
 {
-    return bool_option( "TOUCH_TWO_FINGER_PAN" );
+#if defined(TILES)
+    return get_option<std::string>( "TOUCH_JOYSTICK_MODE" ) == "floating";
+#else
+    return false;
+#endif
 }
 
 bool recenter_on_move()
@@ -182,7 +213,12 @@ bool menu_tap()
 
 bool owns_two_finger_gestures()
 {
-    return live_pinch_zoom() || two_finger_pan();
+    return two_finger_gestures();
+}
+
+bool upstream_two_finger_swipes( const bool default_mode )
+{
+    return !owns_two_finger_gestures() && !( default_mode && hud_enabled() );
 }
 
 bool hud_enabled()
@@ -531,7 +567,8 @@ void two_finger_begin( const view_mode mode, const float x0, const float y0, con
                        const float y1 )
 {
     two_finger = two_finger_state();
-    if( !g || !owns_two_finger_gestures() ) {
+    // the map screen always pinches; the play screen only with the setting
+    if( !g || ( mode == view_mode::map && !owns_two_finger_gestures() ) ) {
         return;
     }
     two_finger.active = true;
@@ -599,8 +636,9 @@ bool two_finger_flush()
         const two_finger_gesture seen = classify_two_finger( ratio,
                                         std::hypot( mid_x - two_finger.start_mid_x, mid_y - two_finger.start_mid_y ),
                                         touch_slop() );
-        const bool can_zoom = live_pinch_zoom() && two_finger.start_dist > touch_slop();
-        const bool can_pan = two_finger_pan() && two_finger.mode == view_mode::map;
+        const bool can_zoom = two_finger.start_dist > touch_slop() &&
+                              ( two_finger.mode != view_mode::map || use_tiles );
+        const bool can_pan = two_finger.mode == view_mode::map;
         if( seen == two_finger_gesture::zoom && can_zoom ) {
             two_finger.kind = two_finger_kind::zoom;
         } else if( seen == two_finger_gesture::pan && can_pan ) {
@@ -663,6 +701,9 @@ enum class owner : int {
     pad,
     // the HUD editor, see mobile_hud_edit.h
     hud_edit,
+    // the round zoom and pan controls of the HUD
+    zoom_dial,
+    pan_dial,
 };
 
 struct owned_finger_state {
@@ -688,6 +729,16 @@ struct owned_finger_state {
     std::optional<point> pad_dir;
     uint64_t pad_next = 0;
     bool pad_stepped = false;
+    // for the dials: left the slop radius, so it is a drag and not a tap
+    bool dial_moved = false;
+    // zoom_dial: the level when the thumb went down, and how many levels it asks for
+    int zoom_start = 0;
+    float zoom_steps = 0.0f;
+    // pan_dial: which way and how fast to scroll, in tiles per second
+    float pan_x = 0.0f;
+    float pan_y = 0.0f;
+    uint64_t pan_time = 0;
+    pan_accumulator pan;
 };
 } // namespace
 
@@ -802,6 +853,17 @@ bool finger_down( const float x, const float y, const bool default_mode )
                 request_wake_frames( 2 );
                 return true;
             }
+            if( hit->kind == mobile_hud::hit_kind::zoom_dial ||
+                hit->kind == mobile_hud::hit_kind::pan_dial ) {
+                const bool zoom = hit->kind == mobile_hud::hit_kind::zoom_dial;
+                owned_finger.who = zoom ? owner::zoom_dial : owner::pan_dial;
+                owned_finger.zoom_start = g->get_zoom();
+                owned_finger.pan_time = SDL_GetTicks();
+                mobile_hud::set_dial( zoom ? mobile_hud::piece_id::zoom : mobile_hud::piece_id::pan,
+                                      true, 0.0f, 0.0f );
+                request_wake_frames( 2 );
+                return true;
+            }
             owned_finger.who = owner::hud_button;
             owned_finger.hud_hit = *hit;
             return true;
@@ -826,6 +888,36 @@ bool finger_down( const float x, const float y, const bool default_mode )
     return false;
 }
 
+// A thumb on the zoom or pan dial has moved.  Only works out what it asks for;
+// dial_poll acts on it.
+static void dial_motion( const float x, const float y )
+{
+    const bool zoom = owned_finger.who == owner::zoom_dial;
+    const mobile_hud::piece_id piece = zoom ? mobile_hud::piece_id::zoom : mobile_hud::piece_id::pan;
+    const float unit = std::max( mobile_hud::unit_pixels(), 0.01f );
+    const float radius = std::max( mobile_hud::dial_radius( piece ), unit );
+    const float dx = x - owned_finger.down_x;
+    const float dy = y - owned_finger.down_y;
+    const float distance = std::hypot( dx, dy );
+    if( distance > touch_slop() ) {
+        owned_finger.dial_moved = true;
+    }
+    if( zoom ) {
+        // one zoom level for every 48 units the thumb travels, whatever the dial's size
+        owned_finger.zoom_steps = owned_finger.dial_moved ? -dy / ( 48.0f * unit ) : 0.0f;
+        mobile_hud::set_dial( piece, true, 0.0f, dy / radius );
+        return;
+    }
+    // top speed 70 units out, well past the rim of a small dial
+    const float speed = owned_finger.dial_moved ? pan_speed( distance, touch_slop(),
+                        70.0f * unit ) : 0.0f;
+    owned_finger.pan_x = distance > 0.0f ? dx / distance * speed : 0.0f;
+    owned_finger.pan_y = distance > 0.0f ? dy / distance * speed : 0.0f;
+    const float reach = std::min( 1.0f, distance / radius );
+    mobile_hud::set_dial( piece, true, distance > 0.0f ? dx / distance *reach : 0.0f,
+                          distance > 0.0f ? dy / distance *reach : 0.0f );
+}
+
 void finger_motion( const float x, const float y )
 {
     if( owned_finger.who == owner::prompt ) {
@@ -842,6 +934,11 @@ void finger_motion( const float x, const float y )
     if( owned_finger.who == owner::hud_edit ) {
         mobile_hud_edit::finger_motion( x, y );
         request_wake_frames( 2 );
+        return;
+    }
+    if( owned_finger.who == owner::zoom_dial || owned_finger.who == owner::pan_dial ) {
+        dial_motion( x, y );
+        request_wake_frames( 1 );
         return;
     }
     if( owned_finger.who != owner::imgui ) {
@@ -955,6 +1052,26 @@ bool finger_up( const float x, const float y, input_event &out )
             mobile_hud_edit::finger_up( x, y );
             request_wake_frames( 2 );
             break;
+        case owner::zoom_dial:
+            mobile_hud::set_dial( mobile_hud::piece_id::zoom, false, 0.0f, 0.0f );
+            if( finger.dial_moved && g && use_tiles ) {
+                // settle on the nearest zoom level
+                g->set_zoom( dial_zoom( finger.zoom_start, finger.zoom_steps, 1, min_zoom_level,
+                                        max_zoom() ) );
+                g->invalidate_main_ui_adaptor();
+                ui_manager::redraw_invalidated();
+            }
+            request_wake_frames( 2 );
+            break;
+        case owner::pan_dial:
+            mobile_hud::set_dial( mobile_hud::piece_id::pan, false, 0.0f, 0.0f );
+            if( !finger.dial_moved ) {
+                // a tap brings the view back to the player
+                recenter_view();
+                ui_manager::redraw_invalidated();
+            }
+            request_wake_frames( 2 );
+            break;
         case owner::hud_button: {
             // only if the finger is still on the button it went down on
             const std::optional<mobile_hud::hit> hit = mobile_hud::hit_at( x, y );
@@ -1031,6 +1148,17 @@ void finger_cancel()
     if( owned_finger.who == owner::hud_edit ) {
         mobile_hud_edit::finger_cancel();
     }
+    if( owned_finger.who == owner::zoom_dial ) {
+        mobile_hud::set_dial( mobile_hud::piece_id::zoom, false, 0.0f, 0.0f );
+        if( g && use_tiles && owned_finger.dial_moved ) {
+            // never leave the zoom between two levels
+            g->set_zoom( dial_zoom( g->get_zoom(), 0.0f, 1, min_zoom_level, max_zoom() ) );
+            g->invalidate_main_ui_adaptor();
+        }
+    }
+    if( owned_finger.who == owner::pan_dial ) {
+        mobile_hud::set_dial( mobile_hud::piece_id::pan, false, 0.0f, 0.0f );
+    }
     if( owned_finger.who == owner::imgui && ImGui::GetCurrentContext() != nullptr ) {
         if( owned_finger.raw_dragging ) {
             ImGui::GetIO().AddMouseButtonEvent( ImGuiMouseButton_Left, false );
@@ -1071,6 +1199,54 @@ bool pad_poll( input_event &out )
 bool pad_held()
 {
     return owned_finger.who == owner::pad;
+}
+
+// --- The zoom and pan dials ---
+
+bool dial_poll()
+{
+    if( !g ) {
+        return false;
+    }
+    bool changed = false;
+    if( owned_finger.who == owner::zoom_dial && owned_finger.dial_moved && use_tiles ) {
+        // follows the thumb in quarter levels; finger_up settles on a whole one
+        const int wanted = dial_zoom( owned_finger.zoom_start, owned_finger.zoom_steps, 4,
+                                      min_zoom_level, max_zoom() );
+        if( wanted != g->get_zoom() ) {
+            g->set_zoom( wanted );
+            changed = true;
+        }
+    } else if( owned_finger.who == owner::pan_dial ) {
+        const uint64_t now = SDL_GetTicks();
+        // a long gap is a stall, not a reason to jump
+        const float seconds = static_cast<float>( std::min<uint64_t>( now - owned_finger.pan_time,
+                              100 ) ) / 1000.0f;
+        owned_finger.pan_time = now;
+        if( owned_finger.pan_x != 0.0f || owned_finger.pan_y != 0.0f ) {
+            const point tiles = owned_finger.pan.add( owned_finger.pan_x * seconds,
+                                owned_finger.pan_y * seconds, 1.0f, 1.0f );
+            changed = pan_view( tiles );
+        }
+    }
+    if( changed ) {
+        g->invalidate_main_ui_adaptor();
+        ui_manager::redraw_invalidated();
+    }
+    return changed;
+}
+
+std::optional<uint32_t> held_wait_ms()
+{
+    switch( owned_finger.who ) {
+        case owner::pad:
+        case owner::zoom_dial:
+        case owner::pan_dial:
+            return 16;
+        default:
+            break;
+    }
+    return std::nullopt;
 }
 
 // --- Housekeeping ---
@@ -1189,6 +1365,9 @@ struct desktop_state {
     bool two_fingers = false;
     // already delivered a long press
     bool done = false;
+    // floating joystick: when the next step is due
+    uint64_t walk_next = 0;
+    bool walked = false;
 };
 
 struct scripted_event {
@@ -1360,6 +1539,29 @@ void desktop_poll( const bool default_mode, input_event &out )
         SDL_GetTicks() - desk.down_time >= static_cast<uint64_t>( long_press_delay_ms() ) ) {
         desk.done = true;
         desktop_click( click_kind::long_press, out );
+    }
+    // The floating joystick: a finger dragged over the map walks that way for
+    // as long as it is held, as upstream's virtual joystick does on Android.
+    if( desk.down[0] && !desk.owned && !desk.two_fingers && desk.moved && !desk.done &&
+        default_mode && out.type == input_event_t::error &&
+        mobile_hud::movement_pad_mode() == mobile_hud::pad_mode::floating &&
+        SDL_GetTicks() >= desk.walk_next ) {
+        const float dx = desk.x[0] - desk.down_x;
+        const float dy = desk.y[0] - desk.down_y;
+        if( classify_drag( dx, dy, touch_slop() ) != drag_axis::none ) {
+            desk.walk_next = SDL_GetTicks() + ( desk.walked ? 110 : 260 );
+            desk.walked = true;
+            static constexpr float pi = 3.14159265f;
+            const int octant = ( static_cast<int>( std::lround( std::atan2( dy, dx ) /
+                                                   ( pi * 0.25f ) ) ) % 8 + 8 ) % 8;
+            static constexpr std::array<int, 8> inputs = { {
+                    KEY_RIGHT, JOY_LS_DOWN_RIGHT, KEY_DOWN, JOY_LS_DOWN_LEFT,
+                    KEY_LEFT, JOY_LS_UP_LEFT, KEY_UP, JOY_LS_UP_RIGHT
+                }
+            };
+            out = input_event( inputs[static_cast<size_t>( octant )],
+                               octant % 2 == 1 ? input_event_t::gamepad : input_event_t::keyboard_char );
+        }
     }
 }
 

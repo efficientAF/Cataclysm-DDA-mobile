@@ -42,6 +42,7 @@ enum class piece_id : int {
     zoom,
     recenter,
     joy,
+    pan,
     num
 };
 
@@ -77,9 +78,9 @@ struct piece {
     // location, log
     int rows = 2;
     float width = 236.0f;
-    // status (icon size), body, joy
+    // status (icon size), body, joy, zoom and pan (diameter)
     float size = 34.0f;
-    // status, quick, zoom: a column instead of a row
+    // status, quick: a column instead of a row
     bool column = false;
     // status (max shown), quick (buttons)
     int count = 6;
@@ -135,6 +136,10 @@ struct insets {
     float right = 0.0f;
     float bottom = 0.0f;
 };
+
+// The zoom and pan dials are round; their diameter stays within these, in units.
+constexpr float dial_size_min = 44.0f;
+constexpr float dial_size_max = 120.0f;
 
 // The names used in the layout JSON.
 const char *json_name( piece_id id );

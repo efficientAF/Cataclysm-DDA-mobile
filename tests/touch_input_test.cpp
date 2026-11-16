@@ -1,4 +1,7 @@
 #include "cata_catch.h"
+#include "flexbuffer_json.h"
+#include "json_loader.h"
+#include "mobile_hud_layout.h"
 #include "point.h"
 #include "touch_input.h"
 
@@ -132,5 +135,76 @@ TEST_CASE( "touch_two_finger_gesture", "[touch_input]" )
     SECTION( "fingers moving together pan" ) {
         CHECK( classify_two_finger( 1.0f, 25.0f, 20.0f ) == two_finger_gesture::pan );
         CHECK( classify_two_finger( 1.15f, 200.0f, 20.0f ) == two_finger_gesture::pan );
+    }
+}
+
+TEST_CASE( "touch_dial_zoom", "[touch_input]" )
+{
+    using touch_input::dial_zoom;
+
+    SECTION( "at release it settles on a whole zoom level" ) {
+        CHECK( dial_zoom( 16, 0.0f, 1, 4, 256 ) == 16 );
+        CHECK( dial_zoom( 16, 0.4f, 1, 4, 256 ) == 16 );
+        CHECK( dial_zoom( 16, 0.6f, 1, 4, 256 ) == 32 );
+        CHECK( dial_zoom( 16, 2.2f, 1, 4, 256 ) == 64 );
+        CHECK( dial_zoom( 16, -1.0f, 1, 4, 256 ) == 8 );
+        CHECK( dial_zoom( 16, -1.6f, 1, 4, 256 ) == 4 );
+    }
+    SECTION( "it stops at the ends" ) {
+        CHECK( dial_zoom( 16, 20.0f, 1, 4, 256 ) == 256 );
+        CHECK( dial_zoom( 16, -20.0f, 1, 4, 256 ) == 4 );
+        CHECK( dial_zoom( 16, 20.0f, 4, 4, 64 ) == 64 );
+    }
+    SECTION( "while dragging it also stops between the levels" ) {
+        CHECK( dial_zoom( 16, 0.0f, 4, 4, 256 ) == 16 );
+        CHECK( dial_zoom( 16, 0.25f, 4, 4, 256 ) == 19 );
+        CHECK( dial_zoom( 16, 0.5f, 4, 4, 256 ) == 23 );
+        CHECK( dial_zoom( 16, 0.75f, 4, 4, 256 ) == 27 );
+        CHECK( dial_zoom( 16, 1.0f, 4, 4, 256 ) == 32 );
+        CHECK( dial_zoom( 16, -0.5f, 4, 4, 256 ) == 11 );
+    }
+    SECTION( "a zoom left between two levels settles on the nearest" ) {
+        CHECK( dial_zoom( 23, 0.0f, 1, 4, 256 ) == 32 );
+        CHECK( dial_zoom( 19, 0.0f, 1, 4, 256 ) == 16 );
+    }
+}
+
+TEST_CASE( "touch_pan_speed", "[touch_input]" )
+{
+    using touch_input::pan_speed;
+
+    // resting on the dial does not scroll
+    CHECK( pan_speed( 0.0f, 20.0f, 100.0f ) == 0.0f );
+    CHECK( pan_speed( 20.0f, 20.0f, 100.0f ) == 0.0f );
+    // faster the further out
+    const float slow = pan_speed( 30.0f, 20.0f, 100.0f );
+    const float mid = pan_speed( 70.0f, 20.0f, 100.0f );
+    const float fast = pan_speed( 120.0f, 20.0f, 100.0f );
+    CHECK( slow > 0.0f );
+    CHECK( mid > slow );
+    CHECK( fast > mid );
+    // and no faster past full travel
+    CHECK( pan_speed( 500.0f, 20.0f, 100.0f ) == fast );
+}
+
+TEST_CASE( "mobile_hud_layout_dials", "[touch_input]" )
+{
+    using mobile_hud::piece_id;
+    const mobile_hud::preset &base = mobile_hud::fallback_preset();
+
+    SECTION( "a layout from before the dials keeps the preset's zoom and pan" ) {
+        const JsonValue jv = json_loader::from_string(
+                                 R"({ "id": "old", "portrait": { "zoom": { "v": 0, "a": "bl", "x": 30, "y": 300, "dir": "col" } } })" );
+        const mobile_hud::preset p = mobile_hud::read_preset( jv.get_object(), base );
+        CHECK( p.portrait[piece_id::zoom].visible );
+        CHECK( p.portrait[piece_id::zoom].pin == base.portrait[piece_id::zoom].pin );
+        CHECK( p.portrait[piece_id::pan].visible );
+    }
+    SECTION( "dial sizes stay between 44 and 120" ) {
+        const JsonValue jv = json_loader::from_string(
+                                 R"({ "id": "sizes", "portrait": { "zoom": { "v": 1, "a": "tr", "x": 12, "y": 150, "size": 10 }, "pan": { "v": 1, "a": "tr", "x": 12, "y": 214, "size": 500 } } })" );
+        const mobile_hud::preset p = mobile_hud::read_preset( jv.get_object(), base );
+        CHECK( p.portrait[piece_id::zoom].size == 44.0f );
+        CHECK( p.portrait[piece_id::pan].size == 120.0f );
     }
 }

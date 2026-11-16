@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "cached_options.h"
 #include "cata_imgui.h"
 #if defined(__ANDROID__)
 #include "cursesport.h"
@@ -374,22 +375,28 @@ void settings_window::draw_controls()
                 _( "Hold a finger still on a map tile to choose what to do there" ) );
     slider_row( "TOUCH_LONG_PRESS_DELAY", 300, 1500, 10, _( "Long-press time" ),
                 _( "How long to hold before the action menu opens" ) );
-    switch_row( "TOUCH_LIVE_PINCH_ZOOM", _( "Pinch zooms as you move" ),
-                _( "Off zooms one step after you let go" ) );
     switch_row( "TOUCH_ZOOM_NO_WRAP", _( "Zoom stops at the ends" ),
                 _( "Off jumps from the closest zoom level to the furthest" ) );
-    switch_row( "TOUCH_TWO_FINGER_PAN", _( "Two-finger drag pans the view" ),
-                _( "Shows a Recenter button while you look around" ) );
+    switch_row( "TOUCH_TWO_FINGER_GESTURES", _( "Pinch and two-finger drag" ),
+                _( "Pinch to zoom and drag with two fingers to pan, as well as the Zoom and Pan controls" ) );
     switch_row( "TOUCH_RECENTER_ON_MOVE", _( "Recenter when you move" ),
                 _( "Taking a step brings the view back to you" ) );
-    switch_row( "ANDROID_SHOW_VIRTUAL_JOYSTICK", _( "Show the movement stick" ),
-                _( "Appears under your finger when you touch and drag" ) );
+    segment_row( "TOUCH_JOYSTICK_MODE", _( "Movement joystick" ),
+    _( "Fixed is a pad on the HUD with a button to show and hide it; Floating starts where you drag on the map" ), {
+        { "fixed", _( "Fixed" ) }, { "floating", _( "Floating" ) }
+    } );
+    switch_row( "ANDROID_SHOW_VIRTUAL_JOYSTICK", _( "Show the floating joystick" ),
+                _( "Draws the Floating joystick under your finger while you drag" ) );
     switch_row_int( "ANDROID_VIBRATION", 10, _( "Vibration" ), _( "Short buzz on taps" ) );
 
     section( _( "DISPLAY" ) );
     segment_row( "ANDROID_TEXT_SIZE", _( "Text size" ), "", {
         { "auto", _( "Auto" ) }, { "8x16", _( "S" ) }, { "10x20", _( "M" ) }, { "12x24", _( "L" ) },
         { "14x28", _( "XL" ) }
+    } );
+    segment_row( "USE_TILES", _( "Map graphics" ),
+    _( "Tiles draws the map with pictures; ASCII draws it with letters and cannot zoom" ), {
+        { "true", _( "Tiles" ) }, { "false", _( "ASCII" ) }
     } );
     switch_row( "MOBILE_HUD", _( "Full-screen map" ),
                 _( "Hides the sidebar and draws status and messages over the map" ) );
@@ -436,9 +443,18 @@ void commit( bool changed )
     if( !changed ) {
         return;
     }
+    const bool was_tiles = use_tiles;
+    // also refreshes the cached options, use_tiles among them
     get_options().save();
     if( g ) {
         g->on_options_changed();
+        if( use_tiles != was_tiles ) {
+            // Tiles and letters differ in size, so the map window is laid out
+            // again, as upstream's options screen does.  The tileset itself is
+            // loaded at startup either way.
+            g->reset_zoom();
+            g->mark_main_ui_adaptor_resize();
+        }
     }
 #if defined(__ANDROID__)
     // the text size decides the terminal grid

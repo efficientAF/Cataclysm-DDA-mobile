@@ -3430,7 +3430,7 @@ void options_manager::add_options_android()
 
     add_option_group( mobile_page, Group( "mobile_touch_opts",
                                           to_translation( "Mobile touch controls" ),
-                                          to_translation( "Touch controls of the mobile UI: tapping the map, the long-press menu, pinch zoom and panning." ) ),
+                                          to_translation( "Touch controls of the mobile UI: tapping the map, the long-press menu, the movement joystick, pinch zoom and panning." ) ),
     [&]( const std::string & page_id ) {
         add( "TOUCH_TAP_TO_ACT", page_id, to_translation( "Tap the map to act" ),
              to_translation( "If true, tapping the tile next to you moves, attacks or interacts in that direction, and tapping your own tile waits a moment.  Tapping a tile further away shows a route; tap it again to travel there.  Taps act at once, without the double-tap delay." ),
@@ -3447,19 +3447,20 @@ void options_manager::add_options_android()
              300, 1500, 500
            );
 
-        add( "TOUCH_LIVE_PINCH_ZOOM", page_id, to_translation( "Live pinch zoom" ),
-             to_translation( "If true, pinching zooms the map while your fingers move, one zoom level at a time, instead of once after you let go." ),
-             mobile_default
-           );
-
         add( "TOUCH_ZOOM_NO_WRAP", page_id, to_translation( "Zoom stops at the ends" ),
              to_translation( "If true, zooming stops at the closest and the furthest zoom level instead of jumping to the other end." ),
              mobile_default
            );
 
-        add( "TOUCH_TWO_FINGER_PAN", page_id, to_translation( "Two-finger drag pans the view" ),
-             to_translation( "If true, dragging with two fingers moves the view, and a Recenter button appears while you look around.  This replaces the two-finger swipe keys." ),
-             mobile_default
+        add( "TOUCH_TWO_FINGER_GESTURES", page_id, to_translation( "Pinch and two-finger drag" ),
+             to_translation( "If true, pinching on the play screen zooms the map while your fingers move, and dragging with two fingers moves the view.  The zoom and pan controls of the mobile HUD do the same with one thumb, so this is off by default.  The map screen can always be pinched." ),
+             false
+           );
+
+        add( "TOUCH_JOYSTICK_MODE", page_id, to_translation( "Movement joystick" ),
+             to_translation( "Fixed: a movement pad at a set place on the mobile HUD, with a button that shows and hides it.  Floating: touch and drag anywhere on the map that is not a button, and the joystick starts under your finger." ),
+        { { "fixed", to_translation( "Fixed" ) }, { "floating", to_translation( "Floating" ) } },
+        "fixed"
            );
 
         add( "TOUCH_RECENTER_ON_MOVE", page_id, to_translation( "Recenter when you move" ),

@@ -16,6 +16,7 @@
 #include "action.h"
 #include "avatar.h"
 #include "bodypart.h"
+#include "cached_options.h"
 #include "color.h"
 #include "creature.h"
 #include "cursesport.h"
@@ -128,6 +129,23 @@ static SDL_FRect pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
 // where the knob is, -1 to 1 each way
 static float pad_knob_x = 0.0f;
 static float pad_knob_y = 0.0f;
+
+// the zoom and pan dials: index 0 is zoom, 1 is pan
+namespace
+{
+struct dial_state {
+    bool held = false;
+    float knob_x = 0.0f;
+    float knob_y = 0.0f;
+    float radius = 0.0f;
+};
+} // namespace
+static std::array<dial_state, 2> dials;
+
+static dial_state &dial_of( const piece_id which )
+{
+    return dials[which == piece_id::pan ? 1 : 0];
+}
 
 // the editor, see mobile_hud_edit.h
 static bool editing = false;
@@ -781,11 +799,80 @@ static void draw_quick_actions( const piece &cfg )
     draw_button_strip( piece_id::quick, cfg.column, shown, 46.0f * unit );
 }
 
+// A filled triangle; the points in window pixels.
+static void fill_triangle( const SDL_FPoint &a, const SDL_FPoint &b, const SDL_FPoint &c,
+                           const rgba &color )
+{
+    const SDL_FColor fc = to_fcolor( color );
+    const std::array<SDL_Vertex, 3> vertices = { {
+            { a, fc, { 0.0f, 0.0f } }, { b, fc, { 0.0f, 0.0f } }, { c, fc, { 0.0f, 0.0f } }
+        }
+    };
+    SDL_SetRenderDrawBlendMode( sdl, SDL_BLENDMODE_BLEND );
+    SDL_RenderGeometry( sdl, nullptr, vertices.data(), 3, nullptr, 0 );
+}
+
+// The round base of a dial and its knob, which follows the thumb.  Returns the
+// knob's place, for the graphic on it.
+static SDL_FRect draw_dial_base( const piece_id id, const SDL_FRect &area, const hit_kind kind )
+{
+    dial_state &dial = dial_of( id );
+    const float size = area.w;
+    dial.radius = size * 0.5f;
+    fill_round( area, size * 0.5f, col_panel );
+    stroke_round( area, size * 0.5f, std::max( 1.0f, 1.5f * unit ),
+                  dial.held && !editing ? col_accent : rgba{ 233, 236, 223, 71 } );
+    const float knob = size * 0.46f;
+    const float travel = ( size - knob ) * 0.5f - 2.0f * unit;
+    const SDL_FRect knob_rect = { area.x + ( size - knob ) * 0.5f + dial.knob_x * travel,
+                                  area.y + ( size - knob ) * 0.5f + dial.knob_y * travel, knob, knob
+                                };
+    fill_round( knob_rect, knob * 0.5f, dial.held && !editing ? rgba{ 240, 145, 63, 64 } :
+                rgba{ 233, 236, 223, 41 } );
+    stroke_round( knob_rect, knob * 0.5f, std::max( 1.0f, 1.5f * unit ), { 233, 236, 223, 128 } );
+    if( !editing ) {
+        buttons.push_back( { to_rect( area ), { kind, ACTION_NULL } } );
+    }
+    return knob_rect;
+}
+
+// Zoom: a magnifier on the knob, plus above and minus below.  Drag up to zoom
+// in and down to zoom out; see touch_input.cpp.
 static void draw_zoom( const piece &cfg )
 {
-    draw_button_strip( piece_id::zoom, cfg.column, {
-        { ACTION_ZOOM_IN, "plus", std::string() }, { ACTION_ZOOM_OUT, "minus", std::string() }
-    }, 40.0f * unit );
+    const float size = std::clamp( cfg.size, dial_size_min, dial_size_max ) * unit;
+    const SDL_FRect area = place_piece( piece_id::zoom, size, size );
+    const SDL_FRect knob = draw_dial_base( piece_id::zoom, area, hit_kind::zoom_dial );
+    const float mark = size * 0.2f;
+    const float cx = area.x + ( size - mark ) * 0.5f;
+    draw_icon( "plus", cx, area.y + size * 0.045f, mark, col_muted );
+    draw_icon( "minus", cx, area.y + size - size * 0.045f - mark, mark, col_muted );
+    const float glass = knob.w * 0.62f;
+    draw_icon( "search", knob.x + ( knob.w - glass ) * 0.5f, knob.y + ( knob.h - glass ) * 0.5f, glass,
+               col_fg );
+}
+
+// Pan: an arrowhead each way and a target on the knob.  Drag to scroll the
+// view that way, tap to recenter; see touch_input.cpp.
+static void draw_pan( const piece &cfg )
+{
+    const float size = std::clamp( cfg.size, dial_size_min, dial_size_max ) * unit;
+    const SDL_FRect area = place_piece( piece_id::pan, size, size );
+    const SDL_FRect knob = draw_dial_base( piece_id::pan, area, hit_kind::pan_dial );
+    const float cx = area.x + size * 0.5f;
+    const float cy = area.y + size * 0.5f;
+    // tip, and half the width of the base
+    const float tip = size * 0.5f - size * 0.07f;
+    const float base = tip - size * 0.11f;
+    const float half = size * 0.09f;
+    fill_triangle( { cx, cy - tip }, { cx + half, cy - base }, { cx - half, cy - base }, col_muted );
+    fill_triangle( { cx, cy + tip }, { cx - half, cy + base }, { cx + half, cy + base }, col_muted );
+    fill_triangle( { cx - tip, cy }, { cx - base, cy - half }, { cx - base, cy + half }, col_muted );
+    fill_triangle( { cx + tip, cy }, { cx + base, cy + half }, { cx + base, cy - half }, col_muted );
+    const float mark = knob.w * 0.62f;
+    // lit while the view is away from the player: a tap brings it back
+    draw_icon( "target", knob.x + ( knob.w - mark ) * 0.5f, knob.y + ( knob.h - mark ) * 0.5f, mark,
+               touch_input::view_is_panned() && !editing ? col_accent : col_fg );
 }
 
 // Shown while the view is panned away from the player.
@@ -804,14 +891,22 @@ static void draw_recenter()
     add_button( rect, hit_kind::recenter, ACTION_CENTER );
 }
 
+// How a pad at a fixed place shows: behind its button, or always.  Layouts made
+// before the joystick setting may still say floating; that is the button now.
+static pad_mode fixed_pad_mode( const piece &cfg )
+{
+    return cfg.mode == pad_mode::always ? pad_mode::always : pad_mode::toggle;
+}
+
 // The movement pad: a ring with a knob that follows the thumb, and in toggle
 // mode a round button that shows and hides it.
 static void draw_pad( const piece &cfg )
 {
     pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
-    if( cfg.mode == pad_mode::floating ) {
+    const pad_mode mode = fixed_pad_mode( cfg );
+    if( touch_input::floating_joystick() ) {
         if( editing ) {
-            const std::string note = _( "Pad appears where you drag" );
+            const std::string note = _( "Joystick is set to Floating in Settings" );
             const float w = text_width( face::body, 11.0f, note ) + 16.0f * unit;
             const SDL_FRect rect = place_piece( piece_id::joy, w, 28.0f * unit );
             draw_panel( rect );
@@ -821,7 +916,7 @@ static void draw_pad( const piece &cfg )
     }
     const float size = cfg.size * unit;
     const SDL_FRect area = place_piece( piece_id::joy, size, size );
-    const bool open = cfg.mode == pad_mode::always || pad_open || editing;
+    const bool open = mode == pad_mode::always || pad_open || editing;
     const bool right = cfg.pin == anchor::top_right || cfg.pin == anchor::bottom_right;
     const bool bottom = cfg.pin == anchor::bottom_left || cfg.pin == anchor::bottom_center ||
                         cfg.pin == anchor::bottom_right;
@@ -850,7 +945,7 @@ static void draw_pad( const piece &cfg )
             buttons.push_back( { to_rect( area ), { hit_kind::pad, ACTION_NULL } } );
         }
     }
-    if( cfg.mode == pad_mode::toggle ) {
+    if( mode == pad_mode::toggle ) {
         // in the pad's corner while it is hidden, just past it while it shows
         const float b = 44.0f * unit;
         SDL_FRect rect = { right ? area.x + size - b : area.x, bottom ? area.y + size - b : area.y, b, b };
@@ -910,6 +1005,7 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
     pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
     piece_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
     handle_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
+    dials[0].radius = dials[1].radius = 0.0f;
     if( !g || ( !default_mode && !editing ) || !renderer || window_w <= 0 || window_h <= 0 ) {
         return;
     }
@@ -968,8 +1064,12 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
         if( shown( piece_id::quick ) ) {
             draw_quick_actions( current[piece_id::quick] );
         }
-        if( shown( piece_id::zoom ) ) {
+        // the map only zooms when it is drawn with tiles
+        if( shown( piece_id::zoom ) && ( use_tiles || editing ) ) {
             draw_zoom( current[piece_id::zoom] );
+        }
+        if( shown( piece_id::pan ) ) {
+            draw_pan( current[piece_id::pan] );
         }
         if( shown( piece_id::joy ) ) {
             draw_pad( current[piece_id::joy] );
@@ -1022,7 +1122,7 @@ std::optional<hit> hit_at( const float x, const float y )
 
 pad_mode movement_pad_mode()
 {
-    if( !touch_input::hud_enabled() || !g ) {
+    if( !touch_input::hud_enabled() || !g || touch_input::floating_joystick() ) {
         return pad_mode::floating;
     }
     int w = 0;
@@ -1031,7 +1131,7 @@ pad_mode movement_pad_mode()
         SDL_GetWindowSize( win, &w, &h );
     }
     const piece &joy = active_layout( w > h )[piece_id::joy];
-    return joy.visible ? joy.mode : pad_mode::floating;
+    return joy.visible ? fixed_pad_mode( joy ) : pad_mode::floating;
 }
 
 void toggle_pad()
@@ -1069,6 +1169,26 @@ std::optional<point> pad_direction( const float x, const float y )
 void release_pad()
 {
     pad_knob_x = pad_knob_y = 0.0f;
+}
+
+// --- The zoom and pan dials ---
+
+void set_dial( const piece_id which, const bool held, const float knob_x, const float knob_y )
+{
+    dial_state &dial = dial_of( which );
+    dial.held = held;
+    dial.knob_x = std::clamp( knob_x, -1.0f, 1.0f );
+    dial.knob_y = std::clamp( knob_y, -1.0f, 1.0f );
+}
+
+float dial_radius( const piece_id which )
+{
+    return dial_of( which ).radius;
+}
+
+float unit_pixels()
+{
+    return unit;
 }
 
 // --- The editor's view of the HUD ---
