@@ -71,6 +71,7 @@
 #include "messages.h"
 #include "mobile_crafting.h"
 #include "mobile_drawer.h"
+#include "mobile_inventory.h"
 #include "mobile_menu.h"
 #include "mobile_settings.h"
 #include "monster.h"
@@ -2617,6 +2618,9 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
         case ACTION_PICKUP_ALL:
             if( mouse_target ) {
                 pickup( *mouse_target );
+            } else if( act == ACTION_PICKUP && mobile_menu::enabled() ) {
+                // Mobile UI: picking up is the Nearby tab of the mobile inventory
+                mobile_inventory::show( mobile_inventory::tab::nearby );
             } else {
                 if( act == ACTION_PICKUP_ALL ) {
                     pickup_all();
@@ -2667,7 +2671,12 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
             break;
 
         case ACTION_INVENTORY:
-            game_menus::inv::common();
+            if( mobile_menu::enabled() ) {
+                // Mobile UI: the canvas's inventory screen instead of upstream's
+                mobile_inventory::show( mobile_inventory::tab::carried );
+            } else {
+                game_menus::inv::common();
+            }
             break;
 
         case ACTION_COMPARE:
