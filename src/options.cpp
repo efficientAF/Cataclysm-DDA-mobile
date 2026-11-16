@@ -3416,7 +3416,7 @@ void options_manager::add_options_android()
     const std::string mobile_page = "interface";
     const bool mobile_default = false;
 #endif
-    add_empty_line( mobile_page );
+    this->add_empty_line( mobile_page );
 
     add( "MOBILE_HUD", mobile_page, to_translation( "Mobile HUD (full-screen map)" ),
          to_translation( "If true, the sidebar is hidden so the map fills the screen, and the location, status and latest messages are drawn over the map instead.  Experimental: most sidebar information is not shown yet." ),
