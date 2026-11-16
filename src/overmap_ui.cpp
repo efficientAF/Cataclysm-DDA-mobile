@@ -57,6 +57,7 @@
 #include "mapgendata.h"
 #include "messages.h"
 #include "mission.h"
+#include "mobile_overmap.h"
 #include "mongroup.h"
 #include "mtype.h"
 #include "npc.h"
@@ -2034,9 +2035,13 @@ static bool try_travel_to_destination( avatar &player_character, const tripoint_
         ui_manager::redraw();
     }
     std::string confirm_msg;
+    // Mobile UI: "Travel here" on the tile sheet already was the question, unless there is a warning
+    bool confirmed = mobile_overmap::travel_confirmed();
     if( !driving && player_character.weight_carried() > player_character.weight_capacity() ) {
+        confirmed = false;
         confirm_msg = _( "You are overburdened, are you sure you want to travel (it may be painful)?" );
     } else if( !driving && player_character.in_vehicle ) {
+        confirmed = false;
         confirm_msg = _( "You are in a vehicle but not driving.  Are you sure you want to walk?" );
     } else if( driving ) {
         if( dest_is_curs ) {
@@ -2051,7 +2056,7 @@ static bool try_travel_to_destination( avatar &player_character, const tripoint_
             confirm_msg = _( "Travel to your destination?" );
         }
     }
-    if( query_yn( confirm_msg ) ) {
+    if( confirmed || query_yn( confirm_msg ) ) {
         if( !path_changed ) {
             player_character.omt_path.swap( path );
         }
@@ -2108,13 +2113,21 @@ static tripoint_abs_omt display()
     data.ui = std::make_shared<ui_adaptor>();
     std::shared_ptr<ui_adaptor> ui = data.ui;
 
-    overmap_sidebar om_sidebar( data, ictxt );
+    // Mobile UI: the canvas's map chrome takes the place of the sidebar, see mobile_overmap.h
+    const bool mobile = mobile_overmap::wanted( data );
+    std::optional<overmap_sidebar> om_sidebar;
+    std::optional<mobile_overmap::view> mobile_view;
+    if( mobile ) {
+        mobile_view.emplace();
+    } else {
+        om_sidebar.emplace( data, ictxt );
+    }
 
-    ui->on_screen_resize( []( ui_adaptor & ui ) {
+    ui->on_screen_resize( [mobile]( ui_adaptor & ui ) {
         /**
          * Handle possibly different overmap font size
          */
-        OVERMAP_LEGEND_WIDTH = clamp( TERMX / 5, 28, 55 );
+        OVERMAP_LEGEND_WIDTH = mobile ? 0 : clamp( TERMX / 5, 28, 55 );
         OVERMAP_WINDOW_HEIGHT = TERMY;
         OVERMAP_WINDOW_WIDTH = TERMX - OVERMAP_LEGEND_WIDTH;
         OVERMAP_WINDOW_TERM_WIDTH = OVERMAP_WINDOW_WIDTH;
@@ -2222,6 +2235,10 @@ static tripoint_abs_omt display()
 #else
         action = ictxt.handle_input( get_option<int>( "BLINK_SPEED" ) );
 #endif
+        // Mobile UI: taps on the chrome become the actions below, drags move the cursor
+        if( mobile_view ) {
+            action = mobile_view->handle( action, ictxt, curs );
+        }
         if( !display_path.empty() ) {
             std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
             // We go faster per-tile the more we have to go
@@ -2243,7 +2260,8 @@ static tripoint_abs_omt display()
 
             curs += vec->xy().raw() *
                     scroll_d; // TODO: Make += etc. available with corresponding relative coordinates.
-        } else if( action == "MOUSE_MOVE" || action == "TIMEOUT" ) {
+        } else if( !mobile && ( action == "MOUSE_MOVE" || action == "TIMEOUT" ) ) {
+            // Mobile UI: no edge scrolling; a finger rests wherever it last tapped
             tripoint_rel_omt edge_scroll = g->mouse_edge_scrolling_overmap( ictxt );
             if( edge_scroll != tripoint_rel_omt::zero ) {
                 if( action == "MOUSE_MOVE" ) {
