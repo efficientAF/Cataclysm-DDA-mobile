@@ -192,7 +192,10 @@ class editor_window : public cataimgui::window
         bar_action tapped = bar_action::none;
     protected:
         cataimgui::bounds get_bounds() override {
-            return { 0.0f, 0.0f, 1.0f, 1.0f };
+            // One pixel short of the screen, so that ui_manager keeps redrawing
+            // the map underneath (see ui_adaptor::invalidate_ui).
+            const ImVec2 size = ImGui::GetMainViewport()->Size;
+            return { 0.0f, 0.0f, size.x, std::max( size.y - 1.0f, 2.0f ) };
         }
         void draw_controls() override;
     private:
@@ -316,7 +319,8 @@ void editor_window::draw_bar( const ImVec2 &origin, const ImVec2 &size )
     const float avail = size.x - safe.x - safe.z - 24.0f * u;
     const float gap = 8.0f * u;
     const float pad = 10.0f * u;
-    const float w = std::min( avail, 372.0f * u );
+    // narrow enough to leave the drawer handles at the sides free
+    const float w = std::min( avail - 48.0f * u, 372.0f * u );
     const float button_w = ( w - 2.0f * pad - 3.0f * gap ) / 4.0f;
     const float button_h = 44.0f * u;
     const std::string help = _( "Drag a piece to move it. Tap it for options." );
@@ -515,12 +519,14 @@ void editor_window::draw_controls()
 {
     const ImGuiViewport *const viewport = ImGui::GetMainViewport();
     draw = ImGui::GetWindowDrawList();
+    draw->PushClipRectFullScreen();
     editor.chrome.clear();
     if( editor.selection >= 0 ) {
         draw_options( viewport->Pos, viewport->Size );
     } else {
         draw_bar( viewport->Pos, viewport->Size );
     }
+    draw->PopClipRect();
     mobile_hud::update_edit( editor.working, editor.selection );
 }
 
@@ -534,8 +540,11 @@ void pick_preset()
     for( const mobile_hud::preset &p : presets ) {
         spec.rows.push_back( { "", _( p.name ), "" } );
     }
+    // the HUD is drawn over everything, so it steps aside for the sheet
     editor.in_sheet = true;
+    mobile_hud::end_edit();
     const int tapped = mobile_ui::show_sheet( spec );
+    mobile_hud::begin_edit( editor.working );
     editor.in_sheet = false;
     if( tapped >= 0 && static_cast<size_t>( tapped ) < presets.size() ) {
         editor.working = presets[static_cast<size_t>( tapped )];
@@ -559,7 +568,9 @@ void pick_pieces( const bool landscape )
             spec.rows.push_back( { layout.drawers[i].visible ? "check" : "", mobile_hud::display_name( static_cast<drawer_id>( i ) ), layout.drawers[i].visible ? _( "Shown" ) : _( "Hidden" ) } );
         }
         editor.in_sheet = true;
+        mobile_hud::end_edit();
         const int tapped = mobile_ui::show_sheet( spec );
+        mobile_hud::begin_edit( editor.working );
         editor.in_sheet = false;
         if( tapped < 0 ) {
             return;

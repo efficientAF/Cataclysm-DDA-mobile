@@ -45,13 +45,11 @@ This is a fork of CleverRaven/Cataclysm-DDA. Its goal is a mobile-first Android 
 - **Desktop tiles:** needs SDL3 3.4 or newer, plus SDL3_image, SDL3_ttf and SDL3_mixer. Use CMake (`CMakePresets.json`) or `make TILES=1`. See `doc/c++/COMPILING.md`.
 - **Android:** `android/` (Gradle). Needs the Android SDK and NDK; the SDL3 AARs download automatically (`android/app/build.gradle`). CI builds bundles with `.github/workflows/release-android-bundle.yaml`.
 - **Tests:** `make tests` or the CMake test targets. The curses build (`make TILES=0`) needs no SDL and is the fastest way to compile-check logic.
-- **Cloud environment `cataclysm-dda-mobile` (Nov 2026):** allows `dl.google.com`. It has no setup script, so each new session installs the tools first (about two minutes):
-  - `apt-get install -y ccache gettext astyle glslang-tools`
-  - Android SDK into `/opt/android-sdk`: command-line tools from `https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip`, then `sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.1.13356709" "cmake;3.22.1"`, and `sdk.dir=/opt/android-sdk` in `android/local.properties`.
+- **Cloud environment `cataclysm-dda-mobile` (Nov 2026):** allows `dl.google.com`. It has no setup script (the owner declined saving one), so each new session first runs `bash tools/mobile_ui/setup_env.sh` from the directory that holds the checkout (about two minutes). It installs the test tools (xvfb, xdotool, imagemagick, astyle, glslang, ccache), builds SDL3 3.4.10, SDL3_image 3.4.4 and SDL3_ttf 3.2.2 into `/usr/local`, puts the Android SDK and NDK into `/opt/android-sdk` and writes `android/local.properties`.
 - **APK:** `cd android && ./gradlew --no-daemon -Pj=4 -Plocalize=false -Pabi_arm_32=false assembleExperimentalDebug`. About 30 minutes from scratch on 4 cores. Output is in `android/app/build/outputs/apk/experimental/debug/`. After adding a source file, `touch android/app/jni/CMakeLists.txt` so it is picked up.
   - App ID is `com.efficientaf.cddamobile` (plus `.experimental`); debug builds are signed with `android/app/debug.keystore`.
   - Android-only code does not compile on desktop. Check it with the NDK before pushing; a full Gradle build is the real test.
-- **Desktop tiles:** Ubuntu 24.04 has no SDL3 packages. Build SDL3 3.4.10, SDL3_image 3.4.4 and SDL3_ttf 3.2.2 from the release tarballs on GitHub (`github.com/libsdl-org/<repo>/releases/download/...`) with CMake into `/usr/local`, then `make -j4 TILES=1 SOUND=0 LOCALIZE=0 RUNTESTS=0 ASTYLE=0 LINTJSON=0 cataclysm-tiles`.
+- **Desktop build:** `make -j4 TILES=1 SOUND=0 LOCALIZE=0 CCACHE=1 RUNTESTS=0 ASTYLE=0 LINTJSON=0 DEBUGSYMS= cataclysm-tiles`, in the repo itself. About 25 minutes from scratch; ccache makes later builds and other worktrees fast.
 - **Testing touch without a phone:** use `tools/mobile_ui/` (needs `xvfb xdotool imagemagick x11-utils`), or by hand: run the desktop build under `Xvfb` with `SOFTWARE_RENDERING` on and the `TOUCH_*` options on, and feed it gestures through `CATA_TOUCH_SCRIPT` (format in `src/touch_input.h`). Take screenshots with ImageMagick's `import`. On X11, ImGui follows the real mouse pointer, so park it (`xdotool mousemove`) where a scripted tap on an ImGui window will land.
 
 ## Mobile code (this fork)
@@ -60,21 +58,24 @@ Everything is behind options registered at the end of `add_options_android()` in
 
 - `src/touch_input.{h,cpp}`: tap, long-press, pinch, pan, ImGui pointer input (tap = click, drag = scroll, raw-drag areas), zoom range, and the desktop stand-in for the Android gesture code.
 - `src/mobile_ui.{h,cpp}`: the canvas look: palette, fonts (`data/font/Barlow*.ttf`, `JetBrainsMono-Medium.ttf`), icons (`data/mobile_ui/icons/*.svg`), `pressable`, `box`, `app_bar`, bottom sheets.
-- `src/mobile_hud.{h,cpp}`: play-screen overlay drawn with SDL in `refresh_display()`, fixed at the Balanced preset.
+- `src/mobile_prompt.{h,cpp}`: the prompt buttons that replace upstream's shortcut bar. Two general sources: key hints in an on-screen note (`input_context::get_desc` records the key lists it hands out; a note that contains one gets a button named after the hint's text, e.g. "Accept your fate"), and the registered actions of the input context on top of the stack (named buttons, overflow behind "More"). Mobile screens opt out with `mobile_prompt::own_controls`. Drawn on ImGui's foreground list at the end of each UI frame (`ui_manager.cpp`); fingers come from `touch_input.cpp`.
+- `src/mobile_hud.{h,cpp}`: play-screen overlay drawn with SDL in `refresh_display()`. Pieces: location, status icons, body, wielded, log, quick actions, zoom buttons, recenter, movement pad (toggle, always, or upstream's drag joystick), drawer handles.
+- `src/mobile_hud_layout.{h,cpp}`: layouts in the canvas's JSON format. Built-in presets are game data, `data/json/ui/mobile_hud/presets.json` (`"type": "mobile_hud_preset"`); the player's layout is `mobile_hud.json` in the config folder. Positions count from the edge of the canvas's phone; `place()` swaps the canvas's notch insets for the real ones.
+- `src/mobile_hud_edit.{h,cpp}`: Edit HUD mode (pause sheet and Settings): drag pieces and drawer handles, tap a piece for options, Presets, Pieces. Edits the orientation the phone is held in.
 - Screens (ImGui, one file pair each): `mobile_menu` (main menu, new game, pause and wait sheets), `mobile_chargen`, `mobile_inventory` (also replaces the pick-up menu), `mobile_crafting`, `mobile_drawer` (Info and Log drawers, minimap), `mobile_overmap`, `mobile_settings`, `mobile_death`, `mobile_dialog` (popups, yes/no, `uilist` as a sheet).
 - Tests: `tests/touch_input_test.cpp` (`[touch_input]`).
 - `tools/mobile_ui/`: the desktop test kit (`run.sh`, `drive.sh`, `build.sh`), an NDK syntax check, and `BRIEF.md`, the brief used for workers building one screen each.
 
-### Status and open work (16 Nov 2026)
+### Status and open work (16 Nov 2026, second session)
 
-Every canvas screen exists and was checked on a desktop build with scripted touches; the owner tests APKs on a phone. Open, most important first:
+Open, most important first:
 
-1. **Prompts that expect a key** have no touch answer: for example "Press ESC, q, Q or SPACE to accept your fate…" on death and "RETURN to move anyway" from safe mode. The owner wants on-screen buttons that pop up only in these states, richer than upstream's single-character shortcut row (named buttons for the keys the current prompt or input context accepts).
-2. Upstream's shortcut bar is hidden on the map and over mobile screens (`touch_input::hide_shortcut_bar`) but still shows over upstream text screens; item 1 should replace it there.
-3. Screens still upstream's: keybindings, full options list, `uilist` menus with tabs, callbacks or fixed positions, and anything the canvas does not cover (NPC dialogue, bionics, mutations, vehicles, construction, look-around).
-4. Play screen: movement-pad toggle and zoom buttons as HUD pieces, Edit HUD mode, presets from `data/json/ui/mobile_hud/`, left handle opening straight onto the map; portrait HUD was not verified.
-5. Map: a drag lands about one tile short; two fingers only zoom. Sheets cannot be dragged down. Yes/no questions still say "(Case Sensitive)".
-6. Smooth pinch scaling between zoom levels.
+1. **Old screens** still upstream's: keybindings, full options list, `uilist` menus with tabs, callbacks or fixed positions, NPC dialogue, bionics, mutations, vehicles, construction, look-around. They now get the prompt buttons, but no mockups exist yet: a worker that was adding them to the canvas was cut off by a usage limit, and nothing is known to be published. Add the mockups to the canvas first, then build to them (`tools/mobile_ui/BRIEF.md`).
+2. **Not verified:** the safe-mode "Go back / Move anyway" prompt in a live game (the parsing is unit-tested with its exact text; the death-camera prompt was run), `tests/mobile_prompt_test.cpp` and the rest of the unit tests (not built this session), dragging a drawer handle in the editor, drawers on the bottom edge.
+3. Text entry prompts (e.g. "Damage for how much?") are upstream's field with no buttons; the soft keyboard has to do.
+4. Sheets cannot be dragged down. A plan: give `touch_input::set_raw_drag_rect` a frame stamp so it expires, and pull the sheet by its head.
+5. Smooth pinch scaling between zoom levels.
+6. The death camera shows no HUD; the prompt button floats over the bare map.
 
 ## Suggested order of work (roadmap phases 0–3)
 
