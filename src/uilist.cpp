@@ -18,6 +18,7 @@
 #include "memory_fast.h"
 #include "mobile_dialog.h"
 #include "mobile_menu.h"
+#include "mobile_prompt.h"
 #include "output.h"
 #include "sdltiles.h"
 #include "input_popup.h"
@@ -684,6 +685,11 @@ void uilist::calc_data()
         }
     }
     input_context ctxt = create_main_input_context();
+    // Mobile UI: the bottom sheet is tapped; no prompt buttons beside it
+    std::optional<mobile_prompt::own_controls> mobile_own_controls;
+    if( mobile_sheet( *this, !categories.empty() ) ) {
+        mobile_own_controls.emplace( ctxt );
+    }
     const hotkey_queue &hotkeys = hotkey_queue::alpha_digits();
     input_event hotkey = ctxt.first_unassigned_hotkey( hotkeys );
     for( auto it = autoassign.begin(); it != autoassign.end() &&
@@ -960,6 +966,11 @@ shared_ptr_fast<uilist_impl> uilist::create_or_get_ui()
 shared_ptr_fast<uilist_impl> uilist::query( bool loop, int timeout, bool allow_unfiltered_hotkeys )
 {
     input_context ctxt = create_main_input_context();
+    // Mobile UI: the bottom sheet is tapped; no prompt buttons beside it
+    std::optional<mobile_prompt::own_controls> mobile_own_controls;
+    if( mobile_sheet( *this, !categories.empty() ) ) {
+        mobile_own_controls.emplace( ctxt );
+    }
 
 #if defined(__ANDROID__)
     for( const auto &entry : entries ) {

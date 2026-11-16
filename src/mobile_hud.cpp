@@ -26,6 +26,7 @@
 #include "item_location.h"
 #include "math_defines.h"
 #include "messages.h"
+#include "mobile_hud_layout.h"
 #include "mobile_ui.h"
 #include "output.h"
 #include "path_info.h"
@@ -73,9 +74,15 @@ struct text_entry {
     float h = 0.0f;
 };
 
-struct quick_button {
-    SDL_Rect rect;
+struct hud_button {
+    SDL_Rect where;
+    hit what;
+};
+
+struct strip_button {
     action_id act;
+    const char *icon;
+    std::string label;
 };
 } // namespace
 
@@ -99,8 +106,29 @@ static uint64_t cache_generation = 0;
 static std::map<std::pair<int, int>, TTF_Font *> font_cache;
 static std::map<text_key, text_entry> text_cache;
 
-static SDL_Rect recenter_rect = { 0, 0, 0, 0 };
-static std::vector<quick_button> quick_buttons;
+// what can be tapped, as of the last draw
+static std::vector<hud_button> buttons;
+static std::array<SDL_FRect, num_pieces> piece_rects;
+static std::array<SDL_FRect, num_drawers> handle_rects;
+
+// the frame being drawn
+static rect frame_screen;
+static bool frame_landscape = false;
+static const layout *frame_layout = nullptr;
+// of the piece being drawn; see piece::opacity
+static float opacity = 1.0f;
+
+// the movement pad
+static bool pad_open = false;
+static SDL_FRect pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
+// where the knob is, -1 to 1 each way
+static float pad_knob_x = 0.0f;
+static float pad_knob_y = 0.0f;
+
+// the editor, see mobile_hud_edit.h
+static bool editing = false;
+static preset edit_preset;
+static int edit_selection = -1;
 
 static bool contains( const SDL_Rect &rect, const float x, const float y )
 {
@@ -200,7 +228,8 @@ static void draw_text( const face f, const float size_units, const std::string &
         return;
     }
     SDL_SetTextureColorMod( entry.texture, color.r, color.g, color.b );
-    SDL_SetTextureAlphaMod( entry.texture, color.a );
+    SDL_SetTextureAlphaMod( entry.texture,
+                            static_cast<Uint8>( static_cast<float>( color.a ) * opacity ) );
     const SDL_FRect dst = { std::floor( x ), std::floor( y ), entry.w, entry.h };
     SDL_RenderTexture( sdl, entry.texture, nullptr, &dst );
 }
@@ -219,7 +248,7 @@ static void draw_icon( const std::string &name, const float x, const float y, co
         return;
     }
     SDL_SetTextureColorMod( texture, color.r, color.g, color.b );
-    SDL_SetTextureAlphaMod( texture, color.a );
+    SDL_SetTextureAlphaMod( texture, static_cast<Uint8>( static_cast<float>( color.a ) * opacity ) );
     const SDL_FRect dst = { x, y, size, size };
     SDL_RenderTexture( sdl, texture, nullptr, &dst );
 }
@@ -252,7 +281,7 @@ static std::vector<SDL_FPoint> round_outline( const SDL_FRect &rect, float radiu
 static SDL_FColor to_fcolor( const rgba &color )
 {
     return { static_cast<float>( color.r ) / 255.0f, static_cast<float>( color.g ) / 255.0f,
-             static_cast<float>( color.b ) / 255.0f, static_cast<float>( color.a ) / 255.0f
+             static_cast<float>( color.b ) / 255.0f, static_cast<float>( color.a ) / 255.0f * opacity
            };
 }
 
@@ -345,28 +374,61 @@ static SDL_FRect hud_area( const SDL_Rect &view, const int window_w, const int w
            };
 }
 
-// --- Pieces, placed as in the canvas's Balanced preset ---
+// --- Pieces, placed by the layout in use (mobile_hud_layout.h) ---
 
-// Place on the first row; date and time on the second.  Returns its bottom edge.
-static float draw_location( const SDL_FRect &area )
+static SDL_FRect to_frect( const rect &r )
+{
+    return { r.x, r.y, r.w, r.h };
+}
+
+// Puts a piece of the given size where the layout wants it and remembers the
+// place for the editor.
+static SDL_FRect place_piece( const piece_id id, const float w, const float h )
+{
+    const rect r = place( ( *frame_layout )[id], w, h, frame_screen, insets(), unit,
+                          frame_landscape );
+    const SDL_FRect result = to_frect( r );
+    piece_rects[static_cast<size_t>( id )] = result;
+    return result;
+}
+
+static void add_button( const SDL_FRect &where, const hit_kind kind, const action_id act )
+{
+    if( !editing ) {
+        buttons.push_back( { to_rect( where ), { kind, act } } );
+    }
+}
+
+// Place on the first row, date and time on the second, weather on the third.
+static void draw_location( const piece &cfg )
 {
     const avatar &you = get_avatar();
-    const float w = std::min( 236.0f * unit, area.w - 20.0f * unit );
+    const float w = std::min( cfg.width * unit, frame_screen.w - 20.0f * unit );
     const float line = 17.0f * unit;
-    const SDL_FRect rect = { area.x + 10.0f * unit, area.y + 12.0f * unit, w, 2.0f * line + 12.0f * unit };
+    const int rows = std::clamp( cfg.rows, 1, 3 );
+    const SDL_FRect rect = place_piece( piece_id::location, w,
+                                        static_cast<float>( rows ) * line + 12.0f * unit );
     draw_panel( rect );
     const float room = w - 20.0f * unit;
     const float x = rect.x + 10.0f * unit;
     const float pad_y = ( line - text_height( face::body, 13.0f ) ) * 0.5f;
-    const std::string place = remove_color_tags( display::current_position_text(
-                                  you.pos_abs_omt() ) );
-    draw_text( face::bold, 13.0f, fit_text( face::bold, 13.0f, place, room ), x,
+    const std::string place_name = remove_color_tags( display::current_position_text(
+                                       you.pos_abs_omt() ) );
+    draw_text( face::bold, 13.0f, fit_text( face::bold, 13.0f, place_name, room ), x,
                rect.y + 6.0f * unit + pad_y, col_fg );
-    const std::string when = string_format( "%s · %s", display::date_string(),
-                                            remove_color_tags( display::time_string( you ) ) );
-    draw_text( face::body, 13.0f, fit_text( face::body, 13.0f, when, room ), x,
-               rect.y + 6.0f * unit + line + pad_y, col_fg );
-    return rect.y + rect.h;
+    if( rows >= 2 ) {
+        const std::string when = string_format( "%s · %s", display::date_string(),
+                                                remove_color_tags( display::time_string( you ) ) );
+        draw_text( face::body, 13.0f, fit_text( face::body, 13.0f, when, room ), x,
+                   rect.y + 6.0f * unit + line + pad_y, col_fg );
+    }
+    if( rows >= 3 ) {
+        const std::string weather = string_format( "%s · %s",
+                                    remove_color_tags( display::weather_text_color( you ).first ),
+                                    remove_color_tags( display::get_temp( you ) ) );
+        draw_text( face::body, 13.0f, fit_text( face::body, 13.0f, weather, room ), x,
+                   rect.y + 6.0f * unit + 2.0f * line + pad_y, col_muted );
+    }
 }
 
 namespace
@@ -454,22 +516,33 @@ static std::vector<condition> active_conditions()
 }
 
 // One square icon per condition, in its severity color, with a pip per level.
-static void draw_status( const SDL_FRect &area, const float top, const bool landscape )
+static void draw_status( const piece &cfg )
 {
     static constexpr std::array<rgba, 4> severity = { {
             { 216, 187, 66, 255 }, { 230, 137, 45, 255 }, { 224, 73, 43, 255 }, { 255, 106, 85, 255 }
         }
     };
-    const float size = ( landscape ? 32.0f : 34.0f ) * unit;
-    const float gap = 4.0f * unit;
-    const size_t max_shown = landscape ? 8 : 6;
-    float x = area.x + 10.0f * unit;
-    const float y = top + 8.0f * unit;
-    size_t shown = 0;
-    for( const condition &cond : active_conditions() ) {
-        if( shown++ >= max_shown ) {
-            break;
+    std::vector<condition> conditions = active_conditions();
+    if( conditions.size() > static_cast<size_t>( std::max( cfg.count, 1 ) ) ) {
+        conditions.resize( static_cast<size_t>( std::max( cfg.count, 1 ) ) );
+    }
+    if( conditions.empty() ) {
+        if( editing ) {
+            // something to grab while nothing is wrong
+            conditions = { { "hunger", 1 }, { "thirst", 2 }, { "pain", 3 } };
+        } else {
+            return;
         }
+    }
+    const float size = cfg.size * unit;
+    const float gap = 4.0f * unit;
+    const float count = static_cast<float>( conditions.size() );
+    const float length = count * size + ( count - 1.0f ) * gap;
+    const SDL_FRect all = place_piece( piece_id::status, cfg.column ? size : length,
+                                       cfg.column ? length : size );
+    float x = all.x;
+    float y = all.y;
+    for( const condition &cond : conditions ) {
         const rgba &color = severity[static_cast<size_t>( cond.level - 1 )];
         const SDL_FRect rect = { x, y, size, size };
         fill_round( rect, 9.0f * unit, cond.level == 4 ? rgba{ 90, 12, 10, 217 } :
@@ -488,8 +561,14 @@ static void draw_status( const SDL_FRect &area, const float top, const bool land
             fill_round( { pip_x, y + size - 2.0f * unit - pip - 2.0f * unit, pip, pip }, pip * 0.5f, color );
             pip_x += pip + 2.0f * unit;
         }
-        x += size + gap;
+        if( cfg.column ) {
+            y += size + gap;
+        } else {
+            x += size + gap;
+        }
     }
+    // the icons explain themselves in the Info drawer
+    add_button( all, hit_kind::action, ACTION_PL_INFO );
 }
 
 static const rgba &hp_color( const avatar &you, const char *part_id )
@@ -501,16 +580,15 @@ static const rgba &hp_color( const avatar &you, const char *part_id )
            col_hp_bad;
 }
 
-// A small figure colored by the health of each limb.  Returns its bottom edge.
-static float draw_body( const SDL_FRect &area, const bool landscape )
+// A small figure colored by the health of each limb.
+static void draw_body( const piece &cfg )
 {
     const avatar &you = get_avatar();
-    const float size = ( landscape ? 64.0f : 70.0f ) * unit;
+    const float size = cfg.size * unit;
     // the figure is drawn on the canvas's 40 by 62 grid
     const float k = size / 62.0f;
-    const SDL_FRect rect = { area.x + area.w - 10.0f * unit - ( 40.0f * k + 14.0f * unit ),
-                             area.y + 12.0f * unit, 40.0f * k + 14.0f * unit, size + 10.0f * unit
-                           };
+    const SDL_FRect rect = place_piece( piece_id::body, 40.0f * k + 14.0f * unit,
+                                        size + 10.0f * unit );
     draw_panel( rect );
     const float ox = rect.x + 7.0f * unit;
     const float oy = rect.y + 5.0f * unit;
@@ -525,12 +603,11 @@ static float draw_body( const SDL_FRect &area, const bool landscape )
     part( 12.5f, 37.0f, 6.5f, 24.0f, 3.0f, hp_color( you, "leg_r" ) );
     part( 21.0f, 37.0f, 6.5f, 24.0f, 3.0f, hp_color( you, "leg_l" ) );
     // tapping the figure opens the Info drawer
-    quick_buttons.push_back( { to_rect( rect ), ACTION_PL_INFO } );
-    return rect.y + rect.h;
+    add_button( rect, hit_kind::action, ACTION_PL_INFO );
 }
 
-// What is in your hands, under the body figure.
-static void draw_wielded( const SDL_FRect &area, const float top )
+// What is in your hands.
+static void draw_wielded()
 {
     const avatar &you = get_avatar();
     const item_location weapon = you.get_wielded_item();
@@ -547,24 +624,29 @@ static void draw_wielded( const SDL_FRect &area, const float top )
     const float text_w = std::max( text_width( face::bold, 13.0f, shown_name ),
                                    text_width( face::body, 12.0f, detail ) );
     const float w = 7.0f * unit + 22.0f * unit + 8.0f * unit + text_w + 10.0f * unit;
-    const SDL_FRect rect = { area.x + area.w - 10.0f * unit - w, top + 8.0f * unit, w, 40.0f * unit };
+    const SDL_FRect rect = place_piece( piece_id::wield, w, 40.0f * unit );
     draw_panel( rect );
     draw_icon( "axe", rect.x + 7.0f * unit, rect.y + 9.0f * unit, 22.0f * unit, col_accent );
     const float x = rect.x + 37.0f * unit;
     draw_text( face::bold, 13.0f, shown_name, x, rect.y + 5.0f * unit, col_fg );
     draw_text( face::body, 12.0f, detail, x, rect.y + 20.0f * unit, col_muted );
-    quick_buttons.push_back( { to_rect( rect ), ACTION_PL_INFO } );
+    add_button( rect, hit_kind::action, ACTION_PL_INFO );
 }
 
-// The tabs at the screen edges that open the two drawers.  Balanced preset: in
-// landscape Info hangs from the top edge and Log from the left; in portrait
-// Info is on the right and Log on the left.
-static void draw_drawer_handles( const SDL_FRect &area, const bool landscape )
+// The tabs at the screen edges that open the two drawers.
+static void draw_drawer_handles()
 {
-    const float thick = 27.0f * unit;
-    const float length = 66.0f * unit;
-    const auto handle = [&]( const SDL_FRect & rect, const bool horizontal, const char *icon,
-    const action_id act ) {
+    for( size_t i = 0; i < num_drawers; ++i ) {
+        const drawer_id id = static_cast<drawer_id>( i );
+        const drawer &cfg = ( *frame_layout )[id];
+        handle_rects[i] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        if( !cfg.visible ) {
+            continue;
+        }
+        const SDL_FRect rect = to_frect( handle_rect( cfg, frame_screen, insets(), unit ) );
+        handle_rects[i] = rect;
+        const bool horizontal = cfg.edge == screen_edge::top || cfg.edge == screen_edge::bottom;
+        const char *const icon = id == drawer_id::info ? "person" : "globe";
         fill_round( rect, 12.0f * unit, col_panel_solid );
         stroke_round( rect, 12.0f * unit, std::max( 1.0f, unit ), col_line );
         const float icon_size = 16.0f * unit;
@@ -584,37 +666,26 @@ static void draw_drawer_handles( const SDL_FRect &area, const bool landscape )
         target.y -= grow;
         target.w += 2.0f * grow;
         target.h += 2.0f * grow;
-        quick_buttons.push_back( { to_rect( target ), act } );
-    };
-    if( landscape ) {
-        handle( { area.x + area.w * 0.5f - length * 0.5f, area.y, length, thick }, true, "person",
-                ACTION_PL_INFO );
-        handle( { area.x, area.y + area.h * 0.42f - length * 0.5f, thick, length }, false, "lines",
-                ACTION_MESSAGES );
-    } else {
-        handle( { area.x + area.w - thick, area.y + area.h * 0.42f - length * 0.5f, thick, length },
-                false, "person", ACTION_PL_INFO );
-        handle( { area.x, area.y + area.h * 0.5f - length * 0.5f, thick, length }, false, "lines",
-                ACTION_MESSAGES );
+        // the Log drawer's handle opens straight onto its map
+        add_button( target, id == drawer_id::info ? hit_kind::action : hit_kind::map_drawer,
+                    id == drawer_id::info ? ACTION_PL_INFO : ACTION_MESSAGES );
     }
 }
 
-// The last three messages, newest at the bottom, older ones dimmed.
-static void draw_log( const SDL_FRect &area, const bool landscape )
+// The last messages, newest at the bottom, older ones dimmed.
+static void draw_log( const piece &cfg )
 {
-    static constexpr size_t rows = 3;
+    const size_t rows = static_cast<size_t>( std::clamp( cfg.rows, 1, 10 ) );
     std::vector<std::pair<std::string, std::string>> messages = Messages::recent_messages( rows );
-    const float w = std::min( ( landscape ? 320.0f : 366.0f ) * unit, area.w - 20.0f * unit );
+    const float w = std::min( cfg.width * unit, frame_screen.w - 20.0f * unit );
     const float line = 17.0f * unit;
-    const SDL_FRect rect = { area.x + 10.0f * unit,
-                             area.y + area.h - ( landscape ? 20.0f : 100.0f ) *unit -
-                             ( static_cast<float>( rows ) * line + 12.0f * unit ),
-                             w, static_cast<float>( rows ) *line + 12.0f * unit
-                           };
+    const SDL_FRect rect = place_piece( piece_id::log, w,
+                                        static_cast<float>( rows ) * line + 12.0f * unit );
     draw_panel( rect );
     const float pad_y = ( line - text_height( face::body, 13.0f ) ) * 0.5f;
     // fill from the bottom, so a short log leaves the top rows empty
-    float y = rect.y + 6.0f * unit + static_cast<float>( rows - messages.size() ) * line;
+    float y = rect.y + 6.0f * unit + static_cast<float>( rows - std::min( rows,
+              messages.size() ) ) * line;
     for( size_t i = 0; i < messages.size(); ++i ) {
         const std::string text = fit_text( face::body, 13.0f, remove_color_tags( messages[i].second ),
                                            w - 20.0f * unit );
@@ -623,11 +694,48 @@ static void draw_log( const SDL_FRect &area, const bool landscape )
                    old ? rgba{ col_fg.r, col_fg.g, col_fg.b, 158 } : col_fg );
         y += line;
     }
+    // the whole history is in the Log drawer
+    add_button( rect, hit_kind::action, ACTION_MESSAGES );
 }
 
-// The context actions: a column at the bottom right in landscape, a row along
-// the bottom in portrait.  The last one opens the action menu.
-static void draw_quick_actions( const SDL_FRect &area, const bool landscape )
+// A panel of square buttons in a row or a column.
+static void draw_button_strip( const piece_id id, const bool column,
+                               const std::vector<strip_button> &shown, const float button )
+{
+    const float gap = 6.0f * unit;
+    const float pad = 4.0f * unit;
+    const float count = static_cast<float>( shown.size() );
+    const float length = count * button + ( count - 1.0f ) * gap + 2.0f * pad;
+    const float thickness = button + 2.0f * pad;
+    const SDL_FRect panel = place_piece( id, column ? thickness : length,
+                                         column ? length : thickness );
+    draw_panel( panel );
+    float x = panel.x + pad;
+    float y = panel.y + pad;
+    for( const strip_button &b : shown ) {
+        const SDL_FRect rect = { x, y, button, button };
+        fill_round( rect, 10.0f * unit, { 255, 255, 255, 13 } );
+        stroke_round( rect, 10.0f * unit, std::max( 1.0f, unit ), col_line );
+        if( b.label.empty() ) {
+            draw_icon( b.icon, x + ( button - 20.0f * unit ) * 0.5f, y + ( button - 20.0f * unit ) * 0.5f,
+                       20.0f * unit, col_fg );
+        } else {
+            draw_icon( b.icon, x + ( button - 20.0f * unit ) * 0.5f, y + 7.0f * unit, 20.0f * unit, col_fg );
+            const std::string label = fit_text( face::body, 9.0f, b.label, button - 2.0f * unit );
+            draw_text( face::body, 9.0f, label, x + ( button - text_width( face::body, 9.0f, label ) ) * 0.5f,
+                       y + 30.0f * unit, col_muted );
+        }
+        add_button( rect, hit_kind::action, b.act );
+        if( column ) {
+            y += button + gap;
+        } else {
+            x += button + gap;
+        }
+    }
+}
+
+// The context actions.  The last one opens the pause menu.
+static void draw_quick_actions( const piece &cfg )
 {
     struct entry {
         action_id act;
@@ -640,69 +748,149 @@ static void draw_quick_actions( const SDL_FRect &area, const bool landscape )
         { ACTION_WAIT, "wait", to_translation( "mobile HUD button", "Wait" ) },
         { ACTION_INVENTORY, "inventory", to_translation( "mobile HUD button", "Inventory" ) },
         { ACTION_CRAFT, "craft", to_translation( "mobile HUD button", "Craft" ) },
-        { ACTION_ACTIONMENU, "menu", to_translation( "mobile HUD button", "Menu" ) },
+        { ACTION_LOOK, "look", to_translation( "mobile HUD button", "Look" ) },
+        { ACTION_SLEEP, "sleep", to_translation( "mobile HUD button", "Sleep" ) },
+        { ACTION_FIRE, "fire", to_translation( "mobile HUD button", "Fire" ) },
     };
-    // Balanced preset: four in landscape (the first three and Menu), six in portrait
-    std::vector<entry> shown;
-    if( landscape ) {
-        shown = { all[0], all[1], all[2], all[5] };
-    } else {
-        shown = all;
+    const size_t count = static_cast<size_t>( std::clamp( cfg.count, 3, 9 ) );
+    std::vector<strip_button> shown;
+    for( size_t i = 0; i + 1 < count && i < all.size(); ++i ) {
+        shown.push_back( { all[i].act, all[i].icon, all[i].label.translated() } );
     }
-    const float button = 46.0f * unit;
-    const float gap = 6.0f * unit;
-    const float pad = 4.0f * unit;
-    const float count = static_cast<float>( shown.size() );
-    const float length = count * button + ( count - 1.0f ) * gap + 2.0f * pad;
-    const float thickness = button + 2.0f * pad;
-    const SDL_FRect panel = landscape ?
-                            SDL_FRect{ area.x + area.w - 10.0f * unit - thickness, area.y + area.h - 20.0f * unit - length, thickness, length } :
-                            SDL_FRect{ area.x + ( area.w - length ) * 0.5f, area.y + area.h - 34.0f * unit - thickness, length, thickness };
-    draw_panel( panel );
-    float x = panel.x + pad;
-    float y = panel.y + pad;
-    for( const entry &e : shown ) {
-        const SDL_FRect rect = { x, y, button, button };
-        fill_round( rect, 10.0f * unit, { 255, 255, 255, 13 } );
-        stroke_round( rect, 10.0f * unit, std::max( 1.0f, unit ), col_line );
-        draw_icon( e.icon, x + ( button - 20.0f * unit ) * 0.5f, y + 7.0f * unit, 20.0f * unit, col_fg );
-        const std::string label = fit_text( face::body, 9.0f, e.label.translated(), button - 2.0f * unit );
-        draw_text( face::body, 9.0f, label, x + ( button - text_width( face::body, 9.0f, label ) ) * 0.5f,
-                   y + 30.0f * unit, col_muted );
-        quick_buttons.push_back( { to_rect( rect ), e.act } );
-        if( landscape ) {
-            y += button + gap;
-        } else {
-            x += button + gap;
-        }
-    }
+    shown.push_back( { ACTION_ACTIONMENU, "menu", pgettext( "mobile HUD button", "Menu" ) } );
+    draw_button_strip( piece_id::quick, cfg.column, shown, 46.0f * unit );
+}
+
+static void draw_zoom( const piece &cfg )
+{
+    draw_button_strip( piece_id::zoom, cfg.column, {
+        { ACTION_ZOOM_IN, "plus", std::string() }, { ACTION_ZOOM_OUT, "minus", std::string() }
+    }, 40.0f * unit );
 }
 
 // Shown while the view is panned away from the player.
-static void draw_recenter( const SDL_FRect &area, const bool landscape )
+static void draw_recenter()
 {
     const std::string label = _( "Recenter" );
     const float label_w = text_width( face::bold, 13.0f, label );
     const float w = 10.0f * unit + 18.0f * unit + 6.0f * unit + label_w + 13.0f * unit;
     const float h = 36.0f * unit;
-    // Balanced preset: top center and 40 down in landscape, top right and 236 down in portrait
-    const SDL_FRect rect = landscape ?
-                           SDL_FRect{ area.x + ( area.w - w ) * 0.5f, area.y + 40.0f * unit, w, h } :
-                           SDL_FRect{ area.x + area.w - 12.0f * unit - w, area.y + 236.0f * unit, w, h };
+    const SDL_FRect rect = place_piece( piece_id::recenter, w, h );
     fill_round( rect, h * 0.5f, col_panel_solid );
     stroke_round( rect, h * 0.5f, std::max( 1.0f, unit ), col_line );
     draw_icon( "target", rect.x + 10.0f * unit, rect.y + 9.0f * unit, 18.0f * unit, col_accent );
     draw_text( face::bold, 13.0f, label, rect.x + 34.0f * unit,
                rect.y + ( h - text_height( face::bold, 13.0f ) ) * 0.5f, col_fg );
-    recenter_rect = to_rect( rect );
+    add_button( rect, hit_kind::recenter, ACTION_CENTER );
+}
+
+// The movement pad: a ring with a knob that follows the thumb, and in toggle
+// mode a round button that shows and hides it.
+static void draw_pad( const piece &cfg )
+{
+    pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
+    if( cfg.mode == pad_mode::floating ) {
+        if( editing ) {
+            const std::string note = _( "Pad appears where you drag" );
+            const float w = text_width( face::body, 11.0f, note ) + 16.0f * unit;
+            const SDL_FRect rect = place_piece( piece_id::joy, w, 28.0f * unit );
+            draw_panel( rect );
+            draw_text( face::body, 11.0f, note, rect.x + 8.0f * unit, rect.y + 7.0f * unit, col_muted );
+        }
+        return;
+    }
+    const float size = cfg.size * unit;
+    const SDL_FRect area = place_piece( piece_id::joy, size, size );
+    const bool open = cfg.mode == pad_mode::always || pad_open || editing;
+    const bool right = cfg.pin == anchor::top_right || cfg.pin == anchor::bottom_right;
+    const bool bottom = cfg.pin == anchor::bottom_left || cfg.pin == anchor::bottom_center ||
+                        cfg.pin == anchor::bottom_right;
+    if( open ) {
+        const rgba ring = { 233, 236, 223, 71 };
+        fill_round( area, size * 0.5f, { 0, 0, 0, 77 } );
+        stroke_round( area, size * 0.5f, 2.0f * unit, ring );
+        const float cx = area.x + size * 0.5f;
+        const float cy = area.y + size * 0.5f;
+        // a tick for each of the eight directions
+        for( int i = 0; i < 8; ++i ) {
+            const float angle = static_cast<float>( i ) * static_cast<float>( M_PI ) * 0.25f;
+            const float r = size * 0.5f - 12.0f * unit;
+            const float dot = 3.0f * unit;
+            fill_round( { cx + std::cos( angle ) * r - dot * 0.5f, cy + std::sin( angle ) * r - dot * 0.5f, dot, dot },
+                        dot * 0.5f, { 233, 236, 223, 110 } );
+        }
+        const float knob = size * 0.38f;
+        const SDL_FRect knob_rect = { cx - knob * 0.5f + pad_knob_x *size * 0.31f,
+                                      cy - knob * 0.5f + pad_knob_y *size * 0.31f, knob, knob
+                                    };
+        fill_round( knob_rect, knob * 0.5f, { 233, 236, 223, 77 } );
+        stroke_round( knob_rect, knob * 0.5f, 2.0f * unit, { 233, 236, 223, 128 } );
+        pad_rect = area;
+        if( !editing ) {
+            buttons.push_back( { to_rect( area ), { hit_kind::pad, ACTION_NULL } } );
+        }
+    }
+    if( cfg.mode == pad_mode::toggle ) {
+        // in the pad's corner while it is hidden, just past it while it shows
+        const float b = 44.0f * unit;
+        SDL_FRect rect = { right ? area.x + size - b : area.x, bottom ? area.y + size - b : area.y, b, b };
+        if( open ) {
+            rect.y = bottom ? area.y - b - 8.0f * unit : area.y + size + 8.0f * unit;
+        }
+        const bool lit = pad_open && !editing;
+        fill_round( rect, b * 0.5f, col_panel );
+        stroke_round( rect, b * 0.5f, std::max( 1.0f, unit ), lit ? col_accent : col_line );
+        draw_icon( "joy", rect.x + 11.0f * unit, rect.y + 11.0f * unit, 22.0f * unit,
+                   lit ? col_accent : col_fg );
+        add_button( rect, hit_kind::pad_toggle, ACTION_NULL );
+    }
+}
+
+// In the editor every piece gets a dashed frame and a name tag; the selected
+// one is solid.
+static void draw_edit_frame( const SDL_FRect &rect, const std::string &name, const bool selected )
+{
+    if( rect.w <= 0.0f || rect.h <= 0.0f ) {
+        return;
+    }
+    const float grow = 3.0f * unit;
+    const SDL_FRect frame = { rect.x - grow, rect.y - grow, rect.w + 2.0f * grow, rect.h + 2.0f * grow };
+    const rgba line = { col_accent.r, col_accent.g, col_accent.b, static_cast<Uint8>( selected ? 255 : 191 ) };
+    if( selected ) {
+        stroke_round( frame, 4.0f * unit, 2.0f * unit, line );
+    } else {
+        // dashes along the four sides
+        const float dash = 6.0f * unit;
+        const float thick = std::max( 1.0f, 1.5f * unit );
+        for( float x = frame.x; x < frame.x + frame.w; x += 2.0f * dash ) {
+            const float w = std::min( dash, frame.x + frame.w - x );
+            fill_round( { x, frame.y, w, thick }, 0.0f, line );
+            fill_round( { x, frame.y + frame.h - thick, w, thick }, 0.0f, line );
+        }
+        for( float y = frame.y; y < frame.y + frame.h; y += 2.0f * dash ) {
+            const float h = std::min( dash, frame.y + frame.h - y );
+            fill_round( { frame.x, y, thick, h }, 0.0f, line );
+            fill_round( { frame.x + frame.w - thick, y, thick, h }, 0.0f, line );
+        }
+    }
+    const float tag_w = text_width( face::mono, 10.0f, name ) + 10.0f * unit;
+    const float tag_h = 16.0f * unit;
+    // above the piece, or inside it at the top of the screen
+    const float tag_y = frame.y - tag_h >= frame_screen.y ? frame.y - tag_h : frame.y;
+    fill_round( { frame.x, tag_y, tag_w, tag_h }, 3.0f * unit,
+                selected ? col_accent : rgba{ 217, 220, 207, 255 } );
+    draw_text( face::mono, 10.0f, name, frame.x + 5.0f * unit,
+               tag_y + ( tag_h - text_height( face::mono, 10.0f ) ) * 0.5f, { 17, 17, 17, 255 } );
 }
 
 void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const int window_w,
            const int window_h, const bool default_mode )
 {
-    recenter_rect = { 0, 0, 0, 0 };
-    quick_buttons.clear();
-    if( !g || !default_mode || !renderer || window_w <= 0 || window_h <= 0 ) {
+    buttons.clear();
+    pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
+    piece_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
+    handle_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
+    if( !g || ( !default_mode && !editing ) || !renderer || window_w <= 0 || window_h <= 0 ) {
         return;
     }
     sdl = renderer.get();
@@ -712,34 +900,177 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
     if( unit <= 0.0f ) {
         return;
     }
-    const bool landscape = area.w > area.h;
+    frame_screen = { area.x, area.y, area.w, area.h };
+    frame_landscape = area.w > area.h;
+    const layout &current = editing ? ( frame_landscape ? edit_preset.landscape :
+                                        edit_preset.portrait ) : active_layout( frame_landscape );
+    frame_layout = &current;
 
     if( touch_input::hud_enabled() ) {
-        const float location_bottom = draw_location( area );
-        draw_status( area, location_bottom, landscape );
-        const float body_bottom = draw_body( area, landscape );
-        draw_wielded( area, body_bottom );
-        draw_log( area, landscape );
-        draw_quick_actions( area, landscape );
-        draw_drawer_handles( area, landscape );
+        const auto shown = [&current]( const piece_id id ) {
+            opacity = current[id].opacity;
+            return current[id].visible;
+        };
+        if( shown( piece_id::location ) ) {
+            draw_location( current[piece_id::location] );
+        }
+        if( shown( piece_id::status ) ) {
+            draw_status( current[piece_id::status] );
+        }
+        if( shown( piece_id::body ) ) {
+            draw_body( current[piece_id::body] );
+        }
+        if( shown( piece_id::wield ) ) {
+            draw_wielded();
+        }
+        if( shown( piece_id::log ) ) {
+            draw_log( current[piece_id::log] );
+        }
+        if( shown( piece_id::quick ) ) {
+            draw_quick_actions( current[piece_id::quick] );
+        }
+        if( shown( piece_id::zoom ) ) {
+            draw_zoom( current[piece_id::zoom] );
+        }
+        if( shown( piece_id::joy ) ) {
+            draw_pad( current[piece_id::joy] );
+        }
+        opacity = 1.0f;
+        draw_drawer_handles();
     }
-    if( touch_input::view_is_panned() ) {
-        draw_recenter( area, landscape );
+    opacity = 1.0f;
+    if( ( touch_input::view_is_panned() || editing ) && current[piece_id::recenter].visible ) {
+        draw_recenter();
+    } else if( touch_input::view_is_panned() ) {
+        // never leave a panned view without a way back
+        piece fallback = fallback_preset().landscape[piece_id::recenter];
+        const layout with_button = [&]() {
+            layout l = current;
+            l[piece_id::recenter] = fallback;
+            return l;
+        }
+        ();
+        frame_layout = &with_button;
+        draw_recenter();
+        frame_layout = &current;
+    }
+    if( editing ) {
+        for( size_t i = 0; i < num_pieces; ++i ) {
+            const piece_id id = static_cast<piece_id>( i );
+            draw_edit_frame( piece_rects[i], display_name( id ),
+                             edit_selection == static_cast<int>( i ) );
+        }
+        for( size_t i = 0; i < num_drawers; ++i ) {
+            draw_edit_frame( handle_rects[i], display_name( static_cast<drawer_id>( i ) ),
+                             edit_selection == static_cast<int>( num_pieces + i ) );
+        }
     }
     SDL_SetRenderDrawBlendMode( sdl, SDL_BLENDMODE_NONE );
 }
 
-std::optional<action_id> button_at( const float x, const float y )
+std::optional<hit> hit_at( const float x, const float y )
 {
-    if( contains( recenter_rect, x, y ) ) {
-        return ACTION_CENTER;
-    }
-    for( const quick_button &button : quick_buttons ) {
-        if( contains( button.rect, x, y ) ) {
-            return button.act;
+    // later pieces are drawn over earlier ones
+    for( auto it = buttons.rbegin(); it != buttons.rend(); ++it ) {
+        if( contains( it->where, x, y ) ) {
+            return it->what;
         }
     }
     return std::nullopt;
+}
+
+// --- The movement pad ---
+
+pad_mode movement_pad_mode()
+{
+    if( !touch_input::hud_enabled() || !g ) {
+        return pad_mode::floating;
+    }
+    int w = 0;
+    int h = 0;
+    if( SDL_Window *const win = get_sdl_window() ) {
+        SDL_GetWindowSize( win, &w, &h );
+    }
+    const piece &joy = active_layout( w > h )[piece_id::joy];
+    return joy.visible ? joy.mode : pad_mode::floating;
+}
+
+void toggle_pad()
+{
+    pad_open = !pad_open;
+    pad_knob_x = pad_knob_y = 0.0f;
+}
+
+std::optional<point> pad_direction( const float x, const float y )
+{
+    if( pad_rect.w <= 0.0f ) {
+        return std::nullopt;
+    }
+    const float radius = pad_rect.w * 0.5f;
+    const float dx = x - ( pad_rect.x + radius );
+    const float dy = y - ( pad_rect.y + radius );
+    const float distance = std::hypot( dx, dy );
+    const float reach = std::min( 1.0f, distance / radius );
+    pad_knob_x = distance > 0.0f ? dx / distance * reach : 0.0f;
+    pad_knob_y = distance > 0.0f ? dy / distance * reach : 0.0f;
+    // a dead zone in the middle
+    if( distance < pad_rect.w * 0.12f ) {
+        return std::nullopt;
+    }
+    const int octant = ( static_cast<int>( std::lround( std::atan2( dy, dx ) /
+                                           ( static_cast<float>( M_PI ) * 0.25f ) ) ) % 8 + 8 ) % 8;
+    static constexpr std::array<point, 8> directions = { {
+            point( 1, 0 ), point( 1, 1 ), point( 0, 1 ), point( -1, 1 ),
+            point( -1, 0 ), point( -1, -1 ), point( 0, -1 ), point( 1, -1 )
+        }
+    };
+    return directions[static_cast<size_t>( octant )];
+}
+
+void release_pad()
+{
+    pad_knob_x = pad_knob_y = 0.0f;
+}
+
+// --- The editor's view of the HUD ---
+
+void begin_edit( const preset &working )
+{
+    editing = true;
+    edit_preset = working;
+    edit_selection = -1;
+}
+
+void update_edit( const preset &working, const int selection )
+{
+    edit_preset = working;
+    edit_selection = selection;
+}
+
+void end_edit()
+{
+    editing = false;
+    edit_selection = -1;
+}
+
+bool is_editing()
+{
+    return editing;
+}
+
+edit_geometry edit_frame()
+{
+    edit_geometry geo;
+    geo.screen = frame_screen;
+    geo.unit = unit;
+    geo.landscape = frame_landscape;
+    for( size_t i = 0; i < num_pieces; ++i ) {
+        geo.pieces[i] = { piece_rects[i].x, piece_rects[i].y, piece_rects[i].w, piece_rects[i].h };
+    }
+    for( size_t i = 0; i < num_drawers; ++i ) {
+        geo.handles[i] = { handle_rects[i].x, handle_rects[i].y, handle_rects[i].w, handle_rects[i].h };
+    }
+    return geo;
 }
 
 } // namespace mobile_hud

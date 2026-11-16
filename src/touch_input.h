@@ -95,8 +95,8 @@ int max_zoom();
 // The zoom level a game starts at: upstream's 16, or with the mobile HUD the
 // level that makes a tile about a sixteenth of the screen's short side.
 int default_zoom();
-// True if upstream's Android shortcut bar should stay out of the way: on the map
-// and over the mobile screens.  It still shows on upstream's own text screens.
+// True if upstream's Android shortcut bar is replaced by the prompt buttons of
+// mobile_prompt.h.
 bool hide_shortcut_bar();
 
 // --- Map clicks ---
@@ -174,6 +174,11 @@ void finger_cancel();
 // two-finger gesture on pinch_mode, which zooms live.
 void set_raw_drag_rect( float x, float y, float w, float h, view_mode pinch_mode );
 void clear_raw_drag_rect();
+
+// The movement pad of the HUD: while a thumb rests on it away from the middle,
+// sets out to the next step when one is due.  Returns true if it did.
+bool pad_poll( input_event &out );
+bool pad_held();
 
 // True while a finger is on an ImGui window or its tap is still being handled.
 // ImGui must accept pointer input for that long, even with the mouse disabled.

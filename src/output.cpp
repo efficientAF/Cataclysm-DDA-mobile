@@ -857,7 +857,8 @@ bool query_yn( const std::string &text )
         return result;
     }
 #endif // defined(__ANDROID__)
-    const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" );
+    // Mobile UI: the answers are buttons; no "(Case Sensitive)" note
+    const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" ) && !mobile_menu::enabled();
     const auto &allow_key = force_uc ? input_context::disallow_lower_case_or_non_modified_letters
                             : input_context::allow_all_keys;
 
@@ -878,7 +879,8 @@ bool query_yn( const std::string &text )
 query_ynq_result query_ynq( const std::string &text )
 {
     // TODO: android native UI
-    const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" );
+    // Mobile UI: the answers are buttons; no "(Case Sensitive)" note
+    const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" ) && !mobile_menu::enabled();
     const auto &allow_key = force_uc ? input_context::disallow_lower_case_or_non_modified_letters
                             : input_context::allow_all_keys;
 

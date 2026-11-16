@@ -1,0 +1,505 @@
+[
+  {
+    "type": "mobile_hud_preset",
+    "id": "balanced",
+    "name": "Balanced",
+    "portrait": {
+      "location": {
+        "v": 1,
+        "a": "tl",
+        "x": 12,
+        "y": 58,
+        "rows": 2,
+        "width": 236
+      },
+      "status": {
+        "v": 1,
+        "a": "tl",
+        "x": 12,
+        "y": 112,
+        "dir": "row",
+        "size": 34,
+        "max": 6
+      },
+      "body": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 58,
+        "size": 70
+      },
+      "wield": {
+        "v": 1,
+        "a": "bl",
+        "x": 12,
+        "y": 172
+      },
+      "log": {
+        "v": 1,
+        "a": "bl",
+        "x": 12,
+        "y": 100,
+        "rows": 3,
+        "width": 366
+      },
+      "quick": {
+        "v": 1,
+        "a": "bc",
+        "x": 0,
+        "y": 34,
+        "dir": "row",
+        "count": 6
+      },
+      "zoom": {
+        "v": 0,
+        "a": "tr",
+        "x": 12,
+        "y": 140,
+        "dir": "col"
+      },
+      "recenter": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 236
+      },
+      "joy": {
+        "v": 1,
+        "a": "br",
+        "x": 14,
+        "y": 174,
+        "mode": "toggle",
+        "size": 140
+      },
+      "info": {
+        "v": 1,
+        "edge": "right",
+        "off": 0.42,
+        "size": 0.8
+      },
+      "logd": {
+        "v": 1,
+        "edge": "left",
+        "off": 0.5,
+        "size": 0.8
+      }
+    },
+    "landscape": {
+      "location": {
+        "v": 1,
+        "a": "tl",
+        "x": 58,
+        "y": 12,
+        "rows": 2,
+        "width": 236
+      },
+      "status": {
+        "v": 1,
+        "a": "tl",
+        "x": 58,
+        "y": 66,
+        "dir": "row",
+        "size": 32,
+        "max": 8
+      },
+      "body": {
+        "v": 1,
+        "a": "tr",
+        "x": 58,
+        "y": 12,
+        "size": 64
+      },
+      "wield": {
+        "v": 1,
+        "a": "tr",
+        "x": 58,
+        "y": 90
+      },
+      "log": {
+        "v": 1,
+        "a": "bl",
+        "x": 58,
+        "y": 20,
+        "rows": 3,
+        "width": 320
+      },
+      "quick": {
+        "v": 1,
+        "a": "br",
+        "x": 58,
+        "y": 20,
+        "dir": "col",
+        "count": 4
+      },
+      "zoom": {
+        "v": 0,
+        "a": "tr",
+        "x": 126,
+        "y": 12,
+        "dir": "row"
+      },
+      "recenter": {
+        "v": 1,
+        "a": "tc",
+        "x": 0,
+        "y": 40
+      },
+      "joy": {
+        "v": 1,
+        "a": "bl",
+        "x": 58,
+        "y": 100,
+        "mode": "toggle",
+        "size": 130
+      },
+      "info": {
+        "v": 1,
+        "edge": "top",
+        "off": 0.5,
+        "size": 0.72
+      },
+      "logd": {
+        "v": 1,
+        "edge": "left",
+        "off": 0.42,
+        "size": 0.42
+      }
+    }
+  },
+  {
+    "type": "mobile_hud_preset",
+    "id": "minimal",
+    "name": "Minimal",
+    "portrait": {
+      "status": {
+        "v": 1,
+        "a": "tl",
+        "x": 12,
+        "y": 58,
+        "dir": "row",
+        "size": 36,
+        "max": 6
+      },
+      "location": {
+        "v": 0,
+        "a": "tr",
+        "x": 12,
+        "y": 58,
+        "rows": 1,
+        "width": 150
+      },
+      "log": {
+        "v": 1,
+        "a": "bl",
+        "x": 12,
+        "y": 100,
+        "rows": 2,
+        "width": 366,
+        "op": 0.85
+      },
+      "body": {
+        "v": 0,
+        "a": "tr",
+        "x": 12,
+        "y": 104,
+        "size": 64
+      },
+      "wield": {
+        "v": 0,
+        "a": "bl",
+        "x": 12,
+        "y": 150
+      },
+      "quick": {
+        "v": 1,
+        "a": "bc",
+        "x": 0,
+        "y": 34,
+        "dir": "row",
+        "count": 5
+      },
+      "zoom": {
+        "v": 0,
+        "a": "tr",
+        "x": 12,
+        "y": 104,
+        "dir": "col"
+      },
+      "recenter": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 104
+      },
+      "joy": {
+        "v": 1,
+        "a": "br",
+        "x": 14,
+        "y": 150,
+        "mode": "floating",
+        "size": 140
+      },
+      "info": {
+        "v": 1,
+        "edge": "right",
+        "off": 0.3,
+        "size": 0.8
+      },
+      "logd": {
+        "v": 0,
+        "edge": "left",
+        "off": 0.6,
+        "size": 0.8
+      }
+    },
+    "landscape": {
+      "status": {
+        "v": 1,
+        "a": "tl",
+        "x": 58,
+        "y": 12,
+        "dir": "row",
+        "size": 34,
+        "max": 8
+      },
+      "location": {
+        "v": 0,
+        "a": "tr",
+        "x": 58,
+        "y": 12,
+        "rows": 1,
+        "width": 180
+      },
+      "log": {
+        "v": 1,
+        "a": "tl",
+        "x": 58,
+        "y": 56,
+        "rows": 2,
+        "width": 320,
+        "op": 0.85
+      },
+      "body": {
+        "v": 0,
+        "a": "tr",
+        "x": 58,
+        "y": 12,
+        "size": 60
+      },
+      "wield": {
+        "v": 0,
+        "a": "tr",
+        "x": 58,
+        "y": 84
+      },
+      "quick": {
+        "v": 1,
+        "a": "bc",
+        "x": 0,
+        "y": 20,
+        "dir": "row",
+        "count": 5
+      },
+      "zoom": {
+        "v": 0,
+        "a": "tr",
+        "x": 58,
+        "y": 12,
+        "dir": "row"
+      },
+      "recenter": {
+        "v": 1,
+        "a": "tc",
+        "x": 0,
+        "y": 40
+      },
+      "joy": {
+        "v": 1,
+        "a": "bl",
+        "x": 58,
+        "y": 24,
+        "mode": "floating",
+        "size": 130
+      },
+      "info": {
+        "v": 1,
+        "edge": "right",
+        "off": 0.5,
+        "size": 0.42
+      },
+      "logd": {
+        "v": 0,
+        "edge": "left",
+        "off": 0.5,
+        "size": 0.42
+      }
+    }
+  },
+  {
+    "type": "mobile_hud_preset",
+    "id": "detailed",
+    "name": "Detailed",
+    "portrait": {
+      "location": {
+        "v": 1,
+        "a": "tl",
+        "x": 12,
+        "y": 58,
+        "rows": 3,
+        "width": 250
+      },
+      "status": {
+        "v": 1,
+        "a": "tl",
+        "x": 12,
+        "y": 130,
+        "dir": "col",
+        "size": 34,
+        "max": 8
+      },
+      "body": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 58,
+        "size": 84
+      },
+      "wield": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 156
+      },
+      "log": {
+        "v": 1,
+        "a": "bl",
+        "x": 12,
+        "y": 100,
+        "rows": 6,
+        "width": 366
+      },
+      "quick": {
+        "v": 1,
+        "a": "bc",
+        "x": 0,
+        "y": 34,
+        "dir": "row",
+        "count": 7
+      },
+      "zoom": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 200,
+        "dir": "col"
+      },
+      "recenter": {
+        "v": 1,
+        "a": "tr",
+        "x": 12,
+        "y": 300
+      },
+      "joy": {
+        "v": 1,
+        "a": "br",
+        "x": 14,
+        "y": 228,
+        "mode": "toggle",
+        "size": 140
+      },
+      "info": {
+        "v": 1,
+        "edge": "right",
+        "off": 0.5,
+        "size": 0.8
+      },
+      "logd": {
+        "v": 1,
+        "edge": "left",
+        "off": 0.62,
+        "size": 0.8
+      }
+    },
+    "landscape": {
+      "location": {
+        "v": 1,
+        "a": "tl",
+        "x": 58,
+        "y": 12,
+        "rows": 3,
+        "width": 250
+      },
+      "status": {
+        "v": 1,
+        "a": "tl",
+        "x": 58,
+        "y": 84,
+        "dir": "row",
+        "size": 30,
+        "max": 10
+      },
+      "body": {
+        "v": 1,
+        "a": "tr",
+        "x": 58,
+        "y": 12,
+        "size": 80
+      },
+      "wield": {
+        "v": 1,
+        "a": "tr",
+        "x": 58,
+        "y": 104
+      },
+      "log": {
+        "v": 1,
+        "a": "bl",
+        "x": 58,
+        "y": 20,
+        "rows": 5,
+        "width": 340
+      },
+      "quick": {
+        "v": 1,
+        "a": "br",
+        "x": 58,
+        "y": 20,
+        "dir": "col",
+        "count": 4
+      },
+      "zoom": {
+        "v": 1,
+        "a": "tr",
+        "x": 136,
+        "y": 12,
+        "dir": "row"
+      },
+      "recenter": {
+        "v": 1,
+        "a": "tc",
+        "x": 0,
+        "y": 40
+      },
+      "joy": {
+        "v": 1,
+        "a": "bl",
+        "x": 410,
+        "y": 20,
+        "mode": "toggle",
+        "size": 120
+      },
+      "info": {
+        "v": 1,
+        "edge": "top",
+        "off": 0.5,
+        "size": 0.72
+      },
+      "logd": {
+        "v": 1,
+        "edge": "left",
+        "off": 0.48,
+        "size": 0.42
+      }
+    }
+  }
+]

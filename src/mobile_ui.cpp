@@ -1,6 +1,7 @@
 #if defined(TILES)
 
 #include "mobile_ui.h"
+#include "mobile_prompt.h"
 
 #include <algorithm>
 #include <array>
@@ -320,6 +321,7 @@ int show_sheet( const sheet_spec &spec )
 {
     sheet_window window( spec );
     input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "ANY_INPUT" );
     while( window.result == sheet_nothing ) {

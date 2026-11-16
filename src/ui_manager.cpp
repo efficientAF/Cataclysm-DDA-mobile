@@ -10,6 +10,7 @@
 #include "cata_imgui.h"
 #include "cata_scope_helpers.h"
 #include "cursesdef.h"
+#include "mobile_prompt.h"
 #include "point.h"
 
 #if defined(EMSCRIPTEN)
@@ -534,6 +535,10 @@ void ui_adaptor::redraw_invalidated( )
         imgui_frame_started = false;
         return;
     }
+#endif
+#if defined(TILES)
+    // Mobile UI: buttons for the keys the game is waiting for, over everything
+    mobile_prompt::draw();
 #endif
     imclient->end_frame();
     imgui_frame_started = false;

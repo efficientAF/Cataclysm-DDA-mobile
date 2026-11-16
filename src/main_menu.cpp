@@ -43,6 +43,7 @@
 #include "messages.h"
 #include "mobile_death.h"
 #include "mobile_menu.h"
+#include "mobile_prompt.h"
 #include "mobile_settings.h"
 #include "music.h"
 #include "options.h"
@@ -694,8 +695,10 @@ bool main_menu::opening_screen()
 
     // Mobile UI: the main menu and new game screens of the canvas, see mobile_menu.h
     std::unique_ptr<mobile_menu::main_menu_view> mobile_view;
+    std::optional<mobile_prompt::own_controls> mobile_own_controls;
     if( mobile_menu::enabled() ) {
         mobile_view = std::make_unique<mobile_menu::main_menu_view>();
+        mobile_own_controls.emplace( ctxt );
     }
     // the save Continue would load: the last character played, in the last world
     const auto continue_save = [&]() -> std::optional<std::pair<std::string, save_t>> {

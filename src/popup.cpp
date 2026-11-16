@@ -13,6 +13,7 @@
 #include "input_context.h"
 #include "mobile_dialog.h"
 #include "mobile_menu.h"
+#include "mobile_prompt.h"
 #include "output.h"
 #include "string_formatter.h"
 #include "ui_manager.h"
@@ -93,6 +94,13 @@ void query_popup_impl::draw_controls()
     if( mobile ) {
         mobile_dialog::popup_spec spec;
         spec.message = remove_color_tags( parent->text );
+        if( parent->options.empty() && !parent->anykey && !parent->cancel ) {
+            // a note beside a screen that is waiting for keys: they become buttons
+            spec.message = mobile_prompt::take_key_hints( spec.message );
+            if( spec.message.empty() ) {
+                return;
+            }
+        }
         spec.buttons = mobile_labels;
         spec.selected = keyboard_selected_option;
         spec.on_top = parent->ontop;
@@ -353,6 +361,11 @@ query_popup::result query_popup::query_once()
     ui_manager::redraw();
 
     input_context ctxt( category, pref_kbd_mode );
+    // Mobile UI: the dialog has buttons of its own
+    std::optional<mobile_prompt::own_controls> mobile_own_controls;
+    if( mobile_menu::enabled() ) {
+        mobile_own_controls.emplace( ctxt );
+    }
     if( cancel || !options.empty() ) {
         ctxt.register_action( "HELP_KEYBINDINGS" );
     }

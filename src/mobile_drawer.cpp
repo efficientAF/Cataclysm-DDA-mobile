@@ -27,6 +27,8 @@
 #include "item_location.h"
 #include "line.h"
 #include "messages.h"
+#include "mobile_hud_layout.h"
+#include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "omdata.h"
 #include "output.h"
@@ -73,12 +75,6 @@ constexpr float line_units = 19.0f;
 constexpr int minimap_radius = 17;
 // how long a drawer takes to slide in
 constexpr float slide_seconds = 0.2f;
-
-enum class edge : int {
-    left,
-    right,
-    top,
-};
 
 enum class block_kind : int {
     // a section title; starts a new section
@@ -459,6 +455,9 @@ std::string fit( const face f, const float size, const std::string &str, const f
     return cut + "…";
 }
 
+// set by open_on_map()
+static bool start_on_map = false;
+
 class drawer_window : public cataimgui::window
 {
     public:
@@ -472,7 +471,11 @@ class drawer_window : public cataimgui::window
                 tabs = { body_tab( you ), status_tab( you ), gear_tab( you ), area_tab( you ) };
             } else {
                 tabs = { log_tab(), map_tab() };
+                if( start_on_map ) {
+                    current = 1;
+                }
             }
+            start_on_map = false;
         }
 
         bool closed = false;
@@ -742,17 +745,26 @@ void drawer_window::draw_controls()
     const bool landscape = size.x > size.y;
     ImDrawList *const draw = ImGui::GetWindowDrawList();
 
-    // Where the drawer sits, from the canvas's Balanced preset.
-    const edge from = which == drawer::log ? edge::left : landscape ? edge::top : edge::right;
+    // Where the drawer sits: the edge and depth of the HUD layout in use.
+    const mobile_hud::drawer &cfg = mobile_hud::active_layout( landscape )[which == drawer::log ?
+                                          mobile_hud::drawer_id::log : mobile_hud::drawer_id::info];
+    const mobile_hud::screen_edge from = cfg.edge;
+    using edge = mobile_hud::screen_edge;
     ImVec2 min;
     ImVec2 max;
     ImDrawFlags corners = ImDrawFlags_RoundCornersNone;
-    if( from == edge::top ) {
+    if( from == edge::top || from == edge::bottom ) {
+        const float depth = ( size.y - safe.y - safe.w ) * cfg.size;
         min = ImVec2( origin.x + safe.x + 8.0f * u, origin.y + safe.y );
-        max = ImVec2( origin.x + size.x - safe.z - 8.0f * u, min.y + size.y * 0.72f );
+        max = ImVec2( origin.x + size.x - safe.z - 8.0f * u, min.y + depth );
         corners = ImDrawFlags_RoundCornersBottom;
+        if( from == edge::bottom ) {
+            max.y = origin.y + size.y - safe.w;
+            min.y = max.y - depth;
+            corners = ImDrawFlags_RoundCornersTop;
+        }
     } else {
-        const float depth = size.x * ( landscape ? 0.42f : 0.8f );
+        const float depth = ( size.x - safe.x - safe.z ) * cfg.size;
         min = ImVec2( origin.x + safe.x, origin.y + safe.y + 8.0f * u );
         max = ImVec2( min.x + depth, origin.y + size.y - safe.w - 8.0f * u );
         corners = ImDrawFlags_RoundCornersRight;
@@ -768,6 +780,7 @@ void drawer_window::draw_controls()
     const float hidden = remaining * remaining * remaining;
     if( hidden > 0.0f ) {
         const ImVec2 shift = from == edge::top ? ImVec2( 0.0f, -( max.y - origin.y ) * hidden ) :
+                             from == edge::bottom ? ImVec2( 0.0f, ( origin.y + size.y - min.y ) * hidden ) :
                              from == edge::left ? ImVec2( -( max.x - origin.x ) * hidden, 0.0f ) :
                              ImVec2( ( origin.x + size.x - min.x ) * hidden, 0.0f );
         min = ImVec2( min.x + shift.x, min.y + shift.y );
@@ -781,8 +794,9 @@ void drawer_window::draw_controls()
     draw->AddRectFilled( min, max, col_panel, 16.0f * u, corners );
     draw->AddRect( min, max, mobile_ui::col_line, 16.0f * u, corners, hairline );
     // no border along the screen edge the panel is attached to
-    if( from == edge::top ) {
-        draw->AddLine( min, ImVec2( max.x, min.y ), col_panel, hairline * 2.0f );
+    if( from == edge::top || from == edge::bottom ) {
+        const float y = from == edge::top ? min.y : max.y;
+        draw->AddLine( ImVec2( min.x, y ), ImVec2( max.x, y ), col_panel, hairline * 2.0f );
     } else {
         const float x = from == edge::left ? min.x : max.x;
         draw->AddLine( ImVec2( x, min.y ), ImVec2( x, max.y ), col_panel, hairline * 2.0f );
@@ -861,6 +875,7 @@ action_id show( const drawer which )
 {
     drawer_window window( which );
     input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "LEFT" );
     ctxt.register_action( "RIGHT" );
@@ -887,11 +902,20 @@ action_id show( const drawer which )
     return window.open_map ? ACTION_MAP : ACTION_NULL;
 }
 
+void open_on_map()
+{
+    start_on_map = true;
+}
+
 #else // !TILES
 
 action_id show( drawer )
 {
     return ACTION_NULL;
+}
+
+void open_on_map()
+{
 }
 
 #endif // TILES

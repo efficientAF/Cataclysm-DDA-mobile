@@ -41,6 +41,7 @@
 #include "map.h"
 #include "map_selector.h"
 #include "messages.h"
+#include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "output.h"
 #include "player_activity.h"
@@ -1479,6 +1480,7 @@ static request ask()
 {
     inventory_window window;
     input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "LEFT" );
     ctxt.register_action( "RIGHT" );

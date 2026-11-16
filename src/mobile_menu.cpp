@@ -13,6 +13,7 @@
 #include "calendar.h"
 #include "cata_imgui.h"
 #include "imgui/imgui.h"
+#include "mobile_hud_edit.h"
 #include "mobile_ui.h"
 #include "translations.h"
 #include "units.h"
@@ -439,6 +440,7 @@ action_id pause_sheet()
         { { "globe", _( "Map" ), "" }, ACTION_MAP },
         { { "lines", _( "Messages" ), "" }, ACTION_MESSAGES },
         { { "gear", _( "Settings" ), "" }, ACTION_OPTIONS },
+        { { "joy", _( "Edit HUD" ), "" }, NUM_ACTIONS },
         { { "menu", _( "All actions" ), "" }, ACTION_ACTIONMENU },
         { { "save", _( "Save game" ), "" }, ACTION_QUICKSAVE },
         { { "exit", _( "Save and quit to menu" ), "" }, ACTION_SAVE },
@@ -447,6 +449,10 @@ action_id pause_sheet()
         spec.rows.push_back( row.first );
     }
     const int tapped = mobile_ui::show_sheet( spec );
+    if( tapped >= 0 && rows[tapped].second == NUM_ACTIONS ) {
+        mobile_hud_edit::run();
+        return ACTION_NULL;
+    }
     return tapped >= 0 ? rows[tapped].second : ACTION_NULL;
 }
 

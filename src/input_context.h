@@ -436,6 +436,17 @@ class input_context
          */
         std::string get_action_name( const std::string &action_id ) const;
 
+        // Mobile UI: read access for the prompt buttons, see mobile_prompt.h
+        const std::string &mobile_category() const {
+            return category;
+        }
+        const std::vector<std::string> &mobile_registered_actions() const {
+            return registered_actions;
+        }
+        bool mobile_has_action_name( const std::string &action_id ) const {
+            return action_name_overrides.count( action_id ) > 0;
+        }
+
         /* For the future, something like this might be nice:
          * const std::string register_action(const std::string& action_descriptor, x, y, width, height);
          * (x, y, width, height) would describe an area on the visible window that, if clicked, triggers the action.

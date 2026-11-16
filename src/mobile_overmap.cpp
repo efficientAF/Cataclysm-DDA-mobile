@@ -832,8 +832,11 @@ std::string view::handle( const std::string &action, input_context &ctxt,
 
     // a drag: the map follows the finger
     if( geo.valid ) {
-        const point tiles( static_cast<int>( v.pan_pixels.x / static_cast<float>( geo.tile.x ) ),
-                           static_cast<int>( v.pan_pixels.y / static_cast<float>( geo.tile.y ) ) );
+        // to the nearest tile, so that the map is never most of a tile behind the finger
+        const point tiles( static_cast<int>( std::lround( v.pan_pixels.x / static_cast<float>
+                                             ( geo.tile.x ) ) ),
+                           static_cast<int>( std::lround( v.pan_pixels.y / static_cast<float>
+                                             ( geo.tile.y ) ) ) );
         if( tiles != point::zero ) {
             v.pan_pixels.x -= static_cast<float>( tiles.x * geo.tile.x );
             v.pan_pixels.y -= static_cast<float>( tiles.y * geo.tile.y );

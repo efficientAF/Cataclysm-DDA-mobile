@@ -58,6 +58,7 @@
 #include "messages.h"
 #include "mission.h"
 #include "mobile_overmap.h"
+#include "mobile_prompt.h"
 #include "mongroup.h"
 #include "mtype.h"
 #include "npc.h"
@@ -2117,8 +2118,10 @@ static tripoint_abs_omt display()
     const bool mobile = mobile_overmap::wanted( data );
     std::optional<overmap_sidebar> om_sidebar;
     std::optional<mobile_overmap::view> mobile_view;
+    std::optional<mobile_prompt::own_controls> mobile_own_controls;
     if( mobile ) {
         mobile_view.emplace();
+        mobile_own_controls.emplace( ictxt );
     } else {
         om_sidebar.emplace( data, ictxt );
     }

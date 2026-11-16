@@ -1519,7 +1519,8 @@ bool game::cancel_activity_or_ignore_query( const distraction_type type, const s
     if( !u.activity || u.activity.is_distraction_ignored( type ) ) {
         return false;
     }
-    const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" );
+    // Mobile UI: the answers are buttons; no "(Case Sensitive)" note
+    const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" ) && !mobile_menu::enabled();
     const auto &allow_key = force_uc ? input_context::disallow_lower_case_or_non_modified_letters
                             : input_context::allow_all_keys;
 

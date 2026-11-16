@@ -20,6 +20,9 @@ enum class drawer : int {
 // ACTION_NULL, or ACTION_MAP when "Open the full map" was tapped.
 action_id show( drawer which );
 
+// The Log drawer opens on its Map tab the next time, not on the log.
+void open_on_map();
+
 } // namespace mobile_drawer
 
 #endif // CATA_SRC_MOBILE_DRAWER_H

@@ -34,7 +34,10 @@
 #include "cata_tiles.h"
 #include "cursesport.h"
 #include "input.h"
+#include "mobile_drawer.h"
 #include "mobile_hud.h"
+#include "mobile_hud_edit.h"
+#include "mobile_prompt.h"
 #include "sdltiles.h"
 #endif
 
@@ -654,6 +657,12 @@ enum class owner : int {
     none,
     imgui,
     hud_button,
+    // the prompt buttons, see mobile_prompt.h
+    prompt,
+    // the movement pad of the HUD
+    pad,
+    // the HUD editor, see mobile_hud_edit.h
+    hud_edit,
 };
 
 struct owned_finger_state {
@@ -674,7 +683,11 @@ struct owned_finger_state {
     float second_x = 0.0f;
     float second_y = 0.0f;
     // for owner::hud_button
-    action_id act = ACTION_NULL;
+    mobile_hud::hit hud_hit = { mobile_hud::hit_kind::action, ACTION_NULL };
+    // for owner::pad: where to walk, and when the next step is due
+    std::optional<point> pad_dir;
+    uint64_t pad_next = 0;
+    bool pad_stepped = false;
 };
 } // namespace
 
@@ -763,10 +776,34 @@ bool finger_down( const float x, const float y, const bool default_mode )
         tap_stage = tap_step::none;
     }
 
-    if( default_mode ) {
-        if( const std::optional<action_id> act = mobile_hud::button_at( x, y ) ) {
+    {
+        const ImVec2 pos = to_imgui( x, y );
+        if( mobile_prompt::finger_down( pos.x, pos.y ) ) {
+            owned_finger.who = owner::prompt;
+            request_wake_frames( 2 );
+            return true;
+        }
+    }
+    if( mobile_hud::is_editing() ) {
+        // the editor's own buttons are ImGui windows; the rest of the screen drags pieces
+        const ImVec2 pos = to_imgui( x, y );
+        if( !mobile_hud_edit::chrome_at( pos.x, pos.y ) ) {
+            owned_finger.who = owner::hud_edit;
+            mobile_hud_edit::finger_down( x, y );
+            request_wake_frames( 2 );
+            return true;
+        }
+    } else if( default_mode ) {
+        if( const std::optional<mobile_hud::hit> hit = mobile_hud::hit_at( x, y ) ) {
+            if( hit->kind == mobile_hud::hit_kind::pad ) {
+                owned_finger.who = owner::pad;
+                owned_finger.pad_dir = mobile_hud::pad_direction( x, y );
+                owned_finger.pad_next = SDL_GetTicks();
+                request_wake_frames( 2 );
+                return true;
+            }
             owned_finger.who = owner::hud_button;
-            owned_finger.act = *act;
+            owned_finger.hud_hit = *hit;
             return true;
         }
     }
@@ -791,6 +828,22 @@ bool finger_down( const float x, const float y, const bool default_mode )
 
 void finger_motion( const float x, const float y )
 {
+    if( owned_finger.who == owner::prompt ) {
+        const ImVec2 pos = to_imgui( x, y );
+        mobile_prompt::finger_motion( pos.x, pos.y );
+        request_wake_frames( 2 );
+        return;
+    }
+    if( owned_finger.who == owner::pad ) {
+        owned_finger.pad_dir = mobile_hud::pad_direction( x, y );
+        request_wake_frames( 1 );
+        return;
+    }
+    if( owned_finger.who == owner::hud_edit ) {
+        mobile_hud_edit::finger_motion( x, y );
+        request_wake_frames( 2 );
+        return;
+    }
     if( owned_finger.who != owner::imgui ) {
         return;
     }
@@ -886,19 +939,43 @@ bool finger_up( const float x, const float y, input_event &out )
     int key = 0;
 
     switch( finger.who ) {
+        case owner::prompt: {
+            const ImVec2 pos = to_imgui( x, y );
+            request_wake_frames( 2 );
+            if( mobile_prompt::finger_up( pos.x, pos.y, out ) ) {
+                return true;
+            }
+            break;
+        }
+        case owner::pad:
+            mobile_hud::release_pad();
+            request_wake_frames( 2 );
+            break;
+        case owner::hud_edit:
+            mobile_hud_edit::finger_up( x, y );
+            request_wake_frames( 2 );
+            break;
         case owner::hud_button: {
             // only if the finger is still on the button it went down on
-            const std::optional<action_id> act = mobile_hud::button_at( x, y );
-            if( !act || *act != finger.act ) {
+            const std::optional<mobile_hud::hit> hit = mobile_hud::hit_at( x, y );
+            if( !hit || hit->kind != finger.hud_hit.kind || hit->act != finger.hud_hit.act ) {
                 break;
             }
-            if( *act == ACTION_CENTER ) {
+            if( hit->kind == mobile_hud::hit_kind::recenter ) {
                 recenter_view();
                 ui_manager::redraw_invalidated();
                 break;
             }
+            if( hit->kind == mobile_hud::hit_kind::pad_toggle ) {
+                mobile_hud::toggle_pad();
+                request_wake_frames( 2 );
+                break;
+            }
+            if( hit->kind == mobile_hud::hit_kind::map_drawer ) {
+                mobile_drawer::open_on_map();
+            }
             // send the key the action is bound to
-            const std::vector<input_event> keys = keys_bound_to( *act, -1, false );
+            const std::vector<input_event> keys = keys_bound_to( hit->act, -1, false );
             if( !keys.empty() ) {
                 out = keys.front();
                 return true;
@@ -947,6 +1024,13 @@ bool finger_up( const float x, const float y, input_event &out )
 
 void finger_cancel()
 {
+    mobile_prompt::finger_cancel();
+    if( owned_finger.who == owner::pad ) {
+        mobile_hud::release_pad();
+    }
+    if( owned_finger.who == owner::hud_edit ) {
+        mobile_hud_edit::finger_cancel();
+    }
     if( owned_finger.who == owner::imgui && ImGui::GetCurrentContext() != nullptr ) {
         if( owned_finger.raw_dragging ) {
             ImGui::GetIO().AddMouseButtonEvent( ImGuiMouseButton_Left, false );
@@ -955,6 +1039,38 @@ void finger_cancel()
     }
     owned_finger = owned_finger_state();
     two_finger_end();
+}
+
+// --- The movement pad ---
+
+bool pad_poll( input_event &out )
+{
+    if( owned_finger.who != owner::pad || !owned_finger.pad_dir ) {
+        return false;
+    }
+    const uint64_t now = SDL_GetTicks();
+    if( now < owned_finger.pad_next ) {
+        return false;
+    }
+    // the first step at once, a pause, then steady steps while the thumb stays
+    owned_finger.pad_next = now + ( owned_finger.pad_stepped ? 110 : 260 );
+    owned_finger.pad_stepped = true;
+    const point dir = *owned_finger.pad_dir;
+    if( dir.x != 0 && dir.y != 0 ) {
+        // diagonals go through the gamepad stick, as with upstream's joystick
+        const int stick = dir.x > 0 ? ( dir.y > 0 ? JOY_LS_DOWN_RIGHT : JOY_LS_UP_RIGHT ) :
+                          ( dir.y > 0 ? JOY_LS_DOWN_LEFT : JOY_LS_UP_LEFT );
+        out = input_event( stick, input_event_t::gamepad );
+    } else {
+        const int key = dir.x > 0 ? KEY_RIGHT : dir.x < 0 ? KEY_LEFT : dir.y > 0 ? KEY_DOWN : KEY_UP;
+        out = input_event( key, input_event_t::keyboard_char );
+    }
+    return true;
+}
+
+bool pad_held()
+{
+    return owned_finger.who == owner::pad;
 }
 
 // --- Housekeeping ---

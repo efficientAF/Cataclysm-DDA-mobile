@@ -4958,7 +4958,8 @@ static SDL_FRect quick_shortcut_cell( const quick_shortcut_layout &layout, const
 input_event *get_quick_shortcut_under_finger( bool down = false )
 {
 
-    if( !quick_shortcuts_enabled ) {
+    // Mobile UI: a bar that is not drawn takes no taps
+    if( !quick_shortcuts_enabled || touch_input::hide_shortcut_bar() ) {
         return NULL;
     }
 
@@ -5234,9 +5235,8 @@ static bool android_keyboard_occludes_shortcuts()
 void draw_quick_shortcuts()
 {
 
-    // Mobile UI: no shortcut bar on the map or over the mobile screens
-    if( touch_input::hide_shortcut_bar() &&
-        ( touch_input_context.get_category() == "DEFAULTMODE" || imclient->any_window_shown() ) ) {
+    // Mobile UI: the prompt buttons take the bar's place, see mobile_prompt.h
+    if( touch_input::hide_shortcut_bar() ) {
         return;
     }
     if( !quick_shortcuts_enabled ||
@@ -5496,6 +5496,11 @@ static void draw_joystick_spoke( const SDL_FPoint &center, const float inner, co
 void draw_virtual_joystick()
 {
 
+    // Mobile UI: the HUD has a movement pad of its own
+    if( touch_input_context.get_category() == "DEFAULTMODE" &&
+        mobile_hud::movement_pad_mode() != mobile_hud::pad_mode::floating ) {
+        return;
+    }
     // Bail out if we don't need to draw the joystick
     if( !get_option<bool>( "ANDROID_SHOW_VIRTUAL_JOYSTICK" ) ||
         finger_down_time <= 0 ||
@@ -5798,7 +5803,12 @@ void handle_finger_input( uint32_t ticks )
     const bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
     const touch_joystick::direction dir = touch_joystick::classify( delta_x, delta_y,
                                           android_touch_deadzone(), android_touch_straight_width() );
-    if( dir != touch_joystick::direction::none ) {
+    // Mobile UI: with the movement pad as a HUD piece, a drag on the map does not walk
+    const bool own_pad = is_default_mode &&
+                         mobile_hud::movement_pad_mode() != mobile_hud::pad_mode::floating;
+    if( dir != touch_joystick::direction::none && own_pad ) {
+        // nothing
+    } else if( dir != touch_joystick::direction::none ) {
         last_input = touch_direction_input( dir );
     } else if( is_default_mode && android_touch_map_click( ticks ) ) {
         // Mobile UI: handled as a tap or long press on the map
@@ -6252,6 +6262,11 @@ static void CheckMessages()
 #if !defined(__ANDROID__)
     touch_input::desktop_poll( mobile_in_default_mode(), last_input );
 #endif
+    // Mobile UI: the movement pad walks for as long as it is held
+    if( last_input.type == input_event_t::error && mobile_in_default_mode() &&
+        touch_input::pad_poll( last_input ) ) {
+        needupdate = true;
+    }
 
     using cata::options::mouse;
 

@@ -14,6 +14,8 @@
 #include "game.h"
 #include "imgui/imgui.h"
 #include "input_context.h"
+#include "mobile_hud_edit.h"
+#include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "options.h"
 #include "string_formatter.h"
@@ -51,6 +53,8 @@ class settings_window : public cataimgui::window
         bool done = false;
         // "All options" was tapped
         bool open_all = false;
+        // "Edit HUD" was tapped
+        bool edit_hud = false;
         // an option was given a new value
         bool changed = false;
         // where the list was scrolled to, kept while the full options are open
@@ -389,7 +393,12 @@ void settings_window::draw_controls()
     } );
     switch_row( "MOBILE_HUD", _( "Full-screen map" ),
                 _( "Hides the sidebar and draws status and messages over the map" ) );
-    button_row( "##edit_hud", _( "HUD layout" ), _( "Coming later" ), _( "Edit HUD" ), false );
+    const bool can_edit = mobile_hud_edit::available();
+    if( button_row( "##edit_hud", _( "HUD layout" ),
+                    can_edit ? _( "Move, resize and hide the pieces on the play screen" ) :
+                    _( "Open Settings from a game to change the layout" ), _( "Edit HUD" ), can_edit ) ) {
+        edit_hud = true;
+    }
 
     section( _( "MENUS" ) );
     switch_row( "MOBILE_MENUS", _( "Touch screens" ),
@@ -444,25 +453,33 @@ void show()
     float scroll = 0.0f;
     while( true ) {
         bool open_all = false;
+        bool edit_hud = false;
         bool changed = false;
         {
             settings_window window;
             window.scroll = scroll;
             window.restore_scroll = scroll > 0.0f;
             input_context ctxt( "default" );
+            const mobile_prompt::own_controls own_controls( ctxt );
             ctxt.register_action( "QUIT" );
             ctxt.register_action( "ANY_INPUT" );
-            while( !window.done && !window.open_all ) {
+            while( !window.done && !window.open_all && !window.edit_hud ) {
                 ui_manager::redraw();
                 if( ctxt.handle_input() == "QUIT" ) {
                     break;
                 }
             }
             open_all = window.open_all;
+            edit_hud = window.edit_hud;
             changed = window.changed;
             scroll = window.scroll;
         }
         commit( changed );
+        if( edit_hud ) {
+            // straight into the layout editor, over the map
+            mobile_hud_edit::run();
+            return;
+        }
         if( !open_all ) {
             return;
         }

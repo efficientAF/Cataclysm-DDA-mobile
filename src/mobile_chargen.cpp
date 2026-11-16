@@ -22,6 +22,7 @@
 #include "input.h"
 #include "input_enums.h"
 #include "item.h"
+#include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "mutation.h"
 #include "output.h"
@@ -1235,6 +1236,7 @@ void run( character_creator_ui &ccui )
 
     chargen_window window;
     input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "ANY_INPUT" );
     // A window or scrolling area that is new is only laid out in its first

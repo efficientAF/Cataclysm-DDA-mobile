@@ -1,4 +1,5 @@
 #include "input_context.h"
+#include "mobile_prompt.h"
 
 #include <algorithm>
 #include <array>
@@ -358,6 +359,8 @@ std::string input_context::get_desc( const std::string &action_descriptor,
             rval += ", ";
         }
     }
+    // Mobile UI: a message that names these keys gets a button for them
+    mobile_prompt::note_keys( action_descriptor, rval );
     return rval;
 }
 

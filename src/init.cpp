@@ -76,6 +76,7 @@
 #include "material.h"
 #include "math_parser_jmath.h"
 #include "mission.h"
+#include "mobile_hud_layout.h"
 #include "mod_manager.h"
 #include "mod_tileset.h"
 #include "monfaction.h"
@@ -505,6 +506,8 @@ void DynamicDataLoader::initialize()
     add( "achievement", &achievement::load_achievement );
     add( "conduct", &achievement::load_achievement );
     add( "widget", &widget::load_widget );
+    // Mobile UI: layouts of the mobile HUD, see mobile_hud_layout.h
+    add( "mobile_hud_preset", &mobile_hud::load_preset );
     add( "weakpoint_set", &weakpoints::load_weakpoint_sets );
     add( "damage_type", &damage_type::load_damage_types );
     add( "damage_info_order", &damage_info_order::load_damage_info_orders );
@@ -792,6 +795,7 @@ void DynamicDataLoader::unload_data()
     weather_generator::reset();
     weather_types::reset();
     widget::reset();
+    mobile_hud::reset_presets();
     zone_type::reset();
 }
 

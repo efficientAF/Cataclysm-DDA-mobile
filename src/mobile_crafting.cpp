@@ -26,6 +26,7 @@
 #include "input_context.h"
 #include "item.h"
 #include "itype.h"
+#include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "output.h"
 #include "proficiency.h"
@@ -1175,6 +1176,7 @@ void show()
         crafting_window window( you );
         // keychar: the search field takes text
         input_context ctxt( "MOBILE_CRAFTING", keyboard_mode::keychar );
+        const mobile_prompt::own_controls own_controls( ctxt );
         ctxt.register_action( "QUIT" );
         ctxt.register_action( "LEFT" );
         ctxt.register_action( "RIGHT" );

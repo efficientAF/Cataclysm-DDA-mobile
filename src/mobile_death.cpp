@@ -22,6 +22,7 @@
 #include "input_context.h"
 #include "kill_tracker.h"
 #include "messages.h"
+#include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "options.h"
 #include "output.h"
@@ -420,6 +421,7 @@ void show()
     {
         death_window window( summarize() );
         input_context ctxt( "default" );
+        const mobile_prompt::own_controls own_controls( ctxt );
         ctxt.register_action( "QUIT" );
         ctxt.register_action( "ANY_INPUT" );
         while( window.result == choice::none ) {
