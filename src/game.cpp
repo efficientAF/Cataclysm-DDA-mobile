@@ -205,6 +205,7 @@
 #include "timed_event.h"
 #include "translation.h"
 #include "translation_cache.h"
+#include "touch_input.h"
 #include "translations.h"
 #include "trap.h"
 #include "ui_helpers.h"
@@ -6394,11 +6395,8 @@ static constexpr int MAXIMUM_ZOOM_LEVEL = 4;
 void game::zoom_out()
 {
 #if defined(TILES)
-    if( uistate.tileset_zoom > MAXIMUM_ZOOM_LEVEL ) {
-        uistate.tileset_zoom = uistate.tileset_zoom / 2;
-    } else {
-        uistate.tileset_zoom = 64;
-    }
+    uistate.tileset_zoom = touch_input::step_zoom( uistate.tileset_zoom, false, MAXIMUM_ZOOM_LEVEL,
+                           64, !touch_input::zoom_no_wrap() );
     rescale_tileset( uistate.tileset_zoom );
 #endif
 }
@@ -6406,11 +6404,8 @@ void game::zoom_out()
 void game::zoom_out_overmap()
 {
 #if defined(TILES)
-    if( uistate.overmap_tileset_zoom > MAXIMUM_ZOOM_LEVEL ) {
-        uistate.overmap_tileset_zoom /= 2;
-    } else {
-        uistate.overmap_tileset_zoom = 64;
-    }
+    uistate.overmap_tileset_zoom = touch_input::step_zoom( uistate.overmap_tileset_zoom, false,
+                                   MAXIMUM_ZOOM_LEVEL, 64, !touch_input::zoom_no_wrap() );
     overmap_tilecontext->set_draw_scale( uistate.overmap_tileset_zoom );
 #endif
 }
@@ -6418,11 +6413,8 @@ void game::zoom_out_overmap()
 void game::zoom_in()
 {
 #if defined(TILES)
-    if( uistate.tileset_zoom == 64 ) {
-        uistate.tileset_zoom = MAXIMUM_ZOOM_LEVEL;
-    } else {
-        uistate.tileset_zoom = uistate.tileset_zoom * 2;
-    }
+    uistate.tileset_zoom = touch_input::step_zoom( uistate.tileset_zoom, true, MAXIMUM_ZOOM_LEVEL,
+                           64, !touch_input::zoom_no_wrap() );
     rescale_tileset( uistate.tileset_zoom );
 #endif
 }
@@ -6430,11 +6422,8 @@ void game::zoom_in()
 void game::zoom_in_overmap()
 {
 #if defined(TILES)
-    if( uistate.overmap_tileset_zoom == 64 ) {
-        uistate.overmap_tileset_zoom = MAXIMUM_ZOOM_LEVEL;
-    } else {
-        uistate.overmap_tileset_zoom *= 2;
-    }
+    uistate.overmap_tileset_zoom = touch_input::step_zoom( uistate.overmap_tileset_zoom, true,
+                                   MAXIMUM_ZOOM_LEVEL, 64, !touch_input::zoom_no_wrap() );
     overmap_tilecontext->set_draw_scale( uistate.overmap_tileset_zoom );
 #endif
 }

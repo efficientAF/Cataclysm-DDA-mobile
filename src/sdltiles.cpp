@@ -60,6 +60,7 @@
 #include "map_extras.h"
 #include "mapbuffer.h"
 #include "mission.h"
+#include "mobile_hud.h"
 #include "npc.h"
 #include "options.h"
 #include "output.h"
@@ -80,6 +81,7 @@
 #include "sdlsound.h"
 #include "string_formatter.h"
 #include "terminal_layout.h" // IWYU pragma: keep
+#include "touch_input.h"
 #include "touch_joystick.h" // IWYU pragma: keep
 #include "uistate.h"
 #include "ui_manager.h"
@@ -1152,6 +1154,22 @@ static bool present_gate()
     return true;
 }
 
+// Mobile UI: whether the game is waiting for a command on the main map.
+static bool mobile_in_default_mode()
+{
+    input_context *const ctx = input_context::input_context_stack.back();
+    if( ctx == nullptr ) {
+        return false;
+    }
+#if defined(__ANDROID__)
+    return ctx->get_category() == "DEFAULTMODE";
+#else
+    // The category is only readable in Android builds; on desktop go by an
+    // action that only the main game context registers.
+    return ctx->is_registered_action( "toggle_auto_pulp_butcher" );
+#endif
+}
+
 void refresh_display()
 {
     needupdate = false;
@@ -1208,6 +1226,11 @@ void refresh_display()
     }
     draw_virtual_joystick();
 #endif
+    // Mobile UI overlay, at native resolution like the quick shortcuts above
+    if( font ) {
+        mobile_hud::draw( renderer, *font, dstrect, WindowWidth, WindowHeight,
+                          mobile_in_default_mode() );
+    }
     draw_gamepad_radial_menu();
     RenderPresent( renderer );
 }
@@ -4756,6 +4779,9 @@ static bool is_two_finger_touch = false;
 static bool is_three_finger_touch = false;
 // did this touch start on a quick shortcut?
 static bool is_quick_shortcut_touch = false;
+// Mobile UI: the touch_input module took this touch (an ImGui window or a HUD
+// button).  is_quick_shortcut_touch is set too, so the gesture code leaves it alone.
+static bool touch_claimed = false;
 static bool quick_shortcuts_toggle_handled = false;
 // the current finger repeat delay - will be somewhere between the min/max values depending on user input
 uint32_t finger_repeat_delay = 500;
@@ -5156,6 +5182,7 @@ static void reset_touch_state()
     is_three_finger_touch = false;
     finger_down_time = 0;
     finger_repeat_time = 0;
+    touch_input::two_finger_end();
 }
 
 // system took the touch over, e.g. for an edge gesture: drop the whole gesture
@@ -5164,6 +5191,8 @@ static void cancel_touch()
 {
     reset_touch_state();
     is_quick_shortcut_touch = false;
+    touch_claimed = false;
+    touch_input::finger_cancel();
     for( SDL_FingerID &slot_id : finger_id_slots ) {
         slot_id = INVALID_FINGER_ID;
     }
@@ -5677,6 +5706,59 @@ static input_event touch_direction_input( const touch_joystick::direction dir )
     return input_event();
 }
 
+// Mobile UI: sends a tap or long press on the map to the game, as a mouse
+// select at the finger's position.
+static void android_send_map_click( const touch_input::click_kind kind )
+{
+    const SDL_Point pos = window_to_display_buffer_coords( SDL_Point{
+        static_cast<int>( finger_curr_x ), static_cast<int>( finger_curr_y ) } );
+    touch_input::queue_map_click( kind, point( pos.x, pos.y ) );
+    last_input = input_event( MouseInput::LeftButtonReleased, input_event_t::mouse );
+}
+
+// Mobile UI: a finger that stayed put on the map is a tap, or a long press once
+// it has been held long enough.  Returns true if the touch was handled here.
+static bool android_touch_map_click( uint32_t ticks )
+{
+    const uint32_t held_ms = ticks - finger_down_time;
+    if( held_ms <= static_cast<uint32_t>( get_option<int>( "ANDROID_INITIAL_DELAY" ) ) ) {
+        if( !touch_input::tap_to_act() ) {
+            return false;
+        }
+        android_send_map_click( touch_input::click_kind::tap );
+        return true;
+    }
+    if( !touch_input::long_press_menu() ) {
+        return false;
+    }
+    const uint32_t long_press_ms = static_cast<uint32_t>( touch_input::long_press_delay_ms() );
+    if( held_ms >= long_press_ms ) {
+        android_send_map_click( touch_input::click_kind::long_press );
+        // The long press is over once it fires.  Drop the touch so that the
+        // rest of it, including the release, sends nothing more.
+        cancel_touch();
+    } else {
+        // Still waiting: swallow the hold instead of repeating the tap key, and
+        // have the hold timer call again right when the long press is due.
+        finger_repeat_delay = long_press_ms - held_ms;
+    }
+    return true;
+}
+
+// Mobile UI: a finger lifted after the tap window but before the long press
+// fired, without leaving the deadzone, still counts as a tap.
+static bool android_touch_slow_tap()
+{
+    if( !touch_input::tap_to_act() || !touch_input::long_press_menu() ||
+        touch_joystick::classify( finger_curr_x - finger_down_x, finger_curr_y - finger_down_y,
+                                  android_touch_deadzone(), android_touch_straight_width() ) !=
+        touch_joystick::direction::none ) {
+        return false;
+    }
+    android_send_map_click( touch_input::click_kind::tap );
+    return true;
+}
+
 // This function is triggered on finger up events, OR by a repeating timer for touch hold events.
 void handle_finger_input( uint32_t ticks )
 {
@@ -5688,6 +5770,8 @@ void handle_finger_input( uint32_t ticks )
                                           android_touch_deadzone(), android_touch_straight_width() );
     if( dir != touch_joystick::direction::none ) {
         last_input = touch_direction_input( dir );
+    } else if( is_default_mode && android_touch_map_click( ticks ) ) {
+        // Mobile UI: handled as a tap or long press on the map
     } else {
         if( ticks - finger_down_time >= static_cast<uint32_t>
             ( get_option<int>( "ANDROID_INITIAL_DELAY" ) ) ) {
@@ -6128,6 +6212,15 @@ static void CheckMessages()
 
     last_input = input_event();
 
+    // Mobile UI: bring a panned view back once the player has moved
+    if( touch_input::poll() ) {
+        ui_manager::redraw_invalidated();
+        needupdate = true;
+    }
+#if !defined(__ANDROID__)
+    touch_input::desktop_poll( mobile_in_default_mode(), last_input );
+#endif
+
     using cata::options::mouse;
 
     int imgui_buf_w = 0;
@@ -6469,6 +6562,11 @@ static void CheckMessages()
 #if defined(__ANDROID__)
                 case CATA_FINGERMOTION: {
                     const int slot = finger_slot_for( GetFingerID( ev ), false );
+                    if( slot == 0 && touch_claimed ) {
+                        touch_input::finger_motion( GetFingerX( ev, WindowWidth ),
+                                                    GetFingerY( ev, WindowHeight ) );
+                        break;
+                    }
                     if( slot == 0 ) {
                         if( !is_quick_shortcut_touch ) {
                             update_finger_repeat_delay();
@@ -6499,6 +6597,11 @@ static void CheckMessages()
                         third_finger_curr_x = GetFingerX( ev, WindowWidth );
                         third_finger_curr_y = GetFingerY( ev, WindowHeight );
                     }
+                    // Mobile UI: live pinch zoom and two-finger pan
+                    if( is_two_finger_touch && ( slot == 0 || slot == 1 ) ) {
+                        touch_input::two_finger_update( finger_curr_x, finger_curr_y,
+                                                        second_finger_curr_x, second_finger_curr_y );
+                    }
                     break;
                 }
                 case CATA_FINGERDOWN:
@@ -6508,6 +6611,12 @@ static void CheckMessages()
                         finger_down_time = ticks;
                         finger_repeat_time = 0;
                         is_quick_shortcut_touch = get_quick_shortcut_under_finger() != NULL;
+                        // Mobile UI: fingers on ImGui windows and HUD buttons
+                        touch_claimed = !is_quick_shortcut_touch &&
+                                        touch_input::finger_down( finger_down_x, finger_down_y, is_default_mode );
+                        if( touch_claimed ) {
+                            is_quick_shortcut_touch = true;
+                        }
                         if( !is_quick_shortcut_touch ) {
                             update_finger_repeat_delay();
                         }
@@ -6518,6 +6627,16 @@ static void CheckMessages()
                             second_finger_down_x = second_finger_curr_x = GetFingerX( ev, WindowWidth );
                             second_finger_down_y = second_finger_curr_y = GetFingerY( ev, WindowHeight );
                             is_two_finger_touch = true;
+                            // Mobile UI: live pinch zoom and two-finger pan
+                            if( is_default_mode ) {
+                                touch_input::two_finger_begin( touch_input::view_mode::map,
+                                                               finger_curr_x, finger_curr_y,
+                                                               second_finger_curr_x, second_finger_curr_y );
+                            } else if( touch_input_context.get_category() == "OVERMAP" ) {
+                                touch_input::two_finger_begin( touch_input::view_mode::overmap,
+                                                               finger_curr_x, finger_curr_y,
+                                                               second_finger_curr_x, second_finger_curr_y );
+                            }
                         }
                     } else if( finger_slot_for( GetFingerID( ev ), true ) == 2 ) {
                         if( !is_quick_shortcut_touch ) {
@@ -6533,7 +6652,14 @@ static void CheckMessages()
                     if( slot == 0 ) {
                         finger_curr_x = GetFingerX( ev, WindowWidth );
                         finger_curr_y = GetFingerY( ev, WindowHeight );
-                        if( is_quick_shortcut_touch ) {
+                        if( touch_claimed ) {
+                            // Mobile UI: release of a finger on an ImGui window or HUD button
+                            touch_claimed = false;
+                            const int key = touch_input::finger_up( finger_curr_x, finger_curr_y );
+                            if( key != 0 ) {
+                                last_input = input_event( key, input_event_t::keyboard_char );
+                            }
+                        } else if( is_quick_shortcut_touch ) {
                             input_event *quick_shortcut = get_quick_shortcut_under_finger();
                             if( quick_shortcut ) {
                                 last_input = *quick_shortcut;
@@ -6571,10 +6697,13 @@ static void CheckMessages()
 
                                     float longest_window_edge = std::max( WindowWidth, WindowHeight );
 
-                                    if( std::max( d1, d2 ) < get_option<float>( "ANDROID_DEADZONE_RANGE" ) * longest_window_edge ) {
+                                    if( touch_input::two_finger_acted() ) {
+                                        // Mobile UI: already panned or zoomed while the fingers moved
+                                    } else if( std::max( d1, d2 ) < get_option<float>( "ANDROID_DEADZONE_RANGE" ) *
+                                               longest_window_edge ) {
                                         last_input = input_event( get_key_event_from_string(
                                                                       get_option<std::string>( "ANDROID_2_TAP_KEY" ) ), input_event_t::keyboard_char );
-                                    } else {
+                                    } else if( !touch_input::owns_two_finger_gestures() ) {
                                         float dot = ( x1 * x2 + y1 * y2 ) / ( d1 * d2 ); // dot product of two finger vectors, -1 to +1
                                         if( dot > 0.0f ) { // both fingers mostly heading in same direction, check for double-finger swipe gesture
                                             float dratio = d1 / d2;
@@ -6687,6 +6816,8 @@ static void CheckMessages()
                             } else if( ticks - finger_down_time <= static_cast<uint32_t>(
                                            get_option<int>( "ANDROID_INITIAL_DELAY" ) ) ) {
                                 handle_finger_input( ticks );
+                            } else if( is_default_mode && android_touch_slow_tap() ) {
+                                // Mobile UI: handled as a tap on the map
                             }
                         }
                         reset_touch_state();
@@ -6716,6 +6847,17 @@ static void CheckMessages()
                     cancel_touch();
                     android_request_repaint();
                     break;
+#else
+                case CATA_FINGERDOWN:
+                case CATA_FINGERMOTION:
+                case CATA_FINGERUP:
+                case CATA_FINGERCANCELED:
+                    // Mobile UI on desktop, for testing; see touch_input.h
+                    if( touch_input::desktop_finger_event( ev, WindowWidth, WindowHeight,
+                                                           mobile_in_default_mode(), last_input ) ) {
+                        needupdate = true;
+                    }
+                    break;
 #endif
 
                 case CATA_QUIT:
@@ -6734,6 +6876,14 @@ static void CheckMessages()
         if( text_refresh && !is_repeat ) {
             break;
         }
+    }
+    // Mobile UI: pinch zoom and pan, now that every finger has reported
+    if( touch_input::two_finger_flush() ) {
+        needupdate = true;
+    }
+    // Mobile UI: let the UI draw the frames ImGui needs to work through a tap
+    if( last_input.type == input_event_t::error && touch_input::take_wake_frame() ) {
+        last_input.type = input_event_t::timeout;
     }
     if( needupdate ) {
         try_sdl_update();
@@ -7116,7 +7266,7 @@ static std::optional<uint32_t> android_touch_wait_ms( const uint32_t now )
     return touch_wait_ms( t );
 #else
     static_cast<void>( now );
-    return std::nullopt;
+    return touch_input::desktop_wait_ms();
 #endif
 }
 
@@ -7238,6 +7388,10 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
         const SDL_Point buf_pt = window_to_display_buffer_coords( SDL_Point{ raw.x, raw.y } );
         last_input.mouse_pos.x = buf_pt.x;
         last_input.mouse_pos.y = buf_pt.y;
+    }
+    // Mobile UI: a map tap acts where the finger was, not where the mouse is.
+    if( const std::optional<point> touch_pos = touch_input::take_pointer_override() ) {
+        last_input.mouse_pos = *touch_pos;
     }
     if( last_input.type == input_event_t::keyboard_char ) {
         previously_pressed_key = last_input.get_first_input();

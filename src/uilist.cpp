@@ -19,6 +19,7 @@
 #include "output.h"
 #include "sdltiles.h"
 #include "input_popup.h"
+#include "touch_input.h"
 #include "translations.h"
 #include "ui_manager.h"
 #include "cata_imgui.h"
@@ -40,7 +41,7 @@ void uilist_impl::draw_controls()
     hide_if_hidden();
     using cata::options::mouse;
     bool cursor_shown = IsCursorVisible();
-    if( mouse.hidekb && !cursor_shown ) {
+    if( mouse.hidekb && !cursor_shown && !touch_input::pointer_active() ) {
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
     } else {
         ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;

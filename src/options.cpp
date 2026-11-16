@@ -3405,6 +3405,69 @@ void options_manager::add_options_android()
     } );
 
 #endif
+
+#if defined(TILES)
+    // Mobile UI fork: touch controls, see touch_input.h.  On by default on
+    // Android only; on desktop they sit on the interface page for testing.
+#if defined(__ANDROID__)
+    const std::string mobile_page = "android";
+    const bool mobile_default = true;
+#else
+    const std::string mobile_page = "interface";
+    const bool mobile_default = false;
+#endif
+    add_empty_line( mobile_page );
+
+    add( "MOBILE_HUD", mobile_page, to_translation( "Mobile HUD (full-screen map)" ),
+         to_translation( "If true, the sidebar is hidden so the map fills the screen, and the location, status and latest messages are drawn over the map instead.  Experimental: most sidebar information is not shown yet." ),
+         mobile_default
+       );
+
+    add_option_group( mobile_page, Group( "mobile_touch_opts",
+                                          to_translation( "Mobile touch controls" ),
+                                          to_translation( "Touch controls of the mobile UI: tapping the map, the long-press menu, pinch zoom and panning." ) ),
+    [&]( const std::string & page_id ) {
+        add( "TOUCH_TAP_TO_ACT", page_id, to_translation( "Tap the map to act" ),
+             to_translation( "If true, tapping the tile next to you moves, attacks or interacts in that direction, and tapping your own tile waits a moment.  Tapping a tile further away shows a route; tap it again to travel there.  Taps act at once, without the double-tap delay." ),
+             mobile_default
+           );
+
+        add( "TOUCH_LONG_PRESS_MENU", page_id, to_translation( "Long-press for the action menu" ),
+             to_translation( "If true, holding a finger still on a map tile opens a menu of actions for that tile, instead of repeating the tap key." ),
+             mobile_default
+           );
+
+        add( "TOUCH_LONG_PRESS_DELAY", page_id, to_translation( "Long-press time" ),
+             to_translation( "How long a finger has to rest on a map tile before the action menu opens, in milliseconds.  Start dragging sooner than this to use the virtual joystick." ),
+             300, 1500, 500
+           );
+
+        add( "TOUCH_LIVE_PINCH_ZOOM", page_id, to_translation( "Live pinch zoom" ),
+             to_translation( "If true, pinching zooms the map while your fingers move, one zoom level at a time, instead of once after you let go." ),
+             mobile_default
+           );
+
+        add( "TOUCH_ZOOM_NO_WRAP", page_id, to_translation( "Zoom stops at the ends" ),
+             to_translation( "If true, zooming stops at the closest and the furthest zoom level instead of jumping to the other end." ),
+             mobile_default
+           );
+
+        add( "TOUCH_TWO_FINGER_PAN", page_id, to_translation( "Two-finger drag pans the view" ),
+             to_translation( "If true, dragging with two fingers moves the view, and a Recenter button appears while you look around.  This replaces the two-finger swipe keys." ),
+             mobile_default
+           );
+
+        add( "TOUCH_RECENTER_ON_MOVE", page_id, to_translation( "Recenter when you move" ),
+             to_translation( "If true, taking a step brings a panned view back to your character." ),
+             true
+           );
+
+        add( "TOUCH_IMGUI_POINTER", page_id, to_translation( "Tap and drag in menus" ),
+             to_translation( "If true, menus drawn as windows react to your finger: tap a row or button to choose it, drag up or down to scroll.  A sideways swipe still sends the left or right arrow key." ),
+             mobile_default
+           );
+    } );
+#endif
 }
 
 #if defined(TILES)

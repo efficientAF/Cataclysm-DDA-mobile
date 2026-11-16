@@ -92,6 +92,7 @@
 #include "string_formatter.h"
 #include "timed_event.h"
 #include "translation.h"
+#include "touch_input.h"
 #include "translations.h"
 #include "ui_manager.h"
 #include "uilist.h"
@@ -3321,6 +3322,8 @@ bool game::handle_action()
 
         if( act == ACTION_SELECT || act == ACTION_SEC_SELECT ) {
             // Mouse button click
+            // Mobile UI: a tap or long press on the map arrives as a mouse select.
+            const touch_input::click_kind touch_click = touch_input::take_pending_click();
             if( veh_ctrl ) {
                 // No mouse use in vehicle
                 return false;
@@ -3343,7 +3346,27 @@ bool game::handle_action()
             }
             mouse_target = mouse_pos;
 
-            if( act == ACTION_SELECT ) {
+            bool touch_travel = false;
+            const std::optional<action_id> touch_act = touch_input::resolve_map_click( touch_click,
+                    *mouse_target, touch_travel );
+            if( touch_travel ) {
+                // "Travel here" from the long-press menu: plot the route, then
+                // confirm it at once, as two left clicks on the same tile would.
+                player_character.clear_destination();
+                destination_preview.clear();
+                act = ACTION_SELECT;
+                if( !try_get_left_click_action( act, *mouse_target ) || destination_preview.empty() ||
+                    !try_get_left_click_action( act, *mouse_target ) ) {
+                    return false;
+                }
+            } else if( touch_act ) {
+                player_character.clear_destination();
+                destination_preview.clear();
+                if( *touch_act == ACTION_NULL ) {
+                    return false;
+                }
+                act = *touch_act;
+            } else if( act == ACTION_SELECT ) {
                 // Note: The following has the potential side effect of
                 // setting auto-move destination state in addition to setting
                 // act.
