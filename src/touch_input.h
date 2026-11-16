@@ -89,6 +89,15 @@ bool menu_tap();
 bool owns_two_finger_gestures();
 // The MOBILE_HUD option: no sidebar, the map fills the screen (see mobile_hud.h).
 bool hud_enabled();
+// The closest zoom level of the map: upstream's 64, or 256 with the mobile HUD,
+// where small tiles on a dense phone screen need more.
+int max_zoom();
+// The zoom level a game starts at: upstream's 16, or with the mobile HUD the
+// level that makes a tile about a sixteenth of the screen's short side.
+int default_zoom();
+// True if upstream's Android shortcut bar should stay out of the way: on the map
+// and over the mobile screens.  It still shows on upstream's own text screens.
+bool hide_shortcut_bar();
 
 // --- Map clicks ---
 

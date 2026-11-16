@@ -6416,7 +6416,7 @@ void game::zoom_out()
 {
 #if defined(TILES)
     uistate.tileset_zoom = touch_input::step_zoom( uistate.tileset_zoom, false, MAXIMUM_ZOOM_LEVEL,
-                           64, !touch_input::zoom_no_wrap() );
+                           touch_input::max_zoom(), !touch_input::zoom_no_wrap() );
     rescale_tileset( uistate.tileset_zoom );
 #endif
 }
@@ -6434,7 +6434,7 @@ void game::zoom_in()
 {
 #if defined(TILES)
     uistate.tileset_zoom = touch_input::step_zoom( uistate.tileset_zoom, true, MAXIMUM_ZOOM_LEVEL,
-                           64, !touch_input::zoom_no_wrap() );
+                           touch_input::max_zoom(), !touch_input::zoom_no_wrap() );
     rescale_tileset( uistate.tileset_zoom );
 #endif
 }
@@ -6451,7 +6451,8 @@ void game::zoom_in_overmap()
 void game::reset_zoom()
 {
 #if defined(TILES)
-    uistate.tileset_zoom = DEFAULT_TILESET_ZOOM;
+    // Mobile UI: start closer in on a phone, see touch_input::default_zoom
+    uistate.tileset_zoom = touch_input::default_zoom();
     rescale_tileset( uistate.tileset_zoom );
 #endif // TILES
 }

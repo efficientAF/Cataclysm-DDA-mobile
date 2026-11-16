@@ -187,6 +187,41 @@ bool hud_enabled()
     return bool_option( "MOBILE_HUD" );
 }
 
+int max_zoom()
+{
+    return hud_enabled() ? 256 : max_zoom_level;
+}
+
+int default_zoom()
+{
+#if defined(TILES)
+    if( hud_enabled() && use_tiles && tilecontext ) {
+        const int zoom_now = std::max( uistate.tileset_zoom, 1 );
+        // tile size at the default zoom level
+        const float base = static_cast<float>( tilecontext->get_tile_width() ) *
+                           static_cast<float>( DEFAULT_TILESET_ZOOM ) / static_cast<float>( zoom_now );
+        int w = 0;
+        int h = 0;
+        get_display_buffer_dims( &w, &h );
+        const float wanted = static_cast<float>( std::min( w, h ) ) / 16.0f;
+        if( base > 0.0f && wanted > 0.0f ) {
+            return snap_zoom( DEFAULT_TILESET_ZOOM, wanted / base, DEFAULT_TILESET_ZOOM, max_zoom() );
+        }
+    }
+#endif
+    return DEFAULT_TILESET_ZOOM;
+}
+
+bool hide_shortcut_bar()
+{
+#if defined(TILES)
+    return get_options().has_option( "MOBILE_MENUS" ) && ( bool_option( "MOBILE_MENUS" ) ||
+            bool_option( "MOBILE_HUD" ) );
+#else
+    return false;
+#endif
+}
+
 // --- Map clicks ---
 
 static click_kind pending_click = click_kind::none;
@@ -532,7 +567,8 @@ static bool two_finger_zoom( const float ratio )
     if( std::abs( wanted - std::log2( static_cast<float>( now ) ) ) <= 0.6f ) {
         return false;
     }
-    const int target = snap_zoom( two_finger.start_zoom, ratio, min_zoom_level, max_zoom_level );
+    const int target = snap_zoom( two_finger.start_zoom, ratio, min_zoom_level,
+                                  two_finger.mode == view_mode::map ? max_zoom() : max_zoom_level );
     if( target == now ) {
         return false;
     }
@@ -825,9 +861,34 @@ static void apply_touch_style()
     applied = true;
 }
 
+// Zooms in to default_zoom() once a character is in play.  game::reset_zoom runs
+// before the tileset and screen size are settled, so it cannot do this itself.
+static bool apply_start_zoom()
+{
+    static bool applied = false;
+    if( !g || get_avatar().name.empty() ) {
+        applied = false;
+        return false;
+    }
+    if( applied ) {
+        return false;
+    }
+    applied = true;
+    const int wanted = default_zoom();
+    if( uistate.tileset_zoom != DEFAULT_TILESET_ZOOM || wanted == DEFAULT_TILESET_ZOOM ) {
+        return false;
+    }
+    g->set_zoom( wanted );
+    g->invalidate_main_ui_adaptor();
+    return true;
+}
+
 bool poll()
 {
     apply_touch_style();
+    if( apply_start_zoom() ) {
+        return true;
+    }
     if( !g || !panned_by_touch || !recenter_on_move() ) {
         return false;
     }

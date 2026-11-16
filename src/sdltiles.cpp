@@ -1036,6 +1036,10 @@ static SDL_Rect android_layout_bounds()
     } else if( !overlap && quick_shortcuts_enabled ) {
         reserved = static_cast<int>( quick_shortcut_height() );
     }
+    if( touch_input::hide_shortcut_bar() ) {
+        // Mobile UI: the bar only shows over upstream's text screens, so it gets no room of its own
+        reserved = 0;
+    }
     // keep area non-empty so view is never drawn zero high
     bounds.h = std::max( 1, bounds.h - reserved );
     return bounds;
@@ -5230,6 +5234,11 @@ static bool android_keyboard_occludes_shortcuts()
 void draw_quick_shortcuts()
 {
 
+    // Mobile UI: no shortcut bar on the map or over the mobile screens
+    if( touch_input::hide_shortcut_bar() &&
+        ( touch_input_context.get_category() == "DEFAULTMODE" || imclient->any_window_shown() ) ) {
+        return;
+    }
     if( !quick_shortcuts_enabled ||
         android_keyboard_occludes_shortcuts() ||
         ( get_option<bool>( "ANDROID_HIDE_HOLDS" ) && !is_quick_shortcut_touch && finger_down_time > 0 &&
