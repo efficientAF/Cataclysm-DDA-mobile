@@ -276,6 +276,8 @@ class chargen_window : public cataimgui::window
         trait_filter filter = trait_filter::all;
         float body_width = 0.0f;
         bool landscape = false;
+        // the step drawn in the last frame
+        int drawn_step = -1;
 
         void ask( const command_kind kind, const int a = 0, const int b = 0,
                   const std::string &text = std::string() ) {
@@ -779,7 +781,7 @@ float chargen_window::draw_skills( const ImVec2 &base )
     const avatar &you = get_avatar();
     state.recalc_skill_list();
     const float lead = draw_lead( base,
-                                  _( "Your profession and backgrounds give starting levels.  Each level you add costs more points than the last." ) );
+                                  _( "Your profession and backgrounds give starting levels.  Higher levels cost more points." ) );
     float y = base.y + lead + 4.0f * u;
     const float row_h = 62.0f * u;
     const int count = static_cast<int>( state.sorted_skills.size() );
@@ -794,7 +796,7 @@ float chargen_window::draw_skills( const ImVec2 &base )
             const int own = you.get_skill_level( skill );
             const int given = skill_from_background( you, skill );
             mobile_ui::text( draw, face::bold, 14.5f, ImVec2( row_pos.x + 14.0f * u, y + 13.0f * u ),
-                             mobile_ui::col_fg, skill->name() );
+                             mobile_ui::col_fg, uppercase_first_letter( skill->name() ) );
             mobile_ui::text( draw, face::body, 11.0f, ImVec2( row_pos.x + 14.0f * u, y + 34.0f * u ),
                              mobile_ui::col_muted,
                              given > 0 ? string_format( _( "%d from background" ), given ) : std::string( _( "untrained" ) ) );
@@ -863,7 +865,7 @@ float chargen_window::draw_summary( const ImVec2 &base )
     {
         int tapped = -1;
         y += draw_chips( "##gender", ImVec2( left, y - 5.0f * u ), width,
-        { char_creation::get_gender_string( true ), char_creation::get_gender_string( false ) },
+        { remove_color_tags( char_creation::get_gender_string( true ) ), remove_color_tags( char_creation::get_gender_string( false ) ) },
         you.male ? 0 : 1, &tapped ) - 5.0f * u;
         if( tapped >= 0 ) {
             ask( command_kind::gender, tapped == 0 ? 1 : 0 );
@@ -1084,6 +1086,13 @@ void chargen_window::draw_controls()
     ImGui::BeginChild( ( "##chargen_body" + std::to_string( step ) ).c_str(),
                        ImVec2( width, bottom_y - y ), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
     const ImVec2 base = ImGui::GetCursorScreenPos();
+    if( step != drawn_step ) {
+        // every step opens at its top
+        ImGui::SetScrollY( 0.0f );
+        drawn_step = step;
+    }
+    // narrower when the scrollbar shows
+    body_width = ImGui::GetContentRegionAvail().x;
     float height = 0.0f;
     switch( state.selected_tab ) {
         case CHARCREATOR_SCENARIO:
