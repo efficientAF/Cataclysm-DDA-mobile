@@ -145,7 +145,6 @@ static TTF_Font *font_for( const face f, const int pixels )
 static const text_entry &text_texture( const face f, const float size_units,
                                        const std::string &text )
 {
-    static const text_entry none;
     const int pixels = std::max( 6, static_cast<int>( std::lround( size_units * unit ) ) );
     const text_key key{ static_cast<int>( f ), pixels, text };
     const auto found = text_cache.find( key );
