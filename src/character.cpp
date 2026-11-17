@@ -62,6 +62,7 @@
 #include "lightmap.h"
 #include "line.h"
 #include "localized_comparator.h"
+#include "mobile_list.h"
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "map.h"
@@ -8506,8 +8507,36 @@ bool character_martial_arts::pick_style( const Character &you ) // Style selecti
                              wrap60( style.description.translated() ) );
     }
 
-    kmenu.query();
-    int selection = kmenu.ret;
+    int selection = -1;
+    if( mobile_list::wanted() ) {
+        // Mobile UI: the styles as a list with their descriptions
+        mobile_list::spec what;
+        what.title = _( "Fighting style" );
+        what.header = string_format( _( "STR %1$d · DEX %2$d · PER %3$d · INT %4$d" ), you.get_str(),
+                                     you.get_dex(), you.get_per(), you.get_int() );
+        mobile_list::row hands;
+        hands.name = _( "Keep hands free" );
+        hands.right = keep_hands_free ? _( "On" ) : _( "Off" );
+        hands.description =
+            _( "When this is enabled, player won't wield things unless explicitly told to." );
+        hands.action = keep_hands_free ? _( "Turn off" ) : _( "Turn on" );
+        what.rows.push_back( hands );
+        for( const matype_id &id : selectable_styles ) {
+            mobile_list::row r;
+            r.name = id->name.translated();
+            r.description = id->description.translated();
+            r.current = id == style_selected;
+            r.right = r.current ? _( "In use" ) : std::string();
+            r.action = _( "Use this style" );
+            what.rows.push_back( r );
+        }
+        int tab = 0;
+        int row = -1;
+        selection = mobile_list::show( what, tab, row );
+    } else {
+        kmenu.query();
+        selection = kmenu.ret;
+    }
 
     if( selection >= STYLE_OFFSET ) {
         // If the currect style is selected, do not change styles

@@ -1,3 +1,4 @@
+#include "mobile_list.h"
 #include "magic.h"
 
 #include <algorithm>
@@ -3395,6 +3396,39 @@ spell &known_magic::select_spell( Character &guy )
         // 3. By spell name
         return strcmp( left->name().c_str(), right->name().c_str() ) < 0;
     } );
+    // Mobile UI: the spells as a list with what each does
+    if( mobile_list::wanted() ) {
+        mobile_list::spec what;
+        what.title = _( "Choose a Supernatural Power" );
+        for( const spell *const s : known_spells_sorted ) {
+            mobile_list::row r;
+            r.name = s->name();
+            r.enabled = s->can_cast( guy );
+            r.detail = string_format( _( "Level %1$d · %2$s" ), s->get_level(),
+                                      s->energy_cost_string( guy ) );
+            r.description = s->description();
+            const std::string damage = s->damage_string( guy );
+            if( !damage.empty() ) {
+                r.description += "\n\n" + damage;
+            }
+            r.description += "\n\n" + string_format( _( "Range: %1$d · Casting time: %2$d moves" ),
+                             s->range( guy ), s->casting_time( guy ) );
+            r.action = r.enabled ? _( "Cast" ) : std::string();
+            if( !r.enabled ) {
+                r.right = _( "Can't cast" );
+            }
+            what.rows.push_back( r );
+        }
+        what.empty_text = _( "You know no powers." );
+        int tab = 0;
+        int row = -1;
+        const int chosen = mobile_list::show( what, tab, row );
+        if( chosen < 0 || static_cast<size_t>( chosen ) >= known_spells_sorted.size() ) {
+            static spell null_spell_reference( spell_id::NULL_ID() );
+            return null_spell_reference;
+        }
+        return *known_spells_sorted[static_cast<size_t>( chosen )];
+    }
     // set the height of the spell ui
     const float min_y_pix = EVEN_MINIMUM_TERM_HEIGHT * ImGui::GetTextLineHeight();
     float spell_menu_height = std::max( std::min( ( ( known_spells_sorted.size() + 3 ) *

@@ -12,6 +12,8 @@
 #include "enums.h"
 #include "input_context.h"
 #include "inventory.h"
+#include "mobile_list.h"
+#include "mobile_screens.h"
 #include "magic.h"
 #include "mutation.h"
 #include "output.h"
@@ -102,6 +104,11 @@ static void show_mutations_titlebar( const catacurses::window &window,
 
 void avatar::power_mutations()
 {
+    // Mobile UI: the list screen of mobile_screens.h
+    if( mobile_list::wanted() ) {
+        mobile_screens::mutations( *this );
+        return;
+    }
     std::vector<trait_id> passive;
     std::vector<trait_id> active;
     for( std::pair<const trait_id, trait_data> &mut : cached_mutations ) {

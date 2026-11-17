@@ -16,6 +16,8 @@
 #include "imgui/imgui.h"
 #include "input_context.h"
 #include "line.h"
+#include "mobile_list.h"
+#include "mobile_screens.h"
 #include "mission.h"
 #include "npc.h"
 #include "faction.h"
@@ -498,6 +500,11 @@ void mission_ui_impl::draw_location( const std::string &label,
 
 void game::list_missions()
 {
+    // Mobile UI: the list screen of mobile_screens.h
+    if( mobile_list::wanted() ) {
+        mobile_screens::missions( get_avatar() );
+        return;
+    }
     mission_ui new_instance;
     new_instance.draw_mission_ui();
 }

@@ -28,6 +28,8 @@
 #include "item.h"
 #include "item_location.h"
 #include "localized_comparator.h"
+#include "mobile_list.h"
+#include "mobile_screens.h"
 #include "map.h"
 #include "output.h"
 #include "pimpl.h"
@@ -585,6 +587,11 @@ static nc_color get_bionic_text_color( const bionic &bio, const bool isHighlight
 
 void avatar::power_bionics()
 {
+    // Mobile UI: the list screen of mobile_screens.h
+    if( mobile_list::wanted() ) {
+        mobile_screens::bionics( *this );
+        return;
+    }
     // Required because available power includes electricity via cables.
     const map &here = get_map();
 
