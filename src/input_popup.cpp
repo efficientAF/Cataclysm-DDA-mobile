@@ -1,12 +1,16 @@
 #include "input_popup.h"
 
 #include <cstddef>
+#include <cstdlib>
+#include <type_traits>
 
 #include "coordinates.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
 #include "input_enums.h"
+#include "mobile_entry.h"
 #include "ret_val.h"
+#include "string_formatter.h"
 #include "text.h"
 #include "translations.h"
 #include "try_parse_integer.h"
@@ -332,9 +336,49 @@ void string_input_popup_imgui::add_to_history( const std::string &value ) const
     }
 }
 
+std::optional<std::string> input_popup::mobile_query( const std::string &text, const bool number,
+        const bool decimal, const std::vector<std::string> &history )
+{
+    if( !callbacks.empty() || !mobile_entry::wanted() ) {
+        return std::nullopt;
+    }
+    mobile_entry::spec what;
+    what.title = label;
+    what.description = description;
+    if( what.title.empty() ) {
+        std::swap( what.title, what.description );
+    }
+    what.text = text;
+    what.number = number;
+    what.decimal = decimal;
+    what.max_length = max_input_length > 0 ? max_input_length : -1;
+    what.history = history;
+    hide_ui = true;
+    const std::optional<std::string> entered = mobile_entry::query( what );
+    hide_ui = false;
+    is_cancelled = !entered.has_value();
+    // an empty answer stands for "sheet was used, nothing entered"
+    return entered ? *entered : std::string();
+}
+
 std::string string_input_popup_imgui::query()
 {
     is_cancelled = false;
+    // Mobile UI: the entry sheet
+    if( !callbacks.empty() || !mobile_entry::wanted() ) {
+        // upstream's window, below
+    } else {
+        const std::vector<std::string> history = identifier.empty() ? std::vector<std::string>() :
+                uistate.gethistory( identifier );
+        const std::optional<std::string> entered = mobile_query( text.empty() ? old_input : text, false,
+                false, history );
+        if( is_cancelled ) {
+            return old_input;
+        }
+        text = entered.value_or( std::string() );
+        add_to_history( text );
+        return text;
+    }
 
     while( true ) {
         ui_manager::redraw_invalidated();
@@ -418,6 +462,20 @@ void number_input_popup<float>::draw_input_control()
 template<typename T>
 T number_input_popup<T>::query()
 {
+    // Mobile UI: the entry sheet with its keypad
+    if( callbacks.empty() && mobile_entry::wanted() ) {
+        const bool decimal = std::is_floating_point<T>::value;
+        std::string shown = decimal ? string_format( "%g", static_cast<double>( value ) ) :
+                            std::to_string( static_cast<long long>( value ) );
+        const std::optional<std::string> entered = mobile_query( shown, true, decimal, {} );
+        if( is_cancelled || !entered || entered->empty() || *entered == "-" ) {
+            return old_value;
+        }
+        char *end = nullptr;
+        value = decimal ? static_cast<T>( std::strtod( entered->c_str(), &end ) ) :
+                static_cast<T>( std::strtoll( entered->c_str(), &end, 10 ) );
+        return value;
+    }
 
     while( true ) {
         ui_manager::redraw_invalidated();

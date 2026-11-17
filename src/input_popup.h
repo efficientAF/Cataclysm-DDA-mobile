@@ -60,6 +60,11 @@ class input_popup : public cataimgui::window
         cataimgui::bounds get_bounds() override;
 
         bool handle_custom_callbacks( const std::string &action );
+        // Mobile UI: asks with the entry sheet of mobile_entry.h instead of this
+        // window, which hides for the time.  Returns nothing if the sheet is not
+        // in use here, and is_cancelled says whether the player backed out.
+        std::optional<std::string> mobile_query( const std::string &text, bool number, bool decimal,
+                const std::vector<std::string> &history );
 
         input_context ctxt;
         std::string label;

@@ -9,6 +9,7 @@
 #include "input.h"
 #include "input_context.h"
 #include "input_enums.h"
+#include "mobile_entry.h"
 #include "output.h"
 #include "point.h"
 #include "ret_val.h"
@@ -28,6 +29,7 @@
 #if defined(__ANDROID__)
 #include <SDL_keyboard.h>
 
+#include "mobile_entry.h"
 #include "options.h"
 #endif
 
@@ -333,12 +335,17 @@ void string_input_popup::query( const bool loop, const bool draw_only )
     query_string( loop, draw_only );
 }
 
+// Mobile UI: set while a whole number is being asked for, see query_int_impl
+static bool mobile_wants_number = false;
+
 template<typename T>
 static std::optional<T> query_int_impl( string_input_popup &p, const bool loop,
                                         const bool draw_only )
 {
     do {
+        mobile_wants_number = true;
         const std::string &queried_string = p.query_string( loop, draw_only );
+        mobile_wants_number = false;
         ret_val<T> result = try_parse_integer<T>( queried_string, true );
         if( p.canceled() || queried_string.empty() ) {
             return std::nullopt;
@@ -382,6 +389,28 @@ std::optional<int64_t> string_input_popup::query_int64_t( const bool loop, const
 
 const std::string &string_input_popup::query_string( const bool loop, const bool draw_only )
 {
+    // Mobile UI: the entry sheet instead of the field, unless the field is part
+    // of another screen or has keys of its own
+    if( loop && !draw_only && !custom_window && callbacks.empty() && mobile_entry::wanted() ) {
+        mobile_entry::spec what;
+        what.title = _title;
+        what.description = _description;
+        what.text = _text;
+        what.number = _only_digits || mobile_wants_number;
+        what.max_length = _max_length;
+        if( !_identifier.empty() ) {
+            what.history = uistate.gethistory( _identifier );
+        }
+        const std::optional<std::string> entered = mobile_entry::query( what );
+        _canceled = !entered.has_value();
+        _confirmed = entered.has_value();
+        _handled = true;
+        if( entered ) {
+            _text = *entered;
+            add_to_history( _text );
+        }
+        return _text;
+    }
     if( !custom_window && !w_full ) {
         create_window();
         _position = -1;

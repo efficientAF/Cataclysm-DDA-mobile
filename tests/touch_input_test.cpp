@@ -1,6 +1,7 @@
 #include "cata_catch.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
+#include "mobile_entry.h"
 #include "mobile_hud_layout.h"
 #include "point.h"
 #include "touch_input.h"
@@ -223,4 +224,38 @@ TEST_CASE( "mobile_hud_layout_zoom_slider", "[touch_input]" )
     CHECK( p.portrait[piece_id::zoom].width == 320.0f );
     // the other orientation keeps the dial
     CHECK_FALSE( p.landscape[piece_id::zoom].slider );
+}
+
+TEST_CASE( "mobile_entry_keypad", "[touch_input]" )
+{
+    using mobile_entry::keypad_press;
+
+    SECTION( "the first digit replaces the suggestion" ) {
+        CHECK( keypad_press( "30", '5', true, false, -1 ) == "5" );
+        CHECK( keypad_press( "5", '0', false, false, -1 ) == "50" );
+    }
+    SECTION( "delete clears a suggestion and otherwise takes one digit" ) {
+        CHECK( keypad_press( "30", '<', true, false, -1 ).empty() );
+        CHECK( keypad_press( "30", '<', false, false, -1 ) == "3" );
+        CHECK( keypad_press( "-3", '<', false, false, -1 ).empty() );
+        CHECK( keypad_press( "", '<', false, false, -1 ).empty() );
+    }
+    SECTION( "no leading zeros" ) {
+        CHECK( keypad_press( "0", '7', false, false, -1 ) == "7" );
+        CHECK( keypad_press( "0", '0', false, false, -1 ) == "0" );
+    }
+    SECTION( "the sign flips" ) {
+        CHECK( keypad_press( "12", '-', false, false, -1 ) == "-12" );
+        CHECK( keypad_press( "-12", '-', false, false, -1 ) == "12" );
+    }
+    SECTION( "one decimal point, and only where it is allowed" ) {
+        CHECK( keypad_press( "1", '.', false, true, -1 ) == "1." );
+        CHECK( keypad_press( "1.5", '.', false, true, -1 ) == "1.5" );
+        CHECK( keypad_press( "", '.', false, true, -1 ) == "0." );
+        CHECK( keypad_press( "1", '.', false, false, -1 ) == "1" );
+    }
+    SECTION( "the length limit holds" ) {
+        CHECK( keypad_press( "123", '4', false, false, 3 ) == "123" );
+        CHECK( keypad_press( "12", '3', false, false, 3 ) == "123" );
+    }
 }
