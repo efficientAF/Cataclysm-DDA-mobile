@@ -497,7 +497,10 @@ bool crafting_window::back()
     refresh = true;
     if( sheet_open ) {
         sheet_open = false;
-        return true;
+        // in landscape there is no sheet to close: go on to the next step
+        if( !landscape ) {
+            return true;
+        }
     }
     // in portrait the sheet was the detail, so there is nothing more to close
     if( selected != nullptr && landscape ) {

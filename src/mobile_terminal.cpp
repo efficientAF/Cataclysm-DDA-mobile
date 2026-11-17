@@ -195,7 +195,7 @@ void terminal_window::draw_controls()
     if( !buttons.empty() ) {
         ImGui::SetCursorScreenPos( buttons_pos );
         ImGui::BeginChild( "##term_buttons", buttons_size, ImGuiChildFlags_None,
-                           ImGuiWindowFlags_NoBackground );
+                           ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
         const ImVec2 base = ImGui::GetCursorScreenPos();
         const float height = draw_buttons( base, buttons_w, true );
         ImGui::SetCursorScreenPos( base );
@@ -302,12 +302,12 @@ void wait_any()
 answer ask_yes_no()
 {
     switch( wait_for( std::string(), { { _( "Yes" ), true }, { _( "No" ), true } }, false ) ) {
-        case 0:
-            return answer::yes;
-        case 1:
-            return answer::no;
-        default:
-            return answer::quit;
+    case 0:
+        return answer::yes;
+    case 1:
+        return answer::no;
+    default:
+        return answer::quit;
     }
 }
 
