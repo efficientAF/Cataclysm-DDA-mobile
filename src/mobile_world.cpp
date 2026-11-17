@@ -876,16 +876,18 @@ void mods_window::draw_panel( const ImVec2 &min, const ImVec2 &max )
         ImDrawList *const inner = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
         float text_y = base.y;
+        // room for the scroll bar
+        const float wrap = width - 12.0f * u;
         if( !note.empty() ) {
             mobile_ui::text( inner, face::bold, 13.0f, ImVec2( base.x, text_y ),
-                             warn ? col_warn : mobile_ui::col_accent, note, width );
-            text_y += mobile_ui::text_size( face::bold, 13.0f, note, width ).y + 8.0f * u;
+                             warn ? col_warn : mobile_ui::col_accent, note, wrap );
+            text_y += mobile_ui::text_size( face::bold, 13.0f, note, wrap ).y + 8.0f * u;
         }
         const std::string info = valid ? remove_color_tags( ui.get_information( &*selected ) ) :
                                  std::string( _( "This mod is not installed." ) );
         mobile_ui::text( inner, face::body, 13.5f, ImVec2( base.x, text_y ), mobile_ui::col_text_soft,
-                         info, width );
-        text_y += mobile_ui::text_size( face::body, 13.5f, info, width ).y;
+                         info, wrap );
+        text_y += mobile_ui::text_size( face::body, 13.5f, info, wrap ).y;
         ImGui::SetCursorScreenPos( base );
         ImGui::Dummy( ImVec2( 1.0f, text_y - base.y + 8.0f * u ) );
     }
@@ -1175,6 +1177,8 @@ int new_world( WORLD &world, const hooks &upstream )
                 window = std::make_unique<world_window>( world, sliders, levels, custom );
                 window->scroll = scroll;
                 window->restore_scroll = scroll > 0.0f;
+                // one frame to put the list back where it was, the next shows it
+                ui_manager::redraw();
                 if( differs( world.WORLD_OPTIONS, before ) ) {
                     custom = true;
                 }
