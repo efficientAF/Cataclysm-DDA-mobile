@@ -530,7 +530,16 @@ void main_menu_view::impl::draw_controls()
         draw_new_game( origin, size, interactive );
     }
     if( open_sheet != sheet::none ) {
+        // in a layer of its own: the new game screen's scrolling area would
+        // otherwise be drawn over the sheet
+        ImGui::SetCursorScreenPos( origin );
+        ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+        ImGui::BeginChild( "##sheet_layer", size, ImGuiChildFlags_None,
+                           ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
+                           ImGuiWindowFlags_NoScrollWithMouse );
         draw_sheet( origin, size );
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
     }
 }
 

@@ -50,6 +50,7 @@
 #include "martialarts.h"
 #include "mission.h"
 #include "mobile_chargen.h"
+#include "mobile_entry.h"
 #include "mobile_list.h"
 #include "mobile_menu.h"
 #include "mod_manager.h"
@@ -2284,6 +2285,25 @@ std::optional<std::string> query_for_template_name()
     };
     std::string title = _( "Name of template:" );
     std::string desc = _( "Keep in mind you may not use special characters like / in filenames" );
+
+    // Mobile UI: the text card; the characters upstream's field refuses are taken
+    // out of the answer
+    if( mobile_entry::wanted() ) {
+        mobile_entry::spec what;
+        what.title = title;
+        what.description = desc;
+        std::optional<std::string> entered = mobile_entry::query( what );
+        if( !entered ) {
+            return std::nullopt;
+        }
+        entered->erase( std::remove_if( entered->begin(), entered->end(), []( const char c ) {
+            return fname_char_blacklist.count( c ) > 0;
+        } ), entered->end() );
+        if( entered->empty() ) {
+            return std::nullopt;
+        }
+        return entered;
+    }
 
     string_input_popup_imgui spop( FULL_SCREEN_WIDTH - utf8_width( title ) - 8 );
     spop.set_label( title );

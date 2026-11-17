@@ -71,6 +71,9 @@ enum class choice_kind : int {
 };
 
 struct choice {
+    choice() = default;
+    choice( const choice_kind kind, const int index, const std::string &world = std::string() )
+        : kind( kind ), index( index ), world( world ) {}
     choice_kind kind = choice_kind::help;
     int index = 0;
     // new_game: the world on the new game screen's card, to use without asking;
