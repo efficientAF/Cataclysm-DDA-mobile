@@ -403,7 +403,7 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
         const std::vector<std::string> &actions = ctxt.mobile_registered_actions();
         // the two answers first, the keybindings screen last
         for( const char *const first : {
-                 "CONFIRM", "QUIT"
+                 "FIRE", "CONFIRM", "QUIT", "NEXT_TARGET", "AIM"
              } ) {
             if( is_registered( ctxt, first ) ) {
                 add( first, action_label( ctxt, first ) );
@@ -438,7 +438,13 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
     const auto confirm = std::find_if( buttons.begin(), buttons.end(), []( const bar_button & b ) {
         return b.action == "CONFIRM";
     } );
-    if( confirm != buttons.end() ) {
+    const auto fire = std::find_if( buttons.begin(), buttons.end(), []( const bar_button & b ) {
+        return b.action == "FIRE";
+    } );
+    if( fire != buttons.end() ) {
+        // the aiming screen: the shot is the answer that goes on
+        fire->primary = true;
+    } else if( confirm != buttons.end() ) {
         confirm->primary = true;
     } else if( hint_count > 0 ) {
         const auto forward = std::find_if( buttons.begin(), buttons.begin() + hint_count,

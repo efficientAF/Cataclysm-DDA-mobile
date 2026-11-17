@@ -13,6 +13,7 @@
 #include "dialogue.h"
 #include "imgui/imgui.h"
 #include "input_context.h"
+#include "mobile_talk.h"
 #include "output.h"
 #include "string_formatter.h"
 #include "talker.h"
@@ -213,6 +214,26 @@ void dialogue_imgui_impl::draw_controls()
     if( hide_ui ) {
         ImGuiWindow *w = ImGui::GetCurrentWindowRead();
         ImGui::SetWindowHiddenAndSkipItemsForCurrentFrame( w );
+    }
+
+    // Mobile UI: the phone's conversation layout, see mobile_talk.h
+    if( mobile_talk::wanted() && !hide_ui ) {
+        std::vector<mobile_talk::message> said;
+        for( const history_message &msg : history ) {
+            said.push_back( { cataimgui::ImU32_from_color( msg.color ), msg.text } );
+        }
+        std::vector<std::string> replies;
+        for( const talk_data &talk : response_list ) {
+            replies.push_back( talk.text );
+        }
+        const std::string about = is_computer || is_not_conversation || is_remote ? std::string() :
+                                  conversation->actor( true )->short_description();
+        const int tapped = mobile_talk::draw( conversation->speaker_name( *this ), about, said, replies );
+        if( tapped >= 0 ) {
+            sel_response = tapped;
+            user_clicked_response_button = true;
+        }
+        return;
     }
 
     ImGui::SetWindowSize( ImVec2( window_width, window_height ), ImGuiCond_Once );
