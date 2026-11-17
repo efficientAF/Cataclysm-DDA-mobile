@@ -31,6 +31,7 @@
 #include "input_context.h"
 #include "line.h"
 #include "localized_comparator.h"
+#include "mobile_list.h"
 #include "map.h"
 #include "mission_companion.h"
 #include "mod_manager.h"
@@ -176,6 +177,119 @@ static std::vector<npc *> get_known_faction_radio_representative( const faction 
 
 bool faction_ui::execute()
 {
+    // Mobile UI: camps, followers and factions as a list screen (mobile_list.h);
+    // its buttons run the same code as CONFIRM below.
+    if( mobile_list::wanted() ) {
+        hide_ui = true;
+        avatar &you = get_avatar();
+        int tab = 0;
+        int row = -1;
+        while( true ) {
+            std::vector<basecamp *> camps;
+            g->validate_camps();
+            for( const tripoint_abs_omt &elem : you.camps ) {
+                const std::optional<basecamp *> p = overmap_buffer.find_camp( elem.xy() );
+                if( p && ( *p )->get_owner() == you.get_faction()->id ) {
+                    camps.push_back( *p );
+                }
+            }
+            std::vector<npc *> followers;
+            overmap_buffer.populate_followers_vec( followers );
+            std::vector<const faction *> factions;
+            for( const auto &elem : g->faction_manager_ptr->all() ) {
+                if( elem.second.known_by_u && elem.second.id != faction_your_followers &&
+                    !elem.second.lone_wolf_faction ) {
+                    factions.emplace_back( &elem.second );
+                }
+            }
+            const auto direction_to = [&you]( const tripoint_abs_omt & where ) {
+                const std::string direction = direction_name( direction_from( you.pos_abs_omt(), where ) );
+                return direction == "center" ? std::string( _( "Direction: Nearby" ) ) :
+                       string_format( _( "Direction: to the %s" ), direction );
+            };
+            mobile_list::spec what;
+            what.title = _( "Faction" );
+            what.tabs = { _( "Camps" ), _( "Followers" ), _( "Factions" ) };
+            what.empty_text = _( "None." );
+            for( basecamp *const camp : camps ) {
+                faction *const yours = you.get_faction();
+                mobile_list::row r;
+                r.name = camp->camp_name();
+                r.tab = 0;
+                r.description = direction_to( camp->camp_omt_pos() ) + "\n" +
+                                string_format( _( "Food Supply: %s (%d kcal)" ), yours->food_supply_text(),
+                                               yours->food_supply().kcal() ) + "\n" +
+                                string_format( "%s: %s", _( "Next Upgrade" ),
+                                               camp->next_upgrade( base_camps::base_dir, 1 ) );
+                r.action = _( "Rename" );
+                what.rows.push_back( r );
+            }
+            for( npc *const guy : followers ) {
+                mobile_list::row r;
+                r.name = guy->disp_name();
+                r.tab = 1;
+                const bool close_by = can_contact( you, *guy );
+                const radio_contact_result radio = can_radio_contact( you, *guy );
+                r.description = direction_to( guy->pos_abs_omt() ) + "\n";
+                if( guy->has_companion_mission() ) {
+                    r.detail = _( "On a mission" );
+                    r.description += guy->companion_mission_time_ret < calendar::turn ?
+                                     std::string( _( "JOB COMPLETED" ) ) :
+                                     _( "ETA: " ) + to_string( guy->companion_mission_time_ret - calendar::turn );
+                    r.description += "\n";
+                }
+                if( close_by || radio == radio_contact_result::YES ) {
+                    r.action = guy->has_companion_mission() ? _( "Recall from mission" ) : close_by ? _( "Talk" ) :
+                               _( "Talk by radio" );
+                } else {
+                    r.enabled = false;
+                    r.description += radio == radio_contact_result::ALPHA_NO_RADIO ? _( "You do not have a radio" ) :
+                                     radio == radio_contact_result::BETA_NO_RADIO ? _( "Follower does not have a radio" ) :
+                                     radio == radio_contact_result::BOTH_NO_RADIO ? _( "Both you and follower need a radio" ) :
+                                     _( "Not within radio range" );
+                }
+                what.rows.push_back( r );
+            }
+            for( const faction *const fac : factions ) {
+                mobile_list::row r;
+                r.name = fac->get_name();
+                r.tab = 2;
+                r.detail = string_format( _( "Attitude to you: %s" ), fac_ranking_text( fac->likes_u ) );
+                r.description = fac->desc.translated();
+                if( !get_known_faction_radio_representative( fac ).empty() && has_radio( you ) ) {
+                    r.action = _( "Contact by radio" );
+                }
+                what.rows.push_back( r );
+            }
+            const int chosen = mobile_list::show( what, tab, row );
+            if( chosen < 0 ) {
+                return false;
+            }
+            size_t index = static_cast<size_t>( chosen );
+            if( index < camps.size() ) {
+                camps[index]->query_new_name();
+                continue;
+            }
+            index -= camps.size();
+            if( index < followers.size() ) {
+                picked_follower = followers[index];
+                if( picked_follower->has_companion_mission() ) {
+                    talk_function::basecamp_mission( *picked_follower );
+                } else {
+                    you.talk_to( get_talker_for( *picked_follower ), true, false, false,
+                                 picked_follower->chatbin.talk_radio );
+                }
+                return true;
+            }
+            index -= followers.size();
+            if( index < factions.size() ) {
+                picked_faction = factions[index];
+                radio_the_faction();
+                return true;
+            }
+            return false;
+        }
+    }
     ctxt.register_action( "UP", to_translation( "Move cursor up" ) );
     ctxt.register_action( "DOWN", to_translation( "Move cursor down" ) );
     ctxt.register_action( "SCROLL_UP", to_translation( "Move cursor up" ) );

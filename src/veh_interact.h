@@ -327,6 +327,15 @@ class veh_interact
         void cache_tool_availability();
         void allocate_windows();
         void do_main_loop( map &here );
+        // Mobile UI: the phone's vehicle screen, in mobile_vehicle.cpp.
+        void mobile_main_loop( map &here );
+        void mobile_install( map &here );
+        bool mobile_repair( map &here, int index );
+        bool mobile_remove( map &here, int index );
+        std::string mobile_repair_text( map &here, vehicle_part &pt, bool &ok );
+        void mobile_pick_tile( map &here );
+        void mobile_overview( map &here, const overview_enable_t &enable,
+                              const overview_action_t &action );
 
         void cache_tool_availability_update_lifting( const tripoint_bub_ms &world_cursor_pos );
 

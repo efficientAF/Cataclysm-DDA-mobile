@@ -45,6 +45,7 @@
 #include "mapdata.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_list.h"
 #include "monster.h"
 #include "npc.h"
 #include "output.h"
@@ -517,6 +518,11 @@ void veh_interact::hide_ui( map &here, const bool hide )
 
 void veh_interact::do_main_loop( map &here )
 {
+    // Mobile UI: the phone has its own vehicle screen.
+    if( mobile_list::wanted() ) {
+        mobile_main_loop( here );
+        return;
+    }
     bool finish = false;
     Character &player_character = get_player_character();
     const bool owned_by_player = veh->handle_potential_theft( player_character, true );
@@ -1670,6 +1676,11 @@ void veh_interact::overview( map &here,
                              const overview_enable_t &enable,
                              const overview_action_t &action )
 {
+    // Mobile UI: the parts to choose from come as a sheet.
+    if( mobile_list::wanted() ) {
+        mobile_overview( here, enable, action );
+        return;
+    }
     restore_on_out_of_scope prev_overview_enable( overview_enable );
     restore_on_out_of_scope prev_overview_action( overview_action );
     overview_enable = enable;
