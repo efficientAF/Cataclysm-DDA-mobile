@@ -25,6 +25,8 @@ struct row {
     std::string description;
     // the label of the panel's button, or empty for none
     std::string action;
+    // further buttons beside it, for rows with more than one thing to do
+    std::vector<std::string> more_actions;
     // a row that is dimmed; it can still be selected and read
     bool enabled = true;
     // marks the one in use, e.g. the current fighting style
@@ -39,6 +41,21 @@ struct spec {
     std::vector<row> rows;
     // what to say on a tab without rows
     std::string empty_text;
+    // buttons for the screen as a whole, in a bar at the bottom ("Add zone")
+    std::vector<std::string> buttons;
+};
+
+// What the player did on the screen.
+struct outcome {
+    // the row whose button was tapped, or -1
+    int row = -1;
+    // which of the row's buttons: 0 for action, 1 and up for more_actions
+    int action = 0;
+    // the screen's button that was tapped, or -1
+    int button = -1;
+    bool went_back() const {
+        return row < 0 && button < 0;
+    }
 };
 
 // True if these screens should replace upstream's.
@@ -49,6 +66,8 @@ bool wanted();
 // and receive where the player was, so that a caller can show the screen again
 // after acting.
 int show( const spec &what, int &tab, int &selected );
+// The same for screens with several buttons.
+outcome show_all( const spec &what, int &tab, int &selected );
 
 } // namespace mobile_list
 

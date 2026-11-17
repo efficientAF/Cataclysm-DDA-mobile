@@ -1,4 +1,5 @@
 
+#include "mobile_picker.h"
 #include "trade_ui.h"
 
 #include <algorithm>
@@ -28,6 +29,7 @@
 #include "point.h"
 #include "ret_val.h"
 #include "string_formatter.h"
+#include "uilist.h"
 #include "type_id.h"
 #include "vehicle.h"
 
@@ -194,6 +196,52 @@ trade_ui::trade_result_t trade_ui::perform_trade()
 {
     _exit = false;
     _traded = false;
+
+    // Mobile UI: a sheet with the state of the deal; each side is chosen with the
+    // item picker (mobile_picker.h), one after the other in place of side by side.
+    while( mobile_picker::wanted() && !_exit ) {
+        const npc &np = *_parties[_trader]->as_npc();
+        const bool free = np.will_exchange_items_freely();
+        uilist menu;
+        menu.text = _title;
+        menu.desc_enabled = true;
+        menu.addentry_desc( 0, true, MENU_AUTOASSIGN, _( "What you give" ),
+                            string_format( _( "%1$d chosen, worth %2$s" ),
+                                           static_cast<int>( _panes[_you]->to_trade().size() ),
+                                           format_money( _trade_values[_you] ) ) );
+        menu.addentry_desc( 1, true, MENU_AUTOASSIGN, _( "What you get" ),
+                            string_format( _( "%1$d chosen, worth %2$s" ),
+                                           static_cast<int>( _panes[_trader]->to_trade().size() ),
+                                           format_money( _trade_values[_trader] ) ) );
+        if( !free ) {
+            menu.addentry_desc( 2, true, MENU_AUTOASSIGN, _( "Settle the difference from your bank account" ),
+                                string_format( _( "Account: %1$s.  In this deal: %2$s" ), format_money( _bank ),
+                                               format_money( _delta_bank ) ) );
+        }
+        menu.addentry_desc( 3, true, MENU_AUTOASSIGN, _( "Offer this trade" ),
+                            free ? std::string( _( "You share freely with each other." ) ) :
+                            _balance >= 0 ? string_format( _( "In your favour by %s." ), format_money( _balance ) ) :
+                            string_format( _( "You are short by %s." ), format_money( -_balance ) ) );
+        menu.query();
+        switch( menu.ret ) {
+            case 0:
+            case 1:
+                _cpane = menu.ret == 0 ? _you : _trader;
+                mobile_picker::pick_many( *_panes[_cpane] );
+                recalc_values_cpane();
+                break;
+            case 2:
+                bank_balance();
+                break;
+            case 3:
+                _traded = _confirm_trade();
+                _exit = _traded;
+                break;
+            default:
+                _exit = true;
+                break;
+        }
+    }
 
     while( !_exit ) {
         _panes[_cpane]->execute();

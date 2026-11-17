@@ -12,6 +12,7 @@
 #include "game.h"
 #include "line.h"
 #include "input_context.h"
+#include "mobile_list.h"
 #include "map.h"
 #include "options.h"
 #include "output.h"
@@ -502,10 +503,50 @@ void zone_manager_ui::display_zone_manager()
         zone_blink = blink;
         g->invalidate_main_ui_adaptor();
 
-        ui_manager::redraw();
+        std::string action;
+        if( mobile_list::wanted() ) {
+            // Mobile UI: the zones as a list screen; what is tapped there becomes
+            // the action and the selected zone that the code below works on.
+            mobile_list::spec what;
+            what.title = _( "Zones" );
+            what.empty_text = _( "No zones yet.  A zone tells you and your followers what a place is for." );
+            what.buttons = { _( "Add zone" ), _( "Add personal zone" ) };
+            for( const zone_manager::ref_zone_data &ref : zones ) {
+                const zone_data &zone = ref.get();
+                mobile_list::row r;
+                r.name = ( zone.get_is_personal() ? _( "P: " ) : "" ) + zone.get_name();
+                r.detail = string_format( "%s · %d %s", mgr.get_name_from_type( zone.get_type() ),
+                                          static_cast<int>( trig_dist( u.pos_abs(), zone.get_center_point() ) ),
+                                          direction_name_short( direction_from( u.pos_abs(), zone.get_center_point() ) ) );
+                r.right = zone.get_enabled() ? _( "On" ) : _( "Off" );
+                r.enabled = zone.get_enabled();
+                r.description = zone.get_is_vehicle() ? _( "This zone is on a vehicle and moves with it." ) :
+                                zone.get_is_personal() ? _( "A personal zone moves with you." ) :
+                                _( "Edit changes its name, type, options or place." );
+                r.action = _( "Edit" );
+                r.more_actions = { zone.get_enabled() ? _( "Turn off" ) : _( "Turn on" ), _( "Remove" ) };
+                what.rows.push_back( r );
+            }
+            static int mobile_tab = 0;
+            int row = active_index < zone_cnt ? active_index : -1;
+            const mobile_list::outcome done = mobile_list::show_all( what, mobile_tab, row );
+            if( done.button == 0 ) {
+                action = "ADD_ZONE";
+            } else if( done.button == 1 ) {
+                action = "ADD_PERSONAL_ZONE";
+            } else if( done.row >= 0 && done.row < zone_cnt ) {
+                active_index = done.row;
+                action = done.action == 0 ? "CONFIRM" : done.action == 2 ? "REMOVE_ZONE" :
+                         zones[active_index].get().get_enabled() ? "DISABLE_ZONE" : "ENABLE_ZONE";
+            } else {
+                action = "QUIT";
+            }
+        } else {
+            ui_manager::redraw();
 
-        //Wait for input
-        const std::string action = ctxt.handle_input();
+            //Wait for input
+            action = ctxt.handle_input();
+        }
 
         if( action == "ADD_ZONE" ) {
             do { // not a loop, just for quick bailing out if canceled

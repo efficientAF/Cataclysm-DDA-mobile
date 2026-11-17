@@ -48,6 +48,10 @@ class list_window : public cataimgui::window
         int selected;
         bool back = false;
         bool acted = false;
+        // which of the row's buttons was tapped
+        int action = 0;
+        // the screen's button that was tapped, or -1
+        int button = -1;
     protected:
         cataimgui::bounds get_bounds() override {
             return { 0.0f, 0.0f, 1.0f, 1.0f };
@@ -93,16 +97,34 @@ void list_window::draw_panel( const ImVec2 &min, const ImVec2 &max )
     ImGui::EndChild();
     ImGui::PopStyleVar();
     if( !r.action.empty() ) {
-        const ImVec2 pos( min.x + pad, max.y - pad - 48.0f * u );
-        bool held = false;
-        if( mobile_ui::pressable( "##list_action", pos, ImVec2( width, 48.0f * u ), &held ) ) {
-            acted = true;
+        // the row's buttons side by side, the first one the main one
+        std::vector<std::string> labels = { r.action };
+        labels.insert( labels.end(), r.more_actions.begin(), r.more_actions.end() );
+        const float gap = 8.0f * u;
+        const float button_w = ( width - gap * static_cast<float>( labels.size() - 1 ) ) /
+                               static_cast<float>( labels.size() );
+        for( size_t i = 0; i < labels.size(); ++i ) {
+            const ImVec2 pos( min.x + pad + static_cast<float>( i ) * ( button_w + gap ),
+                              max.y - pad - 48.0f * u );
+            bool held = false;
+            if( mobile_ui::pressable( "##list_action" + std::to_string( i ), pos,
+                                      ImVec2( button_w, 48.0f * u ), &held ) ) {
+                acted = true;
+                action = static_cast<int>( i );
+            }
+            const bool primary = i == 0;
+            mobile_ui::box( draw, pos, ImVec2( pos.x + button_w, pos.y + 48.0f * u ),
+                            primary ? ( held ? mobile_ui::col_accent_down : mobile_ui::col_accent ) :
+                            ( held ? mobile_ui::col_button_down : mobile_ui::col_fill_soft ),
+                            primary ? 0 : mobile_ui::col_line, 12.0f );
+            const ImVec2 label_px = mobile_ui::text_size( face::bold, 14.0f, labels[i] );
+            draw->PushClipRect( pos, ImVec2( pos.x + button_w, pos.y + 48.0f * u ), true );
+            mobile_ui::text( draw, face::bold, 14.0f,
+                             ImVec2( pos.x + std::max( 4.0f * u, ( button_w - label_px.x ) * 0.5f ),
+                                     pos.y + ( 48.0f * u - label_px.y ) * 0.5f ),
+                             primary ? mobile_ui::col_on_accent : mobile_ui::col_fg, labels[i] );
+            draw->PopClipRect();
         }
-        mobile_ui::box( draw, pos, ImVec2( pos.x + width, pos.y + 48.0f * u ),
-                        held ? mobile_ui::col_accent_down : mobile_ui::col_accent, 0, 12.0f );
-        const ImVec2 label_px = mobile_ui::text_size( face::bold, 15.0f, r.action );
-        mobile_ui::text( draw, face::bold, 15.0f, ImVec2( pos.x + ( width - label_px.x ) * 0.5f,
-                         pos.y + ( 48.0f * u - label_px.y ) * 0.5f ), mobile_ui::col_on_accent, r.action );
     }
 }
 
@@ -163,7 +185,31 @@ void list_window::draw_controls()
     y += 8.0f * u;
 
     // the list, and the selected row's panel beside it or under it
-    const float bottom = origin.y + size.y - safe.w;
+    float bottom = origin.y + size.y - safe.w;
+    if( !what.buttons.empty() ) {
+        // the screen's own buttons in a bar at the bottom
+        const float bar_h = 64.0f * u;
+        bottom -= bar_h;
+        draw->AddLine( ImVec2( left, bottom ), ImVec2( left + width, bottom ), mobile_ui::col_line,
+                       std::max( 1.0f, u ) );
+        const float gap = 8.0f * u;
+        const float button_w = ( width - 24.0f * u - gap * static_cast<float>( what.buttons.size() - 1 ) ) /
+                               static_cast<float>( what.buttons.size() );
+        for( size_t i = 0; i < what.buttons.size(); ++i ) {
+            const ImVec2 pos( left + 12.0f * u + static_cast<float>( i ) * ( button_w + gap ),
+                              bottom + 8.0f * u );
+            bool held = false;
+            if( mobile_ui::pressable( "##list_button" + std::to_string( i ), pos,
+                                      ImVec2( button_w, 48.0f * u ), &held ) ) {
+                button = static_cast<int>( i );
+            }
+            mobile_ui::box( draw, pos, ImVec2( pos.x + button_w, pos.y + 48.0f * u ),
+                            held ? mobile_ui::col_button_down : mobile_ui::col_fill_soft, mobile_ui::col_line, 12.0f );
+            const ImVec2 label_px = mobile_ui::text_size( face::bold, 14.0f, what.buttons[i] );
+            mobile_ui::text( draw, face::bold, 14.0f, ImVec2( pos.x + ( button_w - label_px.x ) * 0.5f,
+                             pos.y + ( 48.0f * u - label_px.y ) * 0.5f ), mobile_ui::col_fg, what.buttons[i] );
+        }
+    }
     const bool has_panel = selected >= 0 && static_cast<size_t>( selected ) < what.rows.size();
     const bool landscape = size.x > size.y;
     float list_w = width;
@@ -252,6 +298,11 @@ void list_window::draw_controls()
 
 int show( const spec &what, int &tab, int &selected )
 {
+    return show_all( what, tab, selected ).row;
+}
+
+outcome show_all( const spec &what, int &tab, int &selected )
+{
     spec clean = what;
     clean.title = remove_color_tags( what.title );
     for( row &r : clean.rows ) {
@@ -278,7 +329,7 @@ int show( const spec &what, int &tab, int &selected )
     const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "ANY_INPUT" );
-    while( !window.back && !window.acted ) {
+    while( !window.back && !window.acted && window.button < 0 ) {
         ui_manager::redraw();
         if( ctxt.handle_input() == "QUIT" ) {
             window.back = true;
@@ -286,7 +337,14 @@ int show( const spec &what, int &tab, int &selected )
     }
     tab = window.tab;
     selected = window.selected;
-    return window.acted ? window.selected : -1;
+    outcome result;
+    if( window.acted ) {
+        result.row = window.selected;
+        result.action = window.action;
+    } else if( window.button >= 0 ) {
+        result.button = window.button;
+    }
+    return result;
 }
 
 #else // !TILES
@@ -294,6 +352,11 @@ int show( const spec &what, int &tab, int &selected )
 int show( const spec &, int &, int & )
 {
     return -1;
+}
+
+outcome show_all( const spec &, int &, int & )
+{
+    return outcome();
 }
 
 #endif // TILES

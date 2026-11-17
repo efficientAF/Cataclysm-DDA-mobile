@@ -73,6 +73,7 @@
 #include "mobile_drawer.h"
 #include "mobile_inventory.h"
 #include "mobile_menu.h"
+#include "mobile_move.h"
 #include "mobile_settings.h"
 #include "monster.h"
 #include "move_mode.h"
@@ -2611,7 +2612,12 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
             break;
 
         case ACTION_ADVANCEDINV:
-            create_advanced_inv();
+            // Mobile UI: from, what, to, as three steps
+            if( mobile_move::wanted() ) {
+                mobile_move::show();
+            } else {
+                create_advanced_inv();
+            }
             break;
 
         case ACTION_PICKUP:

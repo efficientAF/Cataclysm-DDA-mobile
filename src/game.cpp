@@ -6120,7 +6120,7 @@ look_around_result game::look_around(
 
     // Mobile UI: a banner says what is under the cursor, in place of the text window
     std::optional<mobile_pick::look_banner> mobile_look;
-    if( show_window && mobile_pick::wanted() ) {
+    if( ( show_window || select_zone || is_moving_zone ) && mobile_pick::wanted() ) {
         mobile_look.emplace();
     }
     if( show_window && ui ) {
