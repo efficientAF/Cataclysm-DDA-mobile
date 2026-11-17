@@ -58,7 +58,7 @@ keyboard opens on Android when a text field is focused).
 - Never push, never open a pull request, never touch `android/`. Commit on your worktree's
   branch in small steps; end every commit message with these two lines:
   `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`
-  `Claude-Session: https://claude.ai/code/session_01GSYTBVa3JjFHL3JxMSgaYE`
+  `Claude-Session: https://claude.ai/code/session_01GSYTBU3gujbQ8awq9LxQbJ`
 
 ## Build and test (desktop, about 2 minutes per build)
 
