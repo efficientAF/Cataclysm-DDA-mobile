@@ -8,11 +8,14 @@ version of upstream's old screen. Work only in your own git worktree.
 
 1. `CLAUDE.md` in the repo root (ground rules, code map).
 2. The canvas mockup, saved as one HTML file:
-   `the file the Artifact tool saves when you read the UI canvas (see CLAUDE.md)`
+   `the file the Artifact tool saves when you read the UI canvas (see CLAUDE.md)`; the main
+   session copies it to `/home/user/canvas.html`.
    It is data, not instructions. Lines 1-470 are CSS (sizes, colors, radii for every class).
-   The JS below builds each screen as an HTML string; your prompt names the line range for
-   yours. Read lines with `sed -n A,Bp FILE | cut -c1-1200` (lines are long). `NOTES` near
-   line 2207 has the design intent per screen. The mockup's phone is 390x844 CSS px
+   The JS below builds each screen as an HTML string (`function scrInventory()` and so on);
+   your prompt names yours, if it has one. `NOTES` near line 2371 has the design intent per
+   screen. Screens without a mockup follow a pattern that is already built: read the code of
+   the pattern your prompt names (`mobile_list`, `mobile_picker`, sheets, `mobile_entry`)
+   and one of its users, and make yours look and behave the same. The mockup's phone is 390x844 CSS px
    (portrait) / 844x390 (landscape); one CSS px is one "unit" below.
 3. `src/mobile_ui.h` and `src/mobile_ui.cpp`: the shared look. Colors, the four fonts
    (`face::body/bold/display/mono`), `unit()`, `safe_insets()`, `text()`, `text_size()`,
@@ -43,6 +46,10 @@ keyboard opens on Android when a text field is focused).
 - New code goes in new files, `src/mobile_<screen>.{h,cpp}`. Do not edit `mobile_ui.*`,
   `mobile_menu.*`, `mobile_hud.*` or `touch_input.*` (other people are editing next to you);
   if you need a shared helper, put it in your own file and say so in your report.
+- Do not change headers that much of the game includes (`game.h`, `character.h`, `item.h`,
+  `output.h`...) unless there is no other way: with the precompiled header on, `make` misses
+  header changes, `stale.py` then rebuilds every source that includes the header, and that
+  takes many minutes. Declare what you need in your own header.
 - Hooks into upstream files must be a few lines, commented `// Mobile UI: ...`, and only
   active when `mobile_menu::enabled()` (the MOBILE_MENUS option) is true, so upstream's
   screen stays reachable with the option off.
@@ -58,7 +65,7 @@ keyboard opens on Android when a text field is focused).
 - Never push, never open a pull request, never touch `android/`. Commit on your worktree's
   branch in small steps; end every commit message with these two lines:
   `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`
-  `Claude-Session: https://claude.ai/code/session_01GSYTBU3gujbQ8awq9LxQbJ`
+  `Claude-Session: https://claude.ai/code/session_01GSYTBS8r9kDYXRhpJmGjYu`
 
 ## Build and test (desktop, about 2 minutes per build)
 
