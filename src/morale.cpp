@@ -20,6 +20,8 @@
 #include "input_context.h"
 #include "item.h"
 #include "localized_comparator.h"
+#include "mobile_body.h"
+#include "mobile_list.h"
 #include "morale_types.h"
 #include "options.h"
 #include "output.h"
@@ -745,6 +747,27 @@ void player_morale::display( int focus_eq, int pain_penalty, int sleepiness_pena
         morale_line::line_color::normal
     );
     bottom_lines.emplace_back();
+
+    // Mobile UI: the same numbers on a list screen
+    if( mobile_list::wanted() ) {
+        mobile_body::morale_data data;
+        for( const morale_point &mp : positive_morale ) {
+            data.positive.emplace_back( mp.get_name(), static_cast<int>( mp.get_percent_contribution() ) );
+        }
+        for( const morale_point &mp : negative_morale ) {
+            data.negative.emplace_back( mp.get_name(), static_cast<int>( mp.get_percent_contribution() ) );
+        }
+        data.total_positive = get_total_positive_value();
+        data.total_negative = get_total_negative_value();
+        data.total = who.get_morale_level();
+        data.modifier = static_cast<int>( who.get_modifier_for_ALL_morale() * 100.0 );
+        data.modifier_label = deaden_display_msg;
+        data.pain_penalty = pain_penalty;
+        data.sleepiness_penalty = sleepiness_penalty;
+        data.focus_equilibrium = focus_eq;
+        mobile_body::morale( data );
+        return;
+    }
 
     const auto calc_max_width = []( const int width, const morale_line & ml ) -> int {
         return std::max( width, ml.max_width() );

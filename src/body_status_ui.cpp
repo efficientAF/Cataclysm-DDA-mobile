@@ -14,6 +14,8 @@
 #include "flag.h"
 #include "imgui/imgui.h"
 #include "item.h"
+#include "mobile_body.h"
+#include "mobile_list.h"
 #include "options.h"
 #include "output.h"
 #include "string_formatter.h"
@@ -199,6 +201,12 @@ void body_status_ui::setup_input_context( input_context &bs_ictxt )
 
 bool body_status_ui::display()
 {
+
+    // Mobile UI: the body status as list screens
+    if( mobile_list::wanted() ) {
+        bs_uistate.init();
+        return mobile_body::body_status( *this );
+    }
 
     body_status_ui_impl bsui( this );
 
