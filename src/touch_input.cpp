@@ -1095,6 +1095,9 @@ bool finger_up( const float x, const float y, input_event &out )
             if( hit->kind == mobile_hud::hit_kind::map_drawer ) {
                 mobile_drawer::open_on_map();
             }
+            if( hit->kind == mobile_hud::hit_kind::actions_drawer ) {
+                mobile_drawer::request_actions();
+            }
             // send the key the action is bound to
             const std::vector<input_event> keys = keys_bound_to( hit->act, -1, false );
             if( !keys.empty() ) {

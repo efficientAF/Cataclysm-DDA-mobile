@@ -3320,7 +3320,10 @@ bool game::handle_action()
             player_character.clear_destination();
             destination_preview.clear();
             // Mobile UI: the pause sheet first; it can still open the full menu
-            act = mobile_menu::enabled() ? mobile_menu::pause_sheet() : ACTION_ACTIONMENU;
+            // or the Actions drawer, if its handle was what was tapped
+            act = !mobile_menu::enabled() ? ACTION_ACTIONMENU :
+                  mobile_drawer::take_actions_request() ? mobile_drawer::show( mobile_drawer::drawer::actions ) :
+                  mobile_menu::pause_sheet();
             if( act == ACTION_ACTIONMENU ) {
                 act = handle_action_menu( here );
             }

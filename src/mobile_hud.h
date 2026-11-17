@@ -44,6 +44,8 @@ enum class hit_kind : int {
     recenter,
     // open the Log drawer on its Map tab
     map_drawer,
+    // open the Actions drawer
+    actions_drawer,
     // show or hide the movement pad
     pad_toggle,
     // the movement pad itself

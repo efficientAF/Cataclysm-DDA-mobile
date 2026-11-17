@@ -49,6 +49,7 @@ enum class piece_id : int {
 enum class drawer_id : int {
     info,
     log,
+    actions,
     num
 };
 

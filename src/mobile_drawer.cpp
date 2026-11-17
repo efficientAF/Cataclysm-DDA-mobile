@@ -95,6 +95,8 @@ enum class block_kind : int {
     map_button,
     // a square picture of the overmap around the player
     minimap,
+    // a grid of buttons, one per action
+    actions,
 };
 
 struct pill {
@@ -117,6 +119,8 @@ struct block {
     std::vector<ImU32> cells;
     // minimap: indices of the cells that carry a note
     std::vector<int> notes;
+    // actions: what each button does, and its name
+    std::vector<std::pair<action_id, std::string>> actions;
 };
 
 struct tab {
@@ -455,8 +459,67 @@ std::string fit( const face f, const float size, const std::string &str, const f
     return cut + "…";
 }
 
+// One tab of the Actions drawer: the actions that have a key in this game, named as
+// the keybindings screen names them.
+tab actions_tab( const std::string &label, const std::vector<action_id> &actions )
+{
+    static const input_context names( "DEFAULTMODE" );
+    tab t;
+    t.label = label;
+    block b;
+    b.kind = block_kind::actions;
+    for( const action_id act : actions ) {
+        std::string name = names.get_action_name( action_ident( act ) );
+        if( !name.empty() ) {
+            b.actions.emplace_back( act, name );
+        }
+    }
+    t.blocks.push_back( b );
+    return t;
+}
+
+std::vector<tab> actions_tabs()
+{
+    return {
+        actions_tab( _( "Around" ), {
+            ACTION_EXAMINE, ACTION_PICKUP, ACTION_LOOK, ACTION_LIST_ITEMS, ACTION_OPEN, ACTION_CLOSE,
+            ACTION_SMASH, ACTION_GRAB, ACTION_HAUL, ACTION_BUTCHER, ACTION_CHAT, ACTION_PEEK,
+            ACTION_CONTROL_VEHICLE, ACTION_MOVE_UP, ACTION_MOVE_DOWN, ACTION_ZONES
+        } ),
+        actions_tab( _( "Items" ), {
+            ACTION_INVENTORY, ACTION_EAT, ACTION_USE, ACTION_WEAR, ACTION_TAKE_OFF, ACTION_WIELD,
+            ACTION_READ, ACTION_DROP, ACTION_DIR_DROP, ACTION_UNLOAD, ACTION_UNLOAD_CONTAINER,
+            ACTION_INSERT_ITEM, ACTION_RELOAD_ITEM, ACTION_MEND, ACTION_COMPARE, ACTION_ADVANCEDINV,
+            ACTION_SORT_ARMOR, ACTION_ORGANIZE
+        } ),
+        actions_tab( _( "Fight" ), {
+            ACTION_FIRE, ACTION_RELOAD_WEAPON, ACTION_SELECT_FIRE_MODE, ACTION_THROW, ACTION_CAST_SPELL,
+            ACTION_PICK_STYLE, ACTION_AUTOATTACK, ACTION_TOGGLE_SAFEMODE, ACTION_IGNORE_ENEMY,
+            ACTION_WHITELIST_ENEMY, ACTION_CYCLE_MOVE, ACTION_TOGGLE_RUN, ACTION_TOGGLE_CROUCH,
+            ACTION_TOGGLE_PRONE
+        } ),
+        actions_tab( _( "Make" ), {
+            ACTION_CRAFT, ACTION_RECRAFT, ACTION_LONGCRAFT, ACTION_CONSTRUCT, ACTION_DISASSEMBLE,
+            ACTION_WAIT, ACTION_SLEEP, ACTION_WORKOUT
+        } ),
+        actions_tab( _( "You" ), {
+            ACTION_PL_INFO, ACTION_BODYSTATUS, ACTION_MEDICAL, ACTION_MORALE, ACTION_BIONICS,
+            ACTION_MUTATIONS, ACTION_MISSIONS, ACTION_FACTIONS, ACTION_MAP, ACTION_SKY, ACTION_MESSAGES,
+            ACTION_DIARY, ACTION_HELP
+        } ),
+        actions_tab( _( "Game" ), {
+            ACTION_QUICKSAVE, ACTION_SAVE, ACTION_OPTIONS, ACTION_AUTOPICKUP, ACTION_SAFEMODE,
+            ACTION_TOGGLE_AUTO_TRAVEL_MODE, ACTION_TOGGLE_AUTO_FEATURES, ACTION_TOGGLE_AUTO_PICKUP,
+            ACTION_TOGGLE_THIEF_MODE, ACTION_MAIN_MENU
+        } ),
+    };
+}
+
 // set by open_on_map()
 static bool start_on_map = false;
+static bool actions_requested = false;
+// the tab the Actions drawer was left on
+static int actions_page = 0;
 
 class drawer_window : public cataimgui::window
 {
@@ -469,6 +532,9 @@ class drawer_window : public cataimgui::window
             const avatar &you = get_avatar();
             if( which == drawer::info ) {
                 tabs = { body_tab( you ), status_tab( you ), gear_tab( you ), area_tab( you ) };
+            } else if( which == drawer::actions ) {
+                tabs = actions_tabs();
+                current = std::clamp( actions_page, 0, static_cast<int>( tabs.size() ) - 1 );
             } else {
                 tabs = { log_tab(), map_tab() };
                 if( start_on_map ) {
@@ -480,6 +546,11 @@ class drawer_window : public cataimgui::window
 
         bool closed = false;
         bool open_map = false;
+        // the button tapped in the Actions drawer
+        action_id chosen = ACTION_NULL;
+        int page() const {
+            return current;
+        }
 
         // Whether the drawer is still sliding in, so that it wants redrawing.
         bool sliding() const {
@@ -572,6 +643,12 @@ float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float w
             case block_kind::map_button:
                 height = 44.0f * u;
                 break;
+            case block_kind::actions: {
+                const int columns = width > 420.0f * u ? 3 : 2;
+                const int rows = ( static_cast<int>( b.actions.size() ) + columns - 1 ) / columns;
+                height = static_cast<float>( rows ) * 54.0f * u;
+                break;
+            }
             case block_kind::minimap:
                 // square, as large as fits with the place name and the button under it
                 height = std::max( 96.0f * u, std::min( width, ImGui::GetWindowSize().y -
@@ -712,6 +789,34 @@ float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float w
                 draw->AddRect( ImVec2( pos.x, y ), map_max, mobile_ui::col_line, 8.0f * u, 0, hairline );
                 break;
             }
+            case block_kind::actions: {
+                const int columns = width > 420.0f * u ? 3 : 2;
+                const float gap = 6.0f * u;
+                const float cell_w = ( width - static_cast<float>( columns - 1 ) * gap ) /
+                                     static_cast<float>( columns );
+                for( size_t n = 0; n < b.actions.size(); ++n ) {
+                    const ImVec2 cell( pos.x + static_cast<float>( n % static_cast<size_t>( columns ) ) *
+                                       ( cell_w + gap ),
+                                       y + static_cast<float>( n / static_cast<size_t>( columns ) ) * 54.0f * u );
+                    bool held = false;
+                    if( mobile_ui::pressable( "##drawer_action" + std::to_string( n ), cell,
+                                              ImVec2( cell_w, 48.0f * u ), &held ) ) {
+                        chosen = b.actions[n].first;
+                    }
+                    mobile_ui::box( draw, cell, ImVec2( cell.x + cell_w, cell.y + 48.0f * u ),
+                                    held ? mobile_ui::col_button_down : IM_COL32( 255, 255, 255, 15 ),
+                                    mobile_ui::col_line, 11.0f );
+                    const float wrap = cell_w - 16.0f * u;
+                    const std::string &name = b.actions[n].second;
+                    const ImVec2 name_px = mobile_ui::text_size( face::bold, 13.0f, name, wrap );
+                    draw->PushClipRect( cell, ImVec2( cell.x + cell_w, cell.y + 48.0f * u ), true );
+                    mobile_ui::text( draw, face::bold, 13.0f, ImVec2( cell.x + 8.0f * u,
+                                     cell.y + std::max( 2.0f * u, ( 48.0f * u - name_px.y ) * 0.5f ) ),
+                                     mobile_ui::col_fg, name, wrap );
+                    draw->PopClipRect();
+                }
+                break;
+            }
             case block_kind::map_button: {
                 // drawn 36 high as on the canvas, inside a 44 high touch area
                 const float button_w = mobile_ui::text_size( face::bold, text_px, b.left ).x + 24.0f * u;
@@ -747,7 +852,8 @@ void drawer_window::draw_controls()
 
     // Where the drawer sits: the edge and depth of the HUD layout in use.
     const mobile_hud::drawer &cfg = mobile_hud::active_layout( landscape )[which == drawer::log ?
-                                          mobile_hud::drawer_id::log : mobile_hud::drawer_id::info];
+                                          mobile_hud::drawer_id::log : which == drawer::actions ?
+                                          mobile_hud::drawer_id::actions : mobile_hud::drawer_id::info];
     const mobile_hud::screen_edge from = cfg.edge;
     using edge = mobile_hud::screen_edge;
     ImVec2 min;
@@ -881,7 +987,7 @@ action_id show( const drawer which )
     ctxt.register_action( "RIGHT" );
     ctxt.register_action( "ANY_INPUT" );
     ctxt.register_action( "TIMEOUT" );
-    while( !window.closed && !window.open_map ) {
+    while( !window.closed && !window.open_map && window.chosen == ACTION_NULL ) {
         ui_manager::redraw();
         // while the drawer slides in, redraw without waiting for input
         if( window.sliding() ) {
@@ -899,12 +1005,27 @@ action_id show( const drawer which )
             window.turn_page( -1 );
         }
     }
-    return window.open_map ? ACTION_MAP : ACTION_NULL;
+    if( which == drawer::actions ) {
+        actions_page = window.page();
+    }
+    return window.open_map ? ACTION_MAP : window.chosen;
 }
 
 void open_on_map()
 {
     start_on_map = true;
+}
+
+void request_actions()
+{
+    actions_requested = true;
+}
+
+bool take_actions_request()
+{
+    const bool was = actions_requested;
+    actions_requested = false;
+    return was;
 }
 
 #else // !TILES
@@ -916,6 +1037,15 @@ action_id show( drawer )
 
 void open_on_map()
 {
+}
+
+void request_actions()
+{
+}
+
+bool take_actions_request()
+{
+    return false;
 }
 
 #endif // TILES
