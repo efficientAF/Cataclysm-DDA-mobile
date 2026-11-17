@@ -1,6 +1,7 @@
 #include "mobile_screens.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -8,6 +9,8 @@
 #include "bionics.h"
 #include "calendar.h"
 #include "character.h"
+#include "item.h"
+#include "item_location.h"
 #include "magic.h"
 #include "messages.h"
 #include "mission.h"
@@ -17,6 +20,7 @@
 #include "string_formatter.h"
 #include "translations.h"
 #include "type_id.h"
+#include "uilist.h"
 #include "units.h"
 #include "units_utility.h"
 
@@ -57,23 +61,59 @@ void bionics( avatar &you )
                 }
                 r.detail = cost.empty() ? _( "No power cost" ) : cost;
             }
+            // a bionic that holds a weapon of your choosing, as upstream's "Select action" menu
+            if( data.activated && !bio.powered && bio.can_install_weapon() ) {
+                if( bio.has_weapon() ) {
+                    r.description += "\n\n" + string_format( _( "Installed weapon: %s" ),
+                                     bio.get_weapon().tname() );
+                    r.more_actions.emplace_back( _( "Uninstall weapon" ) );
+                } else {
+                    r.description += "\n\n" + std::string( _( "No weapon is installed in it." ) );
+                    r.action = _( "Install weapon" );
+                }
+            }
             what.rows.push_back( r );
             shown.push_back( &bio );
         }
-        const int chosen = mobile_list::show( what, tab, selected );
-        if( chosen < 0 || static_cast<size_t>( chosen ) >= shown.size() ) {
+        const mobile_list::outcome did = mobile_list::show_all( what, tab, selected );
+        if( did.row < 0 || static_cast<size_t>( did.row ) >= shown.size() ) {
             return;
         }
-        bionic &bio = *shown[static_cast<size_t>( chosen )];
+        bionic &bio = *shown[static_cast<size_t>( did.row )];
         const bionic_data &data = bio.info();
         if( bio.powered ) {
             you.deactivate_bionic( bio );
             if( data.deactivated_close_ui ) {
                 return;
             }
+        } else if( bio.can_install_weapon() && bio.has_weapon() && did.action == 1 ) {
+            if( std::optional<item> weapon = bio.uninstall_weapon() ) {
+                you.i_add_or_drop( *weapon );
+            }
         } else if( bio.can_install_weapon() && !bio.has_weapon() ) {
-            add_msg( m_info, _( "The %s has no weapon installed." ), data.name );
-            return;
+            // upstream's choice, from what you carry
+            std::vector<item *> valid_weapons = you.items_with( [&bio]( const item & it ) {
+                return it.has_any_flag( bio.id->installable_weapon_flags );
+            } );
+            if( valid_weapons.empty() ) {
+                popup( _( "You don't have any items you can install in this bionic" ) );
+                continue;
+            }
+            uilist menu;
+            menu.title = _( "Select weapon to install" );
+            for( size_t i = 0; i < valid_weapons.size(); i++ ) {
+                menu.addentry( static_cast<int>( i ), true, MENU_AUTOASSIGN, valid_weapons[i]->tname() );
+            }
+            menu.query();
+            if( menu.ret >= 0 && static_cast<size_t>( menu.ret ) < valid_weapons.size() ) {
+                item &new_weapon = *valid_weapons[static_cast<size_t>( menu.ret )];
+                if( bio.can_install_weapon( new_weapon ) && bio.install_weapon( new_weapon ) ) {
+                    item_location loc( you, &new_weapon );
+                    loc.remove_item();
+                } else {
+                    popup( _( "Unable to install %s" ), new_weapon.tname() );
+                }
+            }
         } else {
             bool close_ui = false;
             you.activate_bionic( bio, false, &close_ui );

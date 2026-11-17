@@ -35,6 +35,7 @@
 #include "itype.h"
 #include "localized_comparator.h"
 #include "map.h"
+#include "mobile_list.h"
 #include "output.h"
 #include "string_formatter.h"
 #include "temp_crafting_inventory.h"
@@ -79,6 +80,8 @@ class pocket_favorite_callback : public uilist_callback
                              ImGui::GetMainViewport()->Size.x - ( 50 * ImGui::CalcTextSize( "X" ).x ) );
         }
         bool key( const input_context &, const input_event &event, int entnum, uilist *menu ) override;
+        // Mobile UI: the pockets as a list screen, in place of the menu's query()
+        void mobile_show( uilist &menu, const std::string &title );
 };
 } // namespace
 
@@ -613,6 +616,117 @@ bool pocket_favorite_callback::key( const input_context &ctxt, const input_event
     }
 
     return false;
+}
+
+// Mobile UI: one row per pocket, with what upstream's side pane says about it.
+// "Settings" lists the actions of upstream's context menu and runs them through
+// key(), "Move an item" is upstream's two steps: pick the item, then the pocket.
+void pocket_favorite_callback::mobile_show( uilist &menu, const std::string &title )
+{
+    static const std::vector<std::string> actions = {
+        "FAV_PRIORITY", "FAV_AUTO_PICKUP", "FAV_AUTO_UNLOAD", "FAV_WHITELIST_CONTENTS",
+        "FAV_SAVE_PRESET", "FAV_APPLY_PRESET", "FAV_DEL_PRESET", "FAV_CLEAR"
+    };
+    input_context ctxt( "INVENTORY" );
+    for( const char *const action : {
+             "FAV_ITEM", "FAV_CATEGORY", "FAV_MOVE_ITEM"
+         } ) {
+        ctxt.register_action( action );
+    }
+    for( const std::string &action : actions ) {
+        ctxt.register_action( action );
+    }
+    const auto run = [&]( const std::string & action, const int entry ) {
+        const std::vector<input_event> keys = inp_mngr.get_input_for_action( action, "INVENTORY" );
+        if( !keys.empty() ) {
+            menu.selected = entry;
+            key( ctxt, keys.front(), -1, &menu );
+        }
+    };
+    int tab = 0;
+    int selected = -1;
+    while( true ) {
+        const bool moving = item_to_move.first != nullptr;
+        if( !moving ) {
+            // the sizes on the rows; while moving, the rows say which pockets can take the item
+            refresh_columns( &menu );
+        }
+        mobile_list::spec what;
+        what.title = title;
+        what.header = moving ? string_format( "%s: %s", _( "Moving" ),
+                                              remove_color_tags( item_to_move.first->display_name() ) ) :
+                      std::string( _( "What each pocket holds, and what goes into it first." ) );
+        what.empty_text = _( "No pockets." );
+        if( moving ) {
+            what.buttons = { std::string( _( "Stop moving" ) ) };
+        }
+        std::vector<int> entry_of_row;
+        std::string holder;
+        for( size_t i = 0; i < saved_pockets.size() && i < menu.entries.size(); i++ ) {
+            item_pocket *const pocket = std::get<0>( saved_pockets[i] );
+            if( pocket == nullptr ) {
+                holder = trim( remove_color_tags( menu.entries[i].txt ) );
+                continue;
+            }
+            const int number = std::get<1>( saved_pockets[i] ) + 1;
+            mobile_list::row r;
+            r.name = string_format( _( "%1$s: pocket %2$d" ), holder, number );
+            r.detail = string_format( "%s / %s", vol_to_info( "", "", pocket->contents_volume() ).sValue,
+                                      vol_to_info( "", "", pocket->volume_capacity() ).sValue );
+            if( !pocket->is_forbidden() ) {
+                std::vector<iteminfo> info;
+                pocket->general_info( info, number, true );
+                pocket->favorite_info( info );
+                pocket->contents_info( info, number, true );
+                r.description = format_item_info( info, {} );
+            }
+            if( moving ) {
+                r.enabled = menu.entries[i].enabled && pocket != item_to_move.second;
+                r.action = r.enabled ? _( "Put it here" ) : std::string();
+            } else {
+                r.action = _( "Settings" );
+                if( !pocket->empty() ) {
+                    r.more_actions.emplace_back( _( "Move an item" ) );
+                }
+            }
+            what.rows.push_back( r );
+            entry_of_row.push_back( static_cast<int>( i ) );
+        }
+        const mobile_list::outcome did = mobile_list::show_all( what, tab, selected );
+        if( did.button == 0 && moving ) {
+            item_to_move = { nullptr, nullptr };
+            continue;
+        }
+        if( did.row < 0 || static_cast<size_t>( did.row ) >= entry_of_row.size() ) {
+            if( moving ) {
+                item_to_move = { nullptr, nullptr };
+                continue;
+            }
+            return;
+        }
+        const int entry = entry_of_row[static_cast<size_t>( did.row )];
+        if( moving || did.action == 1 ) {
+            run( "FAV_MOVE_ITEM", entry );
+            continue;
+        }
+        uilist settings;
+        settings.text = what.rows[static_cast<size_t>( did.row )].name;
+        settings.addentry( 0, true, MENU_AUTOASSIGN, _( "Whitelist: add or remove an item" ) );
+        settings.addentry( 1, true, MENU_AUTOASSIGN, _( "Whitelist: add or remove a category" ) );
+        settings.addentry( 2, true, MENU_AUTOASSIGN, _( "Blacklist: add or remove an item" ) );
+        settings.addentry( 3, true, MENU_AUTOASSIGN, _( "Blacklist: add or remove a category" ) );
+        for( size_t i = 0; i < actions.size(); i++ ) {
+            settings.addentry( static_cast<int>( i ) + 4, true, MENU_AUTOASSIGN,
+                               ctxt.get_action_name( actions[i] ) );
+        }
+        settings.query();
+        if( settings.ret >= 0 && settings.ret < 4 ) {
+            whitelist = settings.ret < 2;
+            run( settings.ret % 2 == 0 ? "FAV_ITEM" : "FAV_CATEGORY", entry );
+        } else if( settings.ret >= 4 && static_cast<size_t>( settings.ret ) < actions.size() + 4 ) {
+            run( actions[static_cast<size_t>( settings.ret ) - 4], entry );
+        }
+    }
 }
 
 item_contents::item_contents( const std::vector<pocket_data> &pockets )
@@ -3014,5 +3128,10 @@ void pocket_management_menu( const std::string &title,
     pocket_selector.allow_confirm = false;
     pocket_selector.allow_additional = true;
 
+    // Mobile UI: a list screen, with the side pane's text in each pocket's panel
+    if( mobile_list::wanted() ) {
+        cb.mobile_show( pocket_selector, title );
+        return;
+    }
     pocket_selector.query();
 }

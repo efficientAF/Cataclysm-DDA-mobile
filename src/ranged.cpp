@@ -2404,6 +2404,16 @@ static std::vector<std::string> mobile_aim_lines( const target_ui &ui, Character
                                             attributes, pos, item_location() );
     }
     std::vector<std::string> lines;
+    if( mode == target_ui::TargetMode::Fire ) {
+        // how steady the aim is right now, as upstream's bar above the odds
+        for( const aim_type_prediction &chance : chances ) {
+            if( chance.is_default ) {
+                lines.push_back( string_format( "%s: %d%%", _( "Steadiness" ),
+                                                std::clamp( static_cast<int>( 100.0 * chance.steadiness ), 0, 100 ) ) );
+                break;
+            }
+        }
+    }
     for( const aim_type_prediction &chance : chances ) {
         lines.push_back( string_format( _( "%1$s: %2$d%% to hit, %3$d moves" ), chance.name,
                                         std::clamp( chance.chance_to_hit, 0, 100 ), chance.moves ) );
