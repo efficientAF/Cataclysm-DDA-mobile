@@ -773,7 +773,7 @@ void ask( cOpt &opt )
         menu.title = opt.getMenuText();
         const std::string now = opt.getValue( true );
         for( size_t i = 0; i < items.size(); ++i ) {
-            menu.addentry( static_cast<int>( i ), true, -1, items[i].second.translated() );
+            menu.addentry( static_cast<int>( i ), true, 0, items[i].second.translated() );
             if( items[i].first == now ) {
                 menu.selected = static_cast<int>( i );
             }
@@ -787,7 +787,7 @@ void ask( cOpt &opt )
         uilist menu;
         menu.title = opt.getMenuText();
         for( size_t i = 0; i < names.size(); ++i ) {
-            menu.addentry( static_cast<int>( i ), true, -1, names[i] );
+            menu.addentry( static_cast<int>( i ), true, 0, names[i] );
         }
         menu.selected = 0;
         menu.query();
