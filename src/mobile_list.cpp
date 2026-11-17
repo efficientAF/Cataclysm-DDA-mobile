@@ -283,7 +283,8 @@ void list_window::draw_controls()
     }
     ImGui::EndChild();
     ImGui::PopStyleVar();
-    if( has_panel ) {
+    // a tap on the selected row has just closed its panel
+    if( has_panel && selected >= 0 && static_cast<size_t>( selected ) < what.rows.size() ) {
         if( landscape ) {
             draw_panel( ImVec2( left + list_w + 6.0f * u, y ), ImVec2( left + width - 10.0f * u,
                         bottom - 10.0f * u ) );

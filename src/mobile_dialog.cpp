@@ -7,6 +7,7 @@
 #if defined(TILES)
 #include <algorithm>
 
+#include "mobile_pick.h"
 #include "mobile_ui.h"
 #include "translations.h"
 #endif
@@ -48,6 +49,36 @@ using mobile_ui::face;
 
 static constexpr ImU32 col_message = IM_COL32( 201, 207, 191, 255 );
 static constexpr ImU32 col_soft_button = IM_COL32( 255, 255, 255, 15 );
+
+void note_rect( const std::string &message, const bool on_top, float &x, float &y, float &w,
+                float &h )
+{
+    // the same sums as in draw_popup, for a dialog without buttons
+    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    const ImVec2 size = viewport->Size;
+    const float u = mobile_ui::unit();
+    const ImVec4 safe = mobile_ui::safe_insets();
+    const float pad = 20.0f * u;
+    const float avail_w = size.x - safe.x - safe.z;
+    const float max_w = std::min( 440.0f * u, avail_w - 32.0f * u );
+    const ImVec2 message_px = message.empty() ? ImVec2( 0.0f, 0.0f ) :
+                              mobile_ui::text_size( face::body, 14.0f, message, max_w - 2.0f * pad );
+    const float max_h = size.y - safe.y - safe.w - 24.0f * u;
+    w = std::min( max_w, message_px.x + 2.0f * pad );
+    h = pad + std::min( message_px.y, std::max( 40.0f * u, max_h - 2.0f * pad ) ) + pad;
+    x = viewport->Pos.x + safe.x + ( avail_w - w ) * 0.5f;
+    y = on_top ? viewport->Pos.y + safe.y + 12.0f * u :
+        viewport->Pos.y + safe.y + ( size.y - safe.y - safe.w - h ) * 0.5f;
+    if( on_top ) {
+        // under the look-around banner, which is at the top too
+        y = std::max( y, mobile_pick::banner_bottom() + 6.0f * u );
+    }
+    // room for the outline
+    x -= 2.0f * u;
+    y -= 2.0f * u;
+    w += 4.0f * u;
+    h += 4.0f * u;
+}
 
 int draw_popup( const popup_spec &spec )
 {
@@ -113,7 +144,7 @@ int draw_popup( const popup_spec &spec )
     if( sheet ) {
         pos.y = screen_max.y - card_h;
     } else if( spec.on_top ) {
-        pos.y = origin.y + safe.y + 12.0f * u;
+        pos.y = std::max( origin.y + safe.y + 12.0f * u, mobile_pick::banner_bottom() + 6.0f * u );
     }
     const ImVec2 card_max( pos.x + card_w, pos.y + card_h );
     if( sheet ) {
@@ -324,6 +355,8 @@ int draw_list( const list_spec &spec )
 }
 
 #else // !TILES
+
+void note_rect( const std::string &, bool, float &, float &, float &, float & ) {}
 
 int draw_popup( const popup_spec & )
 {

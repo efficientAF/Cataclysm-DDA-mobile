@@ -53,6 +53,10 @@ class look_banner
         std::unique_ptr<impl> window;
 };
 
+// The lower edge of the banner in pixels while one is shown, else 0; notes that
+// go to the top of the screen make room for it.
+float banner_bottom();
+
 // Asks for a direction.  Returns the step from the player (zero for the
 // player's own tile, above or below if allow_vertical), or nothing if cancelled.
 // timeout is how often to redraw the map while waiting, in milliseconds; negative for never.

@@ -435,7 +435,8 @@ shared_ptr_fast<ui_adaptor> veh_interact::create_or_get_ui_adaptor( map &here )
     if( !current_ui ) {
         ui = current_ui = make_shared_fast<ui_adaptor>();
         current_ui->on_screen_resize( [this]( ui_adaptor & current_ui ) {
-            if( ui_hidden ) {
+            // Mobile UI: the phone's screen draws everything
+            if( ui_hidden || mobile_list::wanted() ) {
                 current_ui.position( point::zero, point::zero );
                 return;
             }
@@ -444,7 +445,7 @@ shared_ptr_fast<ui_adaptor> veh_interact::create_or_get_ui_adaptor( map &here )
         } );
         current_ui->mark_resize();
         current_ui->on_redraw( [&here, this]( const ui_adaptor & ) {
-            if( ui_hidden ) {
+            if( ui_hidden || mobile_list::wanted() ) {
                 return;
             }
             display_grid();

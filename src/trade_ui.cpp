@@ -220,13 +220,15 @@ trade_ui::trade_result_t trade_ui::perform_trade()
         }
         menu.addentry_desc( 3, true, MENU_AUTOASSIGN, _( "Offer this trade" ),
                             free ? std::string( _( "You share freely with each other." ) ) :
-                            _balance >= 0 ? string_format( _( "In your favour by %s." ), format_money( _balance ) ) :
+                            _balance == 0 ? std::string( _( "The two sides are worth the same." ) ) :
+                            _balance > 0 ? string_format( _( "In your favour by %s." ), format_money( _balance ) ) :
                             string_format( _( "You are short by %s." ), format_money( -_balance ) ) );
         menu.query();
         switch( menu.ret ) {
             case 0:
             case 1:
                 _cpane = menu.ret == 0 ? _you : _trader;
+                _panes[_cpane]->set_title( menu.ret == 0 ? _( "What you give" ) : _( "What you get" ) );
                 mobile_picker::pick_many( *_panes[_cpane] );
                 recalc_values_cpane();
                 break;

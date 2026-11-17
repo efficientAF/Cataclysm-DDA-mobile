@@ -38,6 +38,11 @@ constexpr int tap_ok = -3;
 // the button that was tapped, tap_ok, tap_outside or tap_nothing.
 int draw_popup( const popup_spec &spec );
 
+// Where a note (a message without buttons that waits for nothing) is drawn, in
+// pixels: x, y, width, height.  Its window must be no larger than this, or the
+// screens under it, the map among them, would no longer be redrawn.
+void note_rect( const std::string &message, bool on_top, float &x, float &y, float &w, float &h );
+
 // --- List menus (uilist) ---
 
 // Upstream pads the text of some menus into columns with a '|' between them

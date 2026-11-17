@@ -27,6 +27,8 @@
 #include "string_formatter.h"
 #include "translations.h"
 #include "ui_manager.h"
+#include "vpart_position.h"
+#include "vehicle.h"
 #endif
 
 namespace mobile_pick
@@ -260,6 +262,13 @@ void ring_window::draw_controls()
 
 // --- Look-around ---
 
+static float look_banner_bottom = 0.0f;
+
+float banner_bottom()
+{
+    return look_banner_bottom;
+}
+
 class look_banner::impl : public cataimgui::window
 {
     public:
@@ -285,6 +294,7 @@ class look_banner::impl : public cataimgui::window
             const ImVec2 min = ImGui::GetWindowPos();
             const ImVec2 size = ImGui::GetWindowSize();
             const ImVec2 max( min.x + size.x, min.y + size.y );
+            look_banner_bottom = max.y;
             draw->PushClipRectFullScreen();
             mobile_ui::box( draw, min, max, IM_COL32( 22, 27, 20, 235 ), mobile_ui::col_line, 14.0f );
             const float wrap = size.x - 28.0f * u;
@@ -304,7 +314,10 @@ class look_banner::impl : public cataimgui::window
 };
 
 look_banner::look_banner() : window( std::make_unique<impl>() ) {}
-look_banner::~look_banner() = default;
+look_banner::~look_banner()
+{
+    look_banner_bottom = 0.0f;
+}
 
 void look_banner::show( const tripoint_bub_ms &pos )
 {
@@ -331,6 +344,11 @@ void look_banner::show( const tripoint_bub_ms &pos )
             lines.push_back( ground );
         } else {
             title = ground;
+        }
+        if( const optional_vpart_position vp = here.veh_at( pos ) ) {
+            const std::optional<vpart_reference> top = vp.part_displayed();
+            lines.push_back( top ? string_format( "%1$s · %2$s", vp->vehicle().name,
+                                                  top->part().name( false ) ) : vp->vehicle().name );
         }
         if( here.sees_some_items( pos, you ) ) {
             const map_stack items = here.i_at( pos );
@@ -408,6 +426,11 @@ std::optional<tripoint_rel_ms> direction( const std::string &message, const bool
 
 candidates::candidates( const tripoint_bub_ms &, const std::vector<tripoint_bub_ms> & ) {}
 candidates::~candidates() = default;
+
+float banner_bottom()
+{
+    return 0.0f;
+}
 
 class look_banner::impl
 {

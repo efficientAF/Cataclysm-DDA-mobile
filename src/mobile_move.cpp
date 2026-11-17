@@ -65,7 +65,8 @@ std::vector<place> places_around()
         }
         const std::string what = cargo ? remove_color_tags( cargo->part().name() ) : here.name( pos );
         p.name = pos == center ? string_format( _( "Here: %s" ), what ) :
-                 string_format( "%s: %s", direction_name( direction_from( center.raw(), pos.raw() ) ), what );
+                 string_format( "%s: %s", uppercase_first_letter( direction_name( direction_from( center.raw(),
+                                pos.raw() ) ) ), what );
         places.push_back( p );
     }
     return places;

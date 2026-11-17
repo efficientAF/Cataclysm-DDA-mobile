@@ -13,6 +13,7 @@
 #include "input_context.h"
 #include "mobile_dialog.h"
 #include "mobile_menu.h"
+#include "mobile_pick.h"
 #include "mobile_prompt.h"
 #include "output.h"
 #include "string_formatter.h"
@@ -57,6 +58,13 @@ class query_popup_impl : public cataimgui::window
     protected:
         void draw_controls() override;
         cataimgui::bounds get_bounds() override {
+            if( mobile && parent->options.empty() && !parent->anykey && !parent->cancel ) {
+                // a note must not cover the screen, or what is under it stops being redrawn
+                cataimgui::bounds note = { 0.0f, 0.0f, 0.0f, 0.0f };
+                mobile_dialog::note_rect( remove_color_tags( parent->text ), parent->ontop, note.x, note.y,
+                                          note.w, note.h );
+                return note;
+            }
             if( mobile ) {
                 return { 0.0f, 0.0f, 1.0f, 1.0f };
             }
@@ -67,6 +75,8 @@ class query_popup_impl : public cataimgui::window
         bool mobile;
         std::vector<std::string> mobile_labels;
         int mobile_tap = mobile_dialog::tap_nothing;
+        // where the look-around banner ended when this note was last placed
+        float mobile_banner_bottom = 0.0f;
 };
 
 std::optional<std::string> query_popup_impl::take_mobile_action()
@@ -97,6 +107,11 @@ void query_popup_impl::draw_controls()
         if( parent->options.empty() && !parent->anykey && !parent->cancel ) {
             // a note beside a screen that is waiting for keys: they become buttons
             spec.message = mobile_prompt::take_key_hints( spec.message );
+            if( mobile_banner_bottom != mobile_pick::banner_bottom() ) {
+                // the note moves out of the banner's way
+                mobile_banner_bottom = mobile_pick::banner_bottom();
+                mark_resized();
+            }
             if( spec.message.empty() ) {
                 return;
             }

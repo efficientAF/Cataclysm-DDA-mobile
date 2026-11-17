@@ -92,6 +92,8 @@ cataimgui::bounds input_popup::get_bounds()
 
 void input_popup::draw_controls()
 {
+    // Mobile UI: nothing of this window while the entry sheet asks in its place
+    hide_if_hidden();
     if( !description.empty() ) {
         if( description_monofont ) {
             cataimgui::PushMonoFont();
@@ -347,6 +349,10 @@ std::optional<std::string> input_popup::mobile_query( const std::string &text, c
     what.description = description;
     if( what.title.empty() ) {
         std::swap( what.title, what.description );
+    }
+    if( what.title.empty() ) {
+        // the question may only be in the window's title bar
+        what.title = id.substr( 0, id.find( "##" ) );
     }
     what.text = text;
     what.number = number;

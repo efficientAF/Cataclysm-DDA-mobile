@@ -363,6 +363,16 @@ static std::string action_label( const input_context &ctxt, const std::string &a
         if( action == "HELP_KEYBINDINGS" ) {
             return _( "Keys" );
         }
+        // look-around: what to do with the tile under the cursor
+        if( action == "TRAVEL_TO" ) {
+            return _( "Travel here" );
+        }
+        if( action == "EXTENDED_DESCRIPTION" ) {
+            return _( "Describe" );
+        }
+        if( action == "LIST_ITEMS" ) {
+            return _( "Items nearby" );
+        }
     }
     return ctxt.get_action_name( action );
 }
@@ -403,7 +413,8 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
         const std::vector<std::string> &actions = ctxt.mobile_registered_actions();
         // the two answers first, the keybindings screen last
         for( const char *const first : {
-                 "FIRE", "CONFIRM", "QUIT", "NEXT_TARGET", "AIM"
+                 "FIRE", "CONFIRM", "QUIT", "NEXT_TARGET", "AIM", "TRAVEL_TO", "EXTENDED_DESCRIPTION",
+                 "LIST_ITEMS"
              } ) {
             if( is_registered( ctxt, first ) ) {
                 add( first, action_label( ctxt, first ) );

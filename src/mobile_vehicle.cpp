@@ -47,7 +47,10 @@ void veh_interact::mobile_overview( map &here, const overview_enable_t &enable,
                                     const overview_action_t &action )
 {
     restore_on_out_of_scope prev_overview_enable( overview_enable );
+    restore_on_out_of_scope prev_overview_action( overview_action );
     overview_enable = enable;
+    // calc_overview marks nothing as selectable without an action
+    overview_action = action;
     calc_overview( here );
 
     uilist menu;
@@ -66,11 +69,13 @@ void veh_interact::mobile_overview( map &here, const overview_enable_t &enable,
         } else if( opt.part->is_tank() || opt.part->is_fuel_store() ) {
             desc = _( "Empty" );
         }
-        menu.addentry_desc( static_cast<int>( parts.size() ), true, MENU_AUTOASSIGN, opt.part->name(),
+        menu.addentry_desc( static_cast<int>( parts.size() ), true, MENU_AUTOASSIGN,
+                            opt.part->name( false ),
                             desc );
         parts.push_back( opt.part );
     }
     if( parts.empty() ) {
+        popup( _( "No part of the %s can be chosen for that." ), veh->name );
         return;
     }
     menu.query();
@@ -332,7 +337,7 @@ void veh_interact::mobile_main_loop( map &here )
         mobile_list::spec what;
         what.title = veh->name;
         what.header = parts_here.empty() ? _( "An empty spot next to the vehicle" ) :
-                      string_format( _( "Working on: %s" ), veh->part( parts_here.front() ).name() );
+                      string_format( _( "Working on: %s" ), veh->part( parts_here.front() ).name( false ) );
         what.tabs = { std::string( _( "Parts here" ) ), std::string( _( "Whole vehicle" ) ) };
         what.empty_text = _( "No parts here.  Install one, or choose another tile." );
         what.buttons = { std::string( _( "Install a part" ) ), std::string( _( "Other tile" ) ) };
@@ -343,7 +348,7 @@ void veh_interact::mobile_main_loop( map &here )
         for( size_t i = 0; i < parts_here.size(); i++ ) {
             vehicle_part &pt = veh->part( parts_here[i] );
             mobile_list::row r;
-            r.name = pt.name();
+            r.name = pt.name( false );
             r.tab = 0;
             r.detail = pt.is_broken() ? _( "Broken" ) :
                        string_format( _( "Condition %d%%" ), static_cast<int>( pt.health_percent() * 100 ) );
@@ -383,7 +388,6 @@ void veh_interact::mobile_main_loop( map &here )
             mobile_list::row r;
             r.name = name;
             r.detail = detail;
-            r.description = detail;
             r.tab = 1;
             r.enabled = enabled;
             r.action = name;

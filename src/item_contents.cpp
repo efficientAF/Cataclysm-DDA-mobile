@@ -43,6 +43,7 @@
 #include "translations.h"
 #include "uilist.h"
 #include "units.h"
+#include "units_utility.h"
 
 static const flag_id json_flag_CASING( "CASING" );
 static const flag_id json_flag_MAG_DESTROY( "MAG_DESTROY" );
@@ -671,8 +672,9 @@ void pocket_favorite_callback::mobile_show( uilist &menu, const std::string &tit
             const int number = std::get<1>( saved_pockets[i] ) + 1;
             mobile_list::row r;
             r.name = string_format( _( "%1$s: pocket %2$d" ), holder, number );
-            r.detail = string_format( "%s / %s", vol_to_info( "", "", pocket->contents_volume() ).sValue,
-                                      vol_to_info( "", "", pocket->volume_capacity() ).sValue );
+            r.detail = string_format( "%s / %s %s", vol_to_info( "", "", pocket->contents_volume() ).sValue,
+                                      vol_to_info( "", "", pocket->volume_capacity() ).sValue,
+                                      volume_units_abbr() );
             if( !pocket->is_forbidden() ) {
                 std::vector<iteminfo> info;
                 pocket->general_info( info, number, true );

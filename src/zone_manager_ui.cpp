@@ -514,7 +514,8 @@ void zone_manager_ui::display_zone_manager()
             for( const zone_manager::ref_zone_data &ref : zones ) {
                 const zone_data &zone = ref.get();
                 mobile_list::row r;
-                r.name = ( zone.get_is_personal() ? _( "P: " ) : "" ) + zone.get_name();
+                r.name = ( zone.get_is_personal() ? _( "P: " ) : "" ) +
+                         ( zone.get_name().empty() ? mgr.get_name_from_type( zone.get_type() ) : zone.get_name() );
                 r.detail = string_format( "%s · %d %s", mgr.get_name_from_type( zone.get_type() ),
                                           static_cast<int>( trig_dist( u.pos_abs(), zone.get_center_point() ) ),
                                           direction_name_short( direction_from( u.pos_abs(), zone.get_center_point() ) ) );
