@@ -15,6 +15,7 @@
 #include "generic_factory.h"
 #include "input_context.h"
 #include "input_enums.h"
+#include "mobile_help.h"
 #include "npc.h"
 #include "output.h"
 #include "path_info.h"
@@ -310,6 +311,12 @@ float help_window::get_wrap_width()
 
 void help_window::show()
 {
+    // Mobile UI: the categories as a list and each as a page; this window stays shut
+    if( mobile_help::wanted() ) {
+        is_open = false;
+        mobile_help::show();
+        return;
+    }
     const std::map<const int, const help_category> &cats = data.get_help_categories();
     while( true ) {
         while( !has_selected_category ) {
