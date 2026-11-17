@@ -66,6 +66,7 @@
 #include "mapdata.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_vending.h"
 #include "mission_companion.h"
 #include "mtype.h"
 #include "mutation.h"
@@ -1076,8 +1077,14 @@ void iexamine::vending( Character &you, const tripoint_bub_ms &examp )
     catacurses::window w;
     catacurses::window w_item_info;
 
+    // Mobile UI: the machine as a list screen; this window is not drawn
+    const bool mobile = mobile_vending::wanted();
+
     ui_adaptor ui;
     ui.on_screen_resize( [&]( ui_adaptor & ui ) {
+        if( mobile ) {
+            return;
+        }
         const point padding( std::max( 0, TERMX - FULL_SCREEN_WIDTH ) / 4, std::max( 0,
                              TERMY - FULL_SCREEN_HEIGHT ) / 6 );
         const int window_h   = FULL_SCREEN_HEIGHT + std::max( 0, TERMY - FULL_SCREEN_HEIGHT ) * 2 / 3;
@@ -1131,6 +1138,9 @@ void iexamine::vending( Character &you, const tripoint_bub_ms &examp )
     const int &item_info_scroll_delta = list_lines;
 
     ui.on_redraw( [&]( const ui_adaptor & ) {
+        if( mobile ) {
+            return;
+        }
         const int num_items = item_list.size();
         const int page_size = std::min( num_items, list_lines );
 
@@ -1180,7 +1190,19 @@ void iexamine::vending( Character &you, const tripoint_bub_ms &examp )
     } );
 
     for( ;; ) {
-        ui_manager::redraw();
+        // Mobile UI: the list screen answers with the row to buy, or with back
+        std::string mobile_action;
+        if( mobile ) {
+            std::vector<mobile_vending::entry> stock;
+            for( const auto &elem : item_list ) {
+                const item &it = *elem->second.back();
+                stock.push_back( { elem->first, static_cast<int>( elem->second.size() ),
+                                   it.price( false ), it.info( true ) } );
+            }
+            mobile_action = mobile_vending::show( stock, money, cur_pos ) ? "CONFIRM" : "QUIT";
+        } else {
+            ui_manager::redraw();
+        }
 
         const int num_items = item_list.size();
 
@@ -1188,7 +1210,7 @@ void iexamine::vending( Character &you, const tripoint_bub_ms &examp )
         auto &cur_items = item_list[static_cast<size_t>( cur_pos )]->second;
         auto &cur_item  = cur_items.back();
 
-        const std::string &action = ctxt.handle_input();
+        const std::string &action = mobile ? mobile_action : ctxt.handle_input();
         if( navigate_ui_list( action, cur_pos, 3, num_items, true ) ) {
             item_info_scroll_pos = 0;
         } else if( action == "SCROLL_ITEM_INFO_UP" ) {

@@ -41,6 +41,7 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_terminal.h"
 #include "mission.h"
 #include "monster.h"
 #include "mtype.h"
@@ -165,6 +166,12 @@ void computer_session::use()
         refresh();
     } );
 
+    // Mobile UI: the terminal as a page; it is told what is printed and asks with buttons
+    std::optional<mobile_terminal::session> mobile_page;
+    if( mobile_terminal::wanted() ) {
+        mobile_page.emplace( comp.name );
+    }
+
     avatar &player_character = get_avatar();
     // Login
     print_line( _( "Logging into %s…" ), comp.name );
@@ -227,7 +234,16 @@ void computer_session::use()
         }
 
         ui_manager::redraw();
-        computer_menu.query();
+        // Mobile UI: the options as buttons on the terminal page
+        if( mobile_terminal::active() ) {
+            std::vector<std::pair<std::string, bool>> mobile_options;
+            for( const uilist_entry &entry : computer_menu.entries ) {
+                mobile_options.emplace_back( entry.txt, entry.enabled );
+            }
+            computer_menu.ret = mobile_terminal::choose( computer_menu.text, mobile_options );
+        } else {
+            computer_menu.query();
+        }
         if( computer_menu.ret < 0 || static_cast<size_t>( computer_menu.ret ) >= comp.options.size() ) {
             break;
         }
@@ -1727,6 +1743,11 @@ bool computer_session::query_any( const std::string &text, Args &&... args )
 
 bool computer_session::query_any()
 {
+    // Mobile UI: a Continue button
+    if( mobile_terminal::active() ) {
+        mobile_terminal::wait_any();
+        return true;
+    }
     ui_manager::redraw();
     inp_mngr.wait_for_any_key();
     return true;
@@ -1736,6 +1757,18 @@ template<typename ...Args>
 computer_session::ynq computer_session::query_ynq( const std::string &text, Args &&... args )
 {
     const std::string formatted_text = string_format( text, std::forward<Args>( args )... );
+    // Mobile UI: the question without its keys, and Yes / No buttons
+    if( mobile_terminal::active() ) {
+        print_indented_line( 0, width, "%s", formatted_text );
+        switch( mobile_terminal::ask_yes_no() ) {
+            case mobile_terminal::answer::yes:
+                return ynq::yes;
+            case mobile_terminal::answer::no:
+                return ynq::no;
+            case mobile_terminal::answer::quit:
+                return ynq::quit;
+        }
+    }
     const bool force_uc = get_option<bool>( "FORCE_CAPITAL_YN" );
     const auto &allow_key = force_uc ? input_context::disallow_lower_case_or_non_modified_letters
                             : input_context::allow_all_keys;
@@ -1771,6 +1804,10 @@ computer_session::ynq computer_session::query_ynq( const std::string &text, Args
 
 void computer_session::refresh()
 {
+    // Mobile UI: the terminal page draws itself
+    if( mobile_terminal::active() ) {
+        return;
+    }
     werase( win );
     draw_border( win );
     for( size_t i = 0; i < lines.size(); ++i ) {
@@ -1790,6 +1827,8 @@ void computer_session::print_indented_line( const int indent, const int text_wid
     }
     const size_t uheight = static_cast<size_t>( height );
     const std::string formatted_text = string_format( text, std::forward<Args>( args )... );
+    // Mobile UI: the page wraps the text itself
+    mobile_terminal::print( indent, formatted_text );
     std::vector<std::string> folded = foldstring( formatted_text, text_width );
     if( folded.size() >= uheight ) {
         lines.clear();
@@ -1847,11 +1886,13 @@ void computer_session::print_gibberish_line()
 
 void computer_session::reset_terminal()
 {
+    mobile_terminal::clear(); // Mobile UI
     lines.clear();
 }
 
 void computer_session::print_newline()
 {
+    mobile_terminal::newline(); // Mobile UI
     if( height <= 0 ) {
         return;
     }
