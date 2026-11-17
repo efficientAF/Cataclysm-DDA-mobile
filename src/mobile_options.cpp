@@ -240,10 +240,6 @@ class options_window : public cataimgui::window
         float chip_scroll_by = 0.0f;
         std::vector<row> rows;
         float rows_width = 0.0f;
-        // the stepper button a finger rests on, and when it steps next
-        std::string hold_id;
-        double hold_next = 0.0;
-        bool hold_repeated = false;
 
         void rebuild( float width );
         void add_rows( const page &from, float width );
@@ -408,7 +404,7 @@ void options_window::draw_search( const ImVec2 &pos, const float width )
     ImGui::PushFont( nullptr, text_h / std::max( 0.1f, ImGui::GetStyle().FontScaleMain *
                      ImGui::GetStyle().FontScaleDpi ) );
     ImGui::SetNextItemWidth( field_max.x - field.x - 38.0f * u - clear_w - 6.0f * u );
-    ImGui::InputTextWithHint( "##options_search", _( "Search all options" ), &query );
+    ImGui::InputTextWithHint( "##options_search", _( "Search options" ), &query );
     search_active = ImGui::IsItemActive();
     ImGui::PopFont();
     ImGui::PopStyleVar( 2 );
@@ -492,31 +488,9 @@ bool options_window::step_button( ImDrawList *const draw, const std::string &id,
     const ImVec2 box_min( pos.x + 4.0f * u, pos.y + ( row_h - 36.0f * u ) * 0.5f );
     const ImVec2 box_max( box_min.x + 36.0f * u, box_min.y + 36.0f * u );
     bool held = false;
-    bool step = false;
-    if( enabled ) {
-        const bool tapped = mobile_ui::pressable( id, pos, ImVec2( 44.0f * u, row_h ), &held );
-        const double now = ImGui::GetTime();
-        if( held ) {
-            if( hold_id != id ) {
-                hold_id = id;
-                hold_repeated = false;
-                hold_next = now + 0.45;
-            } else if( now >= hold_next ) {
-                // a finger that stays keeps stepping
-                hold_next = now + 0.08;
-                hold_repeated = true;
-                step = true;
-            }
-        } else if( hold_id == id ) {
-            // let go: a tap is one step, unless the hold already stepped
-            step = tapped && !hold_repeated;
-            hold_id.clear();
-        } else {
-            step = tapped;
-        }
-    } else if( hold_id == id ) {
-        hold_id.clear();
-    }
+    // a finger only reaches ImGui as a tap once it is lifted, so there is no
+    // stepping while it rests; the number itself opens the keypad for big changes
+    const bool step = enabled && mobile_ui::pressable( id, pos, ImVec2( 44.0f * u, row_h ), &held );
     mobile_ui::box( draw, box_min, box_max,
                     held ? mobile_ui::col_button_down : enabled ? IM_COL32( 255, 255, 255, 15 ) :
                     IM_COL32( 255, 255, 255, 6 ), enabled ? mobile_ui::col_line : IM_COL32( 232, 236, 222, 14 ),
@@ -597,17 +571,17 @@ void options_window::draw_row( ImDrawList *const draw, row &r, const ImVec2 &pos
         case control::stepper: {
             const ImVec2 value_px = mobile_ui::text_size( face::mono, 13.0f, r.value );
             const float value_w = r.control_w - 88.0f * u;
+            if( step_button( draw, id + "_dec", "minus", ImVec2( control_x, pos.y ), r.height,
+                             r.enabled && r.can_dec ) ) {
+                opt.setPrev();
+                changed = true;
+            }
+            if( step_button( draw, id + "_inc", "plus", ImVec2( right - 44.0f * u, pos.y ), r.height,
+                             r.enabled && r.can_inc ) ) {
+                opt.setNext();
+                changed = true;
+            }
             if( r.enabled ) {
-                if( step_button( draw, id + "_dec", "minus", ImVec2( control_x, pos.y ), r.height,
-                                 r.can_dec ) ) {
-                    opt.setPrev();
-                    changed = true;
-                }
-                if( step_button( draw, id + "_inc", "plus", ImVec2( right - 44.0f * u, pos.y ), r.height,
-                                 r.can_inc ) ) {
-                    opt.setNext();
-                    changed = true;
-                }
                 // the number itself opens the keypad
                 bool value_held = false;
                 if( mobile_ui::pressable( id + "_value", ImVec2( control_x + 44.0f * u, pos.y ),
@@ -799,7 +773,7 @@ void ask( cOpt &opt )
         menu.title = opt.getMenuText();
         const std::string now = opt.getValue( true );
         for( size_t i = 0; i < items.size(); ++i ) {
-            menu.addentry( static_cast<int>( i ), true, MENU_AUTOASSIGN, items[i].second.translated() );
+            menu.addentry( static_cast<int>( i ), true, -1, items[i].second.translated() );
             if( items[i].first == now ) {
                 menu.selected = static_cast<int>( i );
             }
@@ -813,7 +787,7 @@ void ask( cOpt &opt )
         uilist menu;
         menu.title = opt.getMenuText();
         for( size_t i = 0; i < names.size(); ++i ) {
-            menu.addentry( static_cast<int>( i ), true, MENU_AUTOASSIGN, names[i] );
+            menu.addentry( static_cast<int>( i ), true, -1, names[i] );
         }
         menu.selected = 0;
         menu.query();
@@ -851,7 +825,7 @@ std::string show( options_manager &options, const bool ingame, const bool world_
     ctxt.register_action( "LEFT" );
     ctxt.register_action( "RIGHT" );
     ctxt.register_action( "ANY_INPUT" );
-    // the search field takes the keys, and a held stepper keeps stepping
+    // the search field takes the keys
     ctxt.set_timeout( 50 );
     while( !window.done ) {
         ui_manager::redraw();
