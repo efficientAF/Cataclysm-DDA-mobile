@@ -40,6 +40,12 @@ int draw_popup( const popup_spec &spec );
 
 // --- List menus (uilist) ---
 
+// Upstream pads the text of some menus into columns with a '|' between them
+// ("Store in inventory     | 120").  Returns what is before the divider and
+// puts what follows it into rest, both without the padding.  Text without such a
+// divider is returned as it is.
+std::string split_column( const std::string &text, std::string &rest );
+
 struct list_row {
     std::string text;
     // a muted second line

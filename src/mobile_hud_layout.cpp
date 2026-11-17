@@ -391,6 +391,12 @@ static void read_piece( const JsonObject &jo, const piece_id id, piece &p )
     if( id == piece_id::zoom || id == piece_id::pan ) {
         p.size = std::clamp( p.size, dial_size_min, dial_size_max );
     }
+    if( id == piece_id::zoom ) {
+        p.slider = jo.get_string( "style", p.slider ? "slider" : "dial" ) == "slider";
+        if( p.slider ) {
+            p.width = std::clamp( p.width, slider_length_min, slider_length_max );
+        }
+    }
     if( jo.has_member( "dir" ) ) {
         p.column = jo.get_string( "dir" ) == "col";
     }
@@ -487,6 +493,13 @@ static void write_layout( JsonOut &jsout, const layout &l )
                 jsout.member( "count", p.count );
                 break;
             case piece_id::zoom:
+                jsout.member( "style", p.slider ? "slider" : "dial" );
+                jsout.member( "size", static_cast<int>( std::lround( p.size ) ) );
+                if( p.slider ) {
+                    jsout.member( "dir", p.column ? "col" : "row" );
+                    jsout.member( "width", static_cast<int>( std::lround( p.width ) ) );
+                }
+                break;
             case piece_id::pan:
                 jsout.member( "size", static_cast<int>( std::lround( p.size ) ) );
                 break;

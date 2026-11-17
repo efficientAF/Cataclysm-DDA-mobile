@@ -141,6 +141,7 @@ struct dial_state {
 };
 } // namespace
 static std::array<dial_state, 2> dials;
+static zoom_drag zoom_drag_now;
 
 static dial_state &dial_of( const piece_id which )
 {
@@ -838,8 +839,15 @@ static SDL_FRect draw_dial_base( const piece_id id, const SDL_FRect &area, const
 
 // Zoom: a magnifier on the knob, plus above and minus below.  Drag up to zoom
 // in and down to zoom out; see touch_input.cpp.
+static void draw_zoom_slider( const piece &cfg );
+
 static void draw_zoom( const piece &cfg )
 {
+    if( cfg.slider ) {
+        draw_zoom_slider( cfg );
+        return;
+    }
+    zoom_drag_now = { false, 48.0f * unit };
     const float size = std::clamp( cfg.size, dial_size_min, dial_size_max ) * unit;
     const SDL_FRect area = place_piece( piece_id::zoom, size, size );
     const SDL_FRect knob = draw_dial_base( piece_id::zoom, area, hit_kind::zoom_dial );
@@ -850,6 +858,66 @@ static void draw_zoom( const piece &cfg )
     const float glass = knob.w * 0.62f;
     draw_icon( "search", knob.x + ( knob.w - glass ) * 0.5f, knob.y + ( knob.h - glass ) * 0.5f, glass,
                col_fg );
+}
+
+// Zoom as a slider: a track with a mark for every zoom level, minus at one end
+// and plus at the other, and a thumb where the zoom is now.  Drag along it;
+// upright, up zooms in.
+static void draw_zoom_slider( const piece &cfg )
+{
+    const float thick = 44.0f * unit;
+    const float length = std::clamp( cfg.width, slider_length_min, slider_length_max ) * unit;
+    const bool upright = cfg.column;
+    const SDL_FRect area = place_piece( piece_id::zoom, upright ? thick : length,
+                                        upright ? length : thick );
+    dial_state &dial = dial_of( piece_id::zoom );
+    fill_round( area, thick * 0.5f, col_panel );
+    stroke_round( area, thick * 0.5f, std::max( 1.0f, 1.5f * unit ),
+                  dial.held && !editing ? col_accent : rgba{ 233, 236, 223, 71 } );
+    const float mark = 16.0f * unit;
+    const float end = 26.0f * unit;
+    // the thumb's middle runs from one end of the track to the other
+    const float track = length - 2.0f * end - 30.0f * unit;
+    const float lo = std::log2( 4.0f );
+    const float hi = std::log2( static_cast<float>( touch_input::max_zoom() ) );
+    const float levels = std::max( 1.0f, hi - lo );
+    const float now = std::clamp( ( std::log2( static_cast<float>( std::max( g->get_zoom(),
+                                    1 ) ) ) - lo ) / levels, 0.0f, 1.0f );
+    zoom_drag_now = { !upright, track / levels };
+    const float cross = ( upright ? area.x : area.y ) + thick * 0.5f;
+    // where a fraction of the way in sits along the slider
+    const auto along = [&]( const float t ) {
+        return upright ? area.y + length - end - 15.0f * unit - t * track :
+               area.x + end + 15.0f * unit + t * track;
+    };
+    for( int i = 0; i <= static_cast<int>( std::lround( levels ) ); ++i ) {
+        const float at = along( static_cast<float>( i ) / levels );
+        const float dot = 3.0f * unit;
+        fill_round( { ( upright ? cross : at ) - dot * 0.5f, ( upright ? at : cross ) - dot * 0.5f, dot, dot },
+                    dot * 0.5f, { 233, 236, 223, 110 } );
+    }
+    const float near_end = ( end - mark ) * 0.5f + 3.0f * unit;
+    if( upright ) {
+        draw_icon( "plus", cross - mark * 0.5f, area.y + near_end, mark, col_muted );
+        draw_icon( "minus", cross - mark * 0.5f, area.y + length - near_end - mark, mark, col_muted );
+    } else {
+        draw_icon( "minus", area.x + near_end, cross - mark * 0.5f, mark, col_muted );
+        draw_icon( "plus", area.x + length - near_end - mark, cross - mark * 0.5f, mark, col_muted );
+    }
+    const float knob = 30.0f * unit;
+    const float at = along( now );
+    const SDL_FRect knob_rect = { ( upright ? cross : at ) - knob * 0.5f,
+                                  ( upright ? at : cross ) - knob * 0.5f, knob, knob
+                                };
+    fill_round( knob_rect, knob * 0.5f, dial.held && !editing ? rgba{ 240, 145, 63, 110 } :
+                rgba{ 233, 236, 223, 71 } );
+    stroke_round( knob_rect, knob * 0.5f, std::max( 1.0f, 1.5f * unit ), { 233, 236, 223, 160 } );
+    const float glass = knob * 0.6f;
+    draw_icon( "search", knob_rect.x + ( knob - glass ) * 0.5f, knob_rect.y + ( knob - glass ) * 0.5f,
+               glass, col_fg );
+    if( !editing ) {
+        buttons.push_back( { to_rect( area ), { hit_kind::zoom_dial, ACTION_NULL } } );
+    }
 }
 
 // Pan: an arrowhead each way and a target on the knob.  Drag to scroll the
@@ -1189,6 +1257,11 @@ float dial_radius( const piece_id which )
 float unit_pixels()
 {
     return unit;
+}
+
+zoom_drag zoom_drag_info()
+{
+    return zoom_drag_now;
 }
 
 // --- The editor's view of the HUD ---

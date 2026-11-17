@@ -71,14 +71,22 @@ void uilist::draw_controls( uilist &parent )
     if( mobile_sheet( parent, !parent.categories.empty() ) ) {
         mobile_dialog::list_spec spec;
         spec.title = remove_color_tags( parent.text.empty() ? parent.title : parent.text );
+        // columns padded for a text screen become a second line
+        std::string column_name;
+        spec.title = mobile_dialog::split_column( spec.title, column_name );
         if( parent.desc_enabled && !parent.footer_text.empty() ) {
             spec.title += ( spec.title.empty() ? "" : "\n" ) + remove_color_tags( parent.footer_text );
         }
         for( const int index : parent.fentries ) {
             uilist_entry &entry = parent.entries[index];
             mobile_dialog::list_row row;
-            row.text = entry._txt_nocolor();
+            std::string column_value;
+            row.text = mobile_dialog::split_column( entry._txt_nocolor(), column_value );
             row.detail = entry._ctxt_nocolor();
+            if( !column_value.empty() ) {
+                row.detail = ( column_name.empty() ? column_value : column_name + ": " + column_value ) +
+                             ( row.detail.empty() ? "" : "\n" ) + row.detail;
+            }
             if( parent.desc_enabled && parent.footer_text.empty() && !entry.desc.empty() ) {
                 row.detail += ( row.detail.empty() ? "" : "\n" ) + remove_color_tags( entry.desc );
             }

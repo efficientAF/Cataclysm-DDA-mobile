@@ -85,6 +85,9 @@ struct piece {
     // status (max shown), quick (buttons)
     int count = 6;
     pad_mode mode = pad_mode::toggle;
+    // zoom: a slider instead of the round dial; column and width are its
+    // direction and length then
+    bool slider = false;
     float opacity = 1.0f;
 };
 
@@ -140,6 +143,9 @@ struct insets {
 // The zoom and pan dials are round; their diameter stays within these, in units.
 constexpr float dial_size_min = 44.0f;
 constexpr float dial_size_max = 120.0f;
+// The zoom slider is 44 units thick and this long.
+constexpr float slider_length_min = 120.0f;
+constexpr float slider_length_max = 320.0f;
 
 // The names used in the layout JSON.
 const char *json_name( piece_id id );

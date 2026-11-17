@@ -1,5 +1,7 @@
 #include "mobile_dialog.h"
 
+#include <string>
+
 #include "imgui/imgui.h"
 
 #if defined(TILES)
@@ -17,6 +19,27 @@ int window_flags()
     return ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
            ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground;
+}
+
+static std::string trimmed( const std::string &text )
+{
+    const size_t first = text.find_first_not_of( ' ' );
+    if( first == std::string::npos ) {
+        return std::string();
+    }
+    return text.substr( first, text.find_last_not_of( ' ' ) - first + 1 );
+}
+
+std::string split_column( const std::string &text, std::string &rest )
+{
+    rest.clear();
+    // a divider has a space before it, and is not part of a line break
+    const size_t bar = text.find( " |" );
+    if( bar == std::string::npos || text.find( '\n' ) != std::string::npos ) {
+        return text;
+    }
+    rest = trimmed( text.substr( bar + 2 ) );
+    return trimmed( text.substr( 0, bar ) );
 }
 
 #if defined(TILES)

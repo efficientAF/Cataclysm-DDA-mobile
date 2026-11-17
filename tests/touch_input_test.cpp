@@ -208,3 +208,19 @@ TEST_CASE( "mobile_hud_layout_dials", "[touch_input]" )
         CHECK( p.portrait[piece_id::pan].size == 120.0f );
     }
 }
+
+TEST_CASE( "mobile_hud_layout_zoom_slider", "[touch_input]" )
+{
+    using mobile_hud::piece_id;
+    const mobile_hud::preset &base = mobile_hud::fallback_preset();
+    CHECK_FALSE( base.portrait[piece_id::zoom].slider );
+
+    const JsonValue jv = json_loader::from_string(
+                             R"({ "id": "s", "portrait": { "zoom": { "v": 1, "a": "tr", "x": 12, "y": 150, "style": "slider", "dir": "col", "size": 56, "width": 900 } } })" );
+    const mobile_hud::preset p = mobile_hud::read_preset( jv.get_object(), base );
+    CHECK( p.portrait[piece_id::zoom].slider );
+    CHECK( p.portrait[piece_id::zoom].column );
+    CHECK( p.portrait[piece_id::zoom].width == 320.0f );
+    // the other orientation keeps the dial
+    CHECK_FALSE( p.landscape[piece_id::zoom].slider );
+}

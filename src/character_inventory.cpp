@@ -57,6 +57,7 @@
 #include "map_iterator.h"
 #include "map_selector.h"
 #include "messages.h"
+#include "mobile_menu.h"
 #include "monster.h"
 #include "morale.h"
 #include "mtype.h"
@@ -880,6 +881,16 @@ bool Character::dispose_item( item_location &&obj, const std::string &prompt )
     }
 
     menu.set_selected( min_moves_i );
+    // Mobile UI: say why putting it away or wearing it cannot be chosen
+    if( mobile_menu::enabled() ) {
+        menu.desc_enabled = true;
+        if( !opts[0].enabled ) {
+            menu.entries[0].desc = _( "Nothing you are wearing has room for it." );
+        }
+        if( !opts[2].enabled ) {
+            menu.entries[2].desc = _( "It cannot be worn, or something you wear is in the way." );
+        }
+    }
 
     menu.query();
     if( menu.ret >= 0 ) {

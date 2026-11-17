@@ -903,8 +903,12 @@ static void dial_motion( const float x, const float y )
         owned_finger.dial_moved = true;
     }
     if( zoom ) {
-        // one zoom level for every 48 units the thumb travels, whatever the dial's size
-        owned_finger.zoom_steps = owned_finger.dial_moved ? -dy / ( 48.0f * unit ) : 0.0f;
+        // the dial: one zoom level for every 48 units the thumb travels up,
+        // whatever its size.  The slider: as far as its thumb has to move.
+        const mobile_hud::zoom_drag drag = mobile_hud::zoom_drag_info();
+        const float travel = drag.horizontal ? dx : -dy;
+        owned_finger.zoom_steps = owned_finger.dial_moved ?
+                                  travel / std::max( drag.pixels_per_level, 1.0f ) : 0.0f;
         mobile_hud::set_dial( piece, true, 0.0f, dy / radius );
         return;
     }

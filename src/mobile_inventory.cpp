@@ -585,6 +585,46 @@ static item_detail read_detail( const entry &e, avatar &you )
 
 // --- Doing things, with upstream's functions ---
 
+// Upstream's pick-up gives up on the whole lot at the first thing that has no
+// place to go, so only what can be stashed is handed to it: the smallest things
+// last, because it takes them from the back.  The rest is explained in the log.
+// One thing alone that has no room is taken in the hands if they are free.
+static drop_locations pick_up_what_fits( const std::vector<item_location> &locs )
+{
+    avatar &you = get_avatar();
+    drop_locations fits;
+    std::vector<item_location> left;
+    for( const item_location &loc : locs ) {
+        if( !loc ) {
+            continue;
+        }
+        if( you.can_pickWeight_partial( *loc, false ) && you.can_stash_partial( *loc, false ) ) {
+            fits.emplace_back( loc, loc->count() );
+        } else {
+            left.push_back( loc );
+        }
+    }
+    fits.sort( []( const drop_location & a, const drop_location & b ) {
+        return a.first->volume() > b.first->volume();
+    } );
+    if( left.size() == 1 && fits.empty() && !you.is_armed() &&
+        you.can_wield( *left.front() ).success() ) {
+        add_msg( m_info, _( "Nothing you wear has room for the %s, so you hold it." ),
+                 left.front()->tname() );
+        you.wield( left.front() );
+    } else if( left.size() == 1 ) {
+        add_msg( m_info,
+                 _( "No room for the %s.  Wield it or wear it, or wear something that can hold it." ),
+                 left.front()->tname() );
+    } else if( !left.empty() ) {
+        add_msg( m_info, n_gettext(
+                     "%d thing has no room.  Wield it or wear it, or wear something that can hold it.",
+                     "%d things have no room.  Wield or wear them, or wear something that can hold them.",
+                     left.size() ), static_cast<int>( left.size() ) );
+    }
+    return fits;
+}
+
 static void perform( const request &req )
 {
     avatar &you = get_avatar();
@@ -651,11 +691,10 @@ static void perform( const request &req )
             game_menus::inv::common( loc );
             break;
         case act::pick_up: {
-            drop_locations what;
-            for( const item_location &one : req.locs ) {
-                what.emplace_back( one, one->count() );
+            const drop_locations what = pick_up_what_fits( req.locs );
+            if( !what.empty() ) {
+                you.pick_up( what );
             }
-            you.pick_up( what );
             break;
         }
         case act::more:
@@ -1574,14 +1613,10 @@ drop_locations pick_up_from( const std::set<tripoint_bub_ms> &targets )
     state.targets.clear();
     if( req.kind == request_kind::pick_up ) {
         // the caller picks them up, as it does with upstream's menu
-        for( const item_location &loc : req.locs ) {
-            picked.emplace_back( loc, loc->count() );
-        }
+        picked = pick_up_what_fits( req.locs );
     } else if( req.kind == request_kind::action ) {
         if( req.what == act::pick_up ) {
-            for( const item_location &loc : req.locs ) {
-                picked.emplace_back( loc, loc->count() );
-            }
+            picked = pick_up_what_fits( req.locs );
         } else {
             perform( req );
         }

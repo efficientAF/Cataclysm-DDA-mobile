@@ -83,6 +83,15 @@ float dial_radius( piece_id which );
 // Window pixels per canvas unit, as of the last draw.
 float unit_pixels();
 
+// How a thumb on the zoom control changes the zoom, as of the last draw.
+struct zoom_drag {
+    // the slider lies on its side: dragging right zooms in.  Otherwise up does.
+    bool horizontal = false;
+    // how far the thumb travels for one zoom level
+    float pixels_per_level = 1.0f;
+};
+zoom_drag zoom_drag_info();
+
 // --- For the editor (mobile_hud_edit.h) ---
 
 // While editing, the HUD draws the working layout with a frame and a name tag

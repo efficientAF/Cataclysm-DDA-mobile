@@ -375,9 +375,11 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
             case piece_id::location:
                 rows += 3;
                 break;
+            case piece_id::zoom:
+                rows += layout.pieces[index].slider ? 4 : 3;
+                break;
             case piece_id::quick:
             case piece_id::body:
-            case piece_id::zoom:
             case piece_id::pan:
             case piece_id::joy:
                 rows += 2;
@@ -486,7 +488,32 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
                 }
                 changed |= stepper( _( "Buttons" ), p.count, 3, 9 );
                 break;
-            case piece_id::zoom:
+            case piece_id::zoom: {
+                int style = p.slider ? 1 : 0;
+                if( choice( _( "Style" ), style, { _( "Dial" ), _( "Slider" ) } ) ) {
+                    p.slider = style == 1;
+                    if( p.slider ) {
+                        // upright and of a middling length to start with
+                        p.column = true;
+                        p.width = 180.0f;
+                    }
+                    changed = true;
+                }
+                if( p.slider ) {
+                    int upright = p.column ? 0 : 1;
+                    if( choice( _( "Direction" ), upright, { _( "Vertical" ), _( "Horizontal" ) } ) ) {
+                        p.column = upright == 0;
+                        changed = true;
+                    }
+                    changed |= stepper( _( "Length" ), p.width, mobile_hud::slider_length_min,
+                                        mobile_hud::slider_length_max, 10.0f, units( p.width ) );
+                } else {
+                    changed |= stepper( _( "Size" ), p.size, mobile_hud::dial_size_min,
+                                        mobile_hud::dial_size_max, 4.0f, units( p.size ) );
+                }
+                changed |= stepper( _( "Opacity" ), p.opacity, 0.4f, 1.0f, 0.1f, percent( p.opacity ) );
+                break;
+            }
             case piece_id::pan:
                 changed |= stepper( _( "Size" ), p.size, mobile_hud::dial_size_min,
                                     mobile_hud::dial_size_max, 4.0f, units( p.size ) );

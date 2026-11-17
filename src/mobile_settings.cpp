@@ -57,6 +57,8 @@ class settings_window : public cataimgui::window
         bool open_all = false;
         // "Edit HUD" was tapped
         bool edit_hud = false;
+        // "Tileset" was tapped
+        bool pick_tileset = false;
         // an option was given a new value
         bool changed = false;
         // where the list was scrolled to, kept while the full options are open
@@ -399,6 +401,11 @@ void settings_window::draw_controls()
     _( "Tiles draws the map with pictures; ASCII draws it with letters and cannot zoom" ), {
         { "true", _( "Tiles" ) }, { "false", _( "ASCII" ) }
     } );
+    if( get_option<bool>( "USE_TILES" ) && has( "TILES" ) &&
+        link_row( "##tileset", _( "Tileset" ),
+                  get_options().get_option( "TILES" ).getValueName() ) ) {
+        pick_tileset = true;
+    }
     switch_row( "MOBILE_HUD", _( "Full-screen map" ),
                 _( "Hides the sidebar and draws status and messages over the map" ) );
     const bool can_edit = mobile_hud_edit::available();
@@ -438,8 +445,30 @@ void settings_window::draw_controls()
     ImGui::PopStyleVar();
 }
 
+// Lets the player choose one of the installed tilesets.  Returns true if
+// another one was chosen.
+bool choose_tileset()
+{
+    options_manager::cOpt &opt = get_options().get_option( "TILES" );
+    const std::vector<options_manager::id_and_option> tilesets = opt.getItems();
+    mobile_ui::sheet_spec spec;
+    spec.title = _( "Tileset" );
+    spec.description = _( "How the map is drawn.  Names ending in iso are drawn at an angle." );
+    const std::string current = opt.getValue( true );
+    for( const options_manager::id_and_option &tileset : tilesets ) {
+        spec.rows.push_back( { tileset.first == current ? "check" : "", tileset.second.translated(), "" } );
+    }
+    const int tapped = mobile_ui::show_sheet( spec );
+    if( tapped < 0 || static_cast<size_t>( tapped ) >= tilesets.size() ||
+        tilesets[static_cast<size_t>( tapped )].first == current ) {
+        return false;
+    }
+    opt.setValue( tilesets[static_cast<size_t>( tapped )].first );
+    return true;
+}
+
 // Saves what was changed, the way upstream's options screen does when it is left.
-void commit( bool changed )
+void commit( bool changed, const std::string &tileset_before )
 {
     if( !changed ) {
         return;
@@ -449,7 +478,9 @@ void commit( bool changed )
     get_options().save();
     if( g ) {
         g->on_options_changed();
-        if( use_tiles != was_tiles && !get_avatar().name.empty() ) {
+        const bool new_tileset = get_option<std::string>( "TILES" ) != tileset_before;
+        if( ( use_tiles != was_tiles || ( use_tiles && new_tileset ) ) &&
+            !get_avatar().name.empty() ) {
             // Tiles and letters differ in size, so the map window is laid out
             // again.  A game started with letters has only checked the
             // tileset, not loaded it; without a game it is loaded with the world.
@@ -475,7 +506,9 @@ void show()
     while( true ) {
         bool open_all = false;
         bool edit_hud = false;
+        bool pick_tileset = false;
         bool changed = false;
+        const std::string tileset_before = get_option<std::string>( "TILES" );
         {
             settings_window window;
             window.scroll = scroll;
@@ -484,7 +517,7 @@ void show()
             const mobile_prompt::own_controls own_controls( ctxt );
             ctxt.register_action( "QUIT" );
             ctxt.register_action( "ANY_INPUT" );
-            while( !window.done && !window.open_all && !window.edit_hud ) {
+            while( !window.done && !window.open_all && !window.edit_hud && !window.pick_tileset ) {
                 ui_manager::redraw();
                 if( ctxt.handle_input() == "QUIT" ) {
                     break;
@@ -492,10 +525,17 @@ void show()
             }
             open_all = window.open_all;
             edit_hud = window.edit_hud;
+            pick_tileset = window.pick_tileset;
             changed = window.changed;
             scroll = window.scroll;
         }
-        commit( changed );
+        if( pick_tileset && choose_tileset() ) {
+            changed = true;
+        }
+        commit( changed, tileset_before );
+        if( pick_tileset ) {
+            continue;
+        }
         if( edit_hud ) {
             // straight into the layout editor, over the map
             mobile_hud_edit::run();
