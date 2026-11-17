@@ -1021,7 +1021,12 @@ bool main_menu::opening_screen()
                     break;
                 case main_menu_opts::WORLD:
                     sel2 = std::min<int>( sel2, world_generator->get_all_worlds().size() );
+                    // Mobile UI: the menu would draw over upstream's world options
+                    mobile_view.reset();
                     world_tab( sel2 > 0 ? world_generator->get_world_name( sel2 - 1 ) : "" );
+                    if( mobile_menu::enabled() ) {
+                        mobile_view = std::make_unique<mobile_menu::main_menu_view>();
+                    }
                     break;
                 case main_menu_opts::LOADCHAR:
                     if( static_cast<std::size_t>( sel2 ) < world_generator->get_all_worlds().size() ) {
