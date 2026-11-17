@@ -66,6 +66,10 @@ class actmenu_cb : public uilist_callback
     public:
         explicit actmenu_cb( const action_map &acm ) : am( acm ) { }
         ~actmenu_cb() override = default;
+        // Mobile UI: only handles keys
+        bool mobile_sheet_ok() const override {
+            return true;
+        }
 
         bool key( const input_context &ctxt, const input_event &event, int /*idx*/,
                   uilist * /*menu*/ ) override {

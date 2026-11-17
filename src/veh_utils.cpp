@@ -444,6 +444,10 @@ class veh_menu_cb : public uilist_callback
         ~veh_menu_cb() override {
             get_avatar().view_offset = last_view;
         }
+        // Mobile UI: no pane beside the list
+        bool mobile_sheet_ok() const override {
+            return true;
+        }
 
         std::function<void()> on_select;
         bool draw_trail;

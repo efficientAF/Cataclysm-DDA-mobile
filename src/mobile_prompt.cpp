@@ -453,6 +453,14 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
         } );
         ( forward != buttons.begin() + hint_count ? *forward : buttons.front() ).primary = true;
     }
+    // The conversation screen has its replies as rows and scrolls by touch
+    if( ctxt.mobile_category() == "DIALOGUE" ) {
+        buttons.erase( std::remove_if( buttons.begin(), buttons.end(), []( const bar_button & b ) {
+            return b.action == "CONFIRM" || b.action == "PAGE_UP" || b.action == "PAGE_DOWN" ||
+                   b.action == "HOME" || b.action == "END" || b.action.rfind( "DEBUG_", 0 ) == 0;
+        } ), buttons.end() );
+    }
+
     // Upstream's screens may want a key that has no button: the keyboard is one tap away.
     if( !on_map && !own ) {
         bar_button keyboard;

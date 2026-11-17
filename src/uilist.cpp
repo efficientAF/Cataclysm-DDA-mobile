@@ -43,8 +43,8 @@
 // tabs or a place of their own keep upstream's window.
 static bool mobile_sheet( const uilist &menu, const bool has_categories )
 {
-    return mobile_menu::enabled() && menu.callback == nullptr && !has_categories &&
-           !menu.desired_bounds;
+    return mobile_menu::enabled() && ( menu.callback == nullptr ||
+                                       menu.callback->mobile_sheet_ok() ) && !has_categories && !menu.desired_bounds;
 }
 
 // Mobile UI: the menu whose bottom sheet was tapped outside, to cancel it

@@ -237,6 +237,11 @@ class uilist_callback
         virtual float desired_extra_space_right( ) {
             return 0.0;
         }
+        // Mobile UI: true if the menu may be shown as a bottom sheet, which has
+        // room for the list only.  Not for callbacks that draw a pane beside it.
+        virtual bool mobile_sheet_ok() const {
+            return false;
+        }
         virtual ~uilist_callback() = default;
 };
 /*@}*/
@@ -646,6 +651,9 @@ class pointmenu_cb : public uilist_callback
         explicit pointmenu_cb( const std::vector< tripoint_bub_ms > &pts );
         ~pointmenu_cb() override;
         void select( uilist *menu ) override;
+        bool mobile_sheet_ok() const override {
+            return true;
+        }
 };
 
 void temp_hide_advanced_inv();

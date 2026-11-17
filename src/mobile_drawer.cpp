@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "avatar.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "cata_imgui.h"
 #include "character.h"
@@ -26,15 +27,19 @@
 #include "item.h"
 #include "item_location.h"
 #include "line.h"
+#include "localized_comparator.h"
 #include "messages.h"
 #include "mobile_inventory.h"
 #include "mobile_hud_layout.h"
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
+#include "mutation.h"
 #include "omdata.h"
 #include "output.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "proficiency.h"
+#include "skill.h"
 #include "string_formatter.h"
 #include "translations.h"
 #include "type_id.h"
@@ -296,6 +301,97 @@ tab status_tab( const avatar &you )
     return t;
 }
 
+// Every skill that has been used at all, by name, with its level and how far
+// along the next one is.
+tab skills_tab( const avatar &you )
+{
+    tab t;
+    t.label = _( "Skills" );
+    const std::vector<const Skill *> skills = Skill::get_skills_sorted_by(
+    []( const Skill & a, const Skill & b ) {
+        return localized_compare( a.name(), b.name() );
+    } );
+    bool any = false;
+    for( const Skill *const skill : skills ) {
+        const SkillLevel &level = you.get_skill_level_object( skill->ident() );
+        const int whole = level.level();
+        const int part = level.exercise();
+        if( whole <= 0 && part <= 0 ) {
+            continue;
+        }
+        if( !any ) {
+            t.blocks.push_back( make_title( _( "Skills" ) ) );
+            any = true;
+        }
+        t.blocks.push_back( make_row( skill->name(), string_format( _( "%1$d  (%2$d%%)" ), whole,
+                                      part ) ) );
+    }
+    if( !any ) {
+        t.blocks.push_back( make_note( _( "No skills yet.  They grow as you use them and read." ) ) );
+    }
+    const std::vector<display_proficiency> profs = you.display_proficiencies();
+    bool any_prof = false;
+    for( const display_proficiency &prof : profs ) {
+        if( !prof.known && prof.practice <= 0.0f ) {
+            continue;
+        }
+        if( !any_prof ) {
+            t.blocks.push_back( make_title( _( "Proficiencies" ) ) );
+            any_prof = true;
+        }
+        t.blocks.push_back( make_row( prof.id->name(), prof.known ? _( "Known" ) :
+                                      percent( prof.practice ) ) );
+    }
+    return t;
+}
+
+// What you are: traits and mutations, bionics, and what is acting on you now.
+tab traits_tab( const avatar &you )
+{
+    tab t;
+    t.label = _( "Traits" );
+    block traits;
+    traits.kind = block_kind::pills;
+    for( const trait_id &trait : you.get_mutations() ) {
+        if( trait->player_display ) {
+            traits.pills.push_back( { remove_color_tags( you.mutation_name( trait ) ), mobile_ui::col_text_soft } );
+        }
+    }
+    t.blocks.push_back( make_title( _( "Traits and mutations" ) ) );
+    if( traits.pills.empty() ) {
+        t.blocks.push_back( make_note( _( "None." ) ) );
+    } else {
+        t.blocks.push_back( traits );
+    }
+    block bionics;
+    bionics.kind = block_kind::pills;
+    for( const bionic_id &bio : you.get_bionics() ) {
+        bionics.pills.push_back( { bio->name.translated(), mobile_ui::col_text_soft } );
+    }
+    if( !bionics.pills.empty() ) {
+        t.blocks.push_back( make_title( _( "Bionics" ) ) );
+        t.blocks.push_back( bionics );
+    }
+    block effects;
+    effects.kind = block_kind::pills;
+    for( const effect &eff : you.get_effects() ) {
+        const std::string name = remove_color_tags( eff.disp_name() );
+        const auto same = [&name]( const pill & p ) {
+            return p.label == name;
+        };
+        if( !name.empty() && std::none_of( effects.pills.begin(), effects.pills.end(), same ) ) {
+            effects.pills.push_back( { name, mobile_ui::col_text_soft } );
+        }
+    }
+    t.blocks.push_back( make_title( _( "Effects" ) ) );
+    if( effects.pills.empty() ) {
+        t.blocks.push_back( make_note( _( "Nothing is affecting you." ) ) );
+    } else {
+        t.blocks.push_back( effects );
+    }
+    return t;
+}
+
 tab gear_tab( const avatar &you )
 {
     tab t;
@@ -550,7 +646,7 @@ class drawer_window : public cataimgui::window
             // The game waits while the drawer is open, so everything is read once.
             const avatar &you = get_avatar();
             if( which == drawer::info ) {
-                tabs = { body_tab( you ), status_tab( you ), gear_tab( you ), area_tab( you ) };
+                tabs = { body_tab( you ), status_tab( you ), skills_tab( you ), traits_tab( you ), gear_tab( you ), area_tab( you ) };
             } else if( which == drawer::actions ) {
                 tabs = actions_tabs();
                 current = std::clamp( actions_page, 0, static_cast<int>( tabs.size() ) - 1 );
