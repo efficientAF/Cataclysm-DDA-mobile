@@ -25,6 +25,7 @@
 #include "item.h"
 #include "localized_comparator.h"
 #include "map.h"
+#include "mobile_menu.h"
 #include "memory_fast.h"
 #include "point.h"
 #include "requirements.h"
@@ -518,7 +519,10 @@ bool veh_menu::query()
 
     if( locations.size() == items.size() ) { // all items have valid location attached
         menu.callback = &cb;
-        menu.desired_bounds = { 4.0, -1.0, -1.0, -1.0 };
+        // Mobile UI: no place of its own, so that the menu is a bottom sheet
+        if( !mobile_menu::enabled() ) {
+            menu.desired_bounds = { 4.0, -1.0, -1.0, -1.0 };
+        }
     } else {
         menu.callback = nullptr;
     }

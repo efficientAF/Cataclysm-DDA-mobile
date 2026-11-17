@@ -24,6 +24,7 @@
 #include "input_popup.h"
 #include "json.h"
 #include "json_loader.h"
+#include "mobile_menu.h"
 #include "mobile_world.h"
 #include "mod_manager.h"
 #include "output.h"
@@ -492,6 +493,22 @@ WORLD *worldfactory::pick_world( bool show_prompt, bool empty_only )
         }
         // if there isn't any, adhere to old logic: return the alphabetically first one
         return get_world( world_names[0] );
+    }
+
+    // Mobile UI: the worlds as a bottom sheet
+    if( mobile_menu::enabled() ) {
+        uilist menu;
+        menu.title = _( "Pick a world to enter game" );
+        for( const std::string &name : world_names ) {
+            const int saves = static_cast<int>( get_world( name )->world_saves.size() );
+            menu.addentry_desc( name, string_format( n_gettext( "%d character", "%d characters", saves ),
+                                saves ) );
+        }
+        menu.query();
+        if( menu.ret < 0 || static_cast<size_t>( menu.ret ) >= world_names.size() ) {
+            return nullptr;
+        }
+        return get_world( world_names[menu.ret] );
     }
 
     const int iTooltipHeight = 3;

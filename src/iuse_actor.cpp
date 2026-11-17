@@ -64,6 +64,7 @@
 #include "material.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_list.h"
 #include "monster.h"
 #include "mtype.h"
 #include "music.h"
@@ -2798,8 +2799,35 @@ std::optional<int> learn_spell_actor::use( Character *p, item &, map *,
     spellbook_uilist.desired_bounds = { -1.0, -1.0, 80 * ImGui::CalcTextSize( "X" ).x, 24 * ImGui::GetTextLineHeightWithSpacing() };
     spellbook_uilist.callback = &sp_cb;
     spellbook_uilist.title = _( "Study a spell:" );
-    spellbook_uilist.query();
-    const int action = spellbook_uilist.ret;
+    int action = -1;
+    if( mobile_list::wanted() ) {
+        // Mobile UI: the spells as a list, with what upstream's side pane says in words
+        mobile_list::spec what;
+        what.title = _( "Study a spell:" );
+        dialogue d( get_talker_for( *p ), nullptr );
+        for( size_t i = 0; i < spells.size(); i++ ) {
+            const spell_type &sp = spell_id( spells[i] ).obj();
+            const uilist_entry &entry = uilist_initializer[i];
+            mobile_list::row r;
+            r.name = sp.name.translated();
+            r.right = entry.ctxt;
+            r.enabled = entry.enabled;
+            r.detail = sp.spell_class.str() == "NONE" ? _( "Classless" ) : sp.spell_class->name();
+            r.description = sp.description.translated() + "\n\n" +
+                            string_format( "%s: %d", _( "Difficulty" ),
+                                           static_cast<int>( sp.difficulty.evaluate( d ) ) ) + "\n" +
+                            string_format( "%s: %d", _( "Max Level" ),
+                                           static_cast<int>( sp.max_level.evaluate( d ) ) );
+            r.action = entry.enabled ? _( "Study" ) : std::string();
+            what.rows.push_back( r );
+        }
+        int tab = 0;
+        int row = -1;
+        action = mobile_list::show( what, tab, row );
+    } else {
+        spellbook_uilist.query();
+        action = spellbook_uilist.ret;
+    }
     if( action < 0 ) {
         return std::nullopt;
     }

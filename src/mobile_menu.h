@@ -48,6 +48,8 @@ struct main_menu_model {
     std::string continue_title;
     std::string continue_detail;
     std::vector<world_info> worlds;
+    // the world played last, or empty
+    std::string last_world;
     // names of the settings screens, in upstream's order
     std::vector<std::string> settings;
 };
@@ -71,6 +73,9 @@ enum class choice_kind : int {
 struct choice {
     choice_kind kind = choice_kind::help;
     int index = 0;
+    // new_game: the world on the new game screen's card, to use without asking;
+    // empty if there is none yet
+    std::string world;
 };
 
 class main_menu_view
