@@ -143,26 +143,30 @@ std::vector<piece> to_pieces( const std::string &tagged )
         }
         flush();
     };
-    for( const std::string &part : split_by_color( tagged ) ) {
+    // each part starts with a tag, if it has one; <header> and the like are
+    // colors under other names
+    for( const std::string &part : split_by_color( replace_colors( tagged ) ) ) {
         if( part.empty() ) {
             continue;
         }
-        if( part[0] == '<' ) {
-            const color_tag_parse_result tag = get_color_from_tag( part, report_color_error::no );
+        size_t text_from = 0;
+        const size_t tag_end = part[0] == '<' ? part.find( '>' ) : std::string::npos;
+        if( tag_end != std::string::npos ) {
+            const color_tag_parse_result tag = get_color_from_tag( part.substr( 0, tag_end + 1 ),
+                                               report_color_error::no );
             if( tag.type == color_tag_parse_result::open_color_tag ) {
                 // upstream's plain text colors become the page's own
                 colors.push_back( tag.color == c_light_gray || tag.color == c_white || tag.color == c_unset ?
                                   mobile_ui::col_text_soft : cataimgui::ImU32_from_color( tag.color ) );
-                continue;
-            }
-            if( tag.type == color_tag_parse_result::close_color_tag ) {
+                text_from = tag_end + 1;
+            } else if( tag.type == color_tag_parse_result::close_color_tag ) {
                 if( !colors.empty() ) {
                     colors.pop_back();
                 }
-                continue;
+                text_from = tag_end + 1;
             }
         }
-        add_words( part );
+        add_words( part.substr( text_from ) );
     }
     return out;
 }
@@ -334,6 +338,9 @@ void show( const std::string &title, const std::vector<page> &pages, const int f
     ctxt.register_action( "LEFT" );
     ctxt.register_action( "RIGHT" );
     ctxt.register_action( "ANY_INPUT" );
+    // the first frame still draws what is under the page (look-around's banner
+    // ends up over it); the page hides those from the second frame on
+    ui_manager::redraw();
     while( !window.done ) {
         ui_manager::redraw();
         const std::string action = ctxt.handle_input();
