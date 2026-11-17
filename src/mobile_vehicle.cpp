@@ -333,9 +333,9 @@ void veh_interact::mobile_main_loop( map &here )
         what.title = veh->name;
         what.header = parts_here.empty() ? _( "An empty spot next to the vehicle" ) :
                       string_format( _( "Working on: %s" ), veh->part( parts_here.front() ).name() );
-        what.tabs = { _( "Parts here" ), _( "Whole vehicle" ) };
+        what.tabs = { std::string( _( "Parts here" ) ), std::string( _( "Whole vehicle" ) ) };
         what.empty_text = _( "No parts here.  Install one, or choose another tile." );
-        what.buttons = { _( "Install a part" ), _( "Other tile" ) };
+        what.buttons = { std::string( _( "Install a part" ) ), std::string( _( "Other tile" ) ) };
 
         // what each row's buttons do: true for repair, false for remove
         std::vector<std::vector<bool>> row_actions;

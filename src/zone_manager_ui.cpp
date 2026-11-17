@@ -510,7 +510,7 @@ void zone_manager_ui::display_zone_manager()
             mobile_list::spec what;
             what.title = _( "Zones" );
             what.empty_text = _( "No zones yet.  A zone tells you and your followers what a place is for." );
-            what.buttons = { _( "Add zone" ), _( "Add personal zone" ) };
+            what.buttons = { std::string( _( "Add zone" ) ), std::string( _( "Add personal zone" ) ) };
             for( const zone_manager::ref_zone_data &ref : zones ) {
                 const zone_data &zone = ref.get();
                 mobile_list::row r;
@@ -524,7 +524,8 @@ void zone_manager_ui::display_zone_manager()
                                 zone.get_is_personal() ? _( "A personal zone moves with you." ) :
                                 _( "Edit changes its name, type, options or place." );
                 r.action = _( "Edit" );
-                r.more_actions = { zone.get_enabled() ? _( "Turn off" ) : _( "Turn on" ), _( "Remove" ) };
+                r.more_actions.emplace_back( zone.get_enabled() ? _( "Turn off" ) : _( "Turn on" ) );
+                r.more_actions.emplace_back( _( "Remove" ) );
                 what.rows.push_back( r );
             }
             static int mobile_tab = 0;

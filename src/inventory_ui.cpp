@@ -4627,6 +4627,20 @@ inventory_compare_selector::inventory_compare_selector( Character &p ) :
 
 std::pair<const item *, const item *> inventory_compare_selector::execute()
 {
+    // Mobile UI: two picks, one after the other.
+    if( mobile_picker::wanted() ) {
+        set_hint( _( "Choose the first item to compare." ) );
+        const item_location first = mobile_picker::pick_one( *this );
+        if( !first ) {
+            return std::make_pair( nullptr, nullptr );
+        }
+        set_hint( string_format( _( "Choose what to compare the %s with." ), first->tname() ) );
+        const item_location second = mobile_picker::pick_one( *this );
+        if( !second ) {
+            return std::make_pair( nullptr, nullptr );
+        }
+        return std::make_pair( &*first, &*second );
+    }
     shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
     debug_print_timer( tp_start );
     while( true ) {

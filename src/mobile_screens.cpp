@@ -32,7 +32,7 @@ void bionics( avatar &you )
         what.title = _( "Bionics" );
         what.header = string_format( _( "Power: %1$s / %2$s" ), units::display( you.get_power_level() ),
                                      units::display( you.get_max_power_level() ) );
-        what.tabs = { _( "Active" ), _( "Passive" ) };
+        what.tabs = { std::string( _( "Active" ) ), std::string( _( "Passive" ) ) };
         what.empty_text = _( "None installed." );
         std::vector<bionic *> shown;
         for( bionic &bio : *you.my_bionics ) {
@@ -92,7 +92,7 @@ void mutations( avatar &you )
     while( true ) {
         mobile_list::spec what;
         what.title = _( "Traits and mutations" );
-        what.tabs = { _( "Usable" ), _( "Always on" ) };
+        what.tabs = { std::string( _( "Usable" ) ), std::string( _( "Always on" ) ) };
         what.empty_text = _( "None." );
         std::vector<trait_id> shown;
         for( const trait_id &trait : you.get_mutations() ) {
