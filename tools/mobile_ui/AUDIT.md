@@ -4,6 +4,22 @@ Made by reading the code at `101f6a19`, not by trying each screen. Line numbers 
 from that commit. Every screen below still gets the generic prompt buttons
 (`mobile_prompt`), so most can be worked with taps; they look and lay out like the desktop.
 
+## Round 5 (17 Nov 2026, sixth session): what is done
+
+Groups 1 to 4 of the suggested order are built. What was and was not seen on screen is in
+CLAUDE.md's Status section. By item number below:
+
+- **Done:** 1 (without "reassign"), 2, 3, 4 (all four entry points; choosing another crafter
+  is not built), 5 (with the gunmod questions), 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 (with a
+  direct Scores button on the Actions drawer), 17, 18, 19, 20, 21, 29, and 37 (random
+  description included).
+- **Still open:** 22 to 28, 30 to 36, and the Steam Deck section. Also "show zone on map":
+  the map now takes it, but the mobile zone list has no button for it.
+- The sheet test in `uilist.cpp` is unchanged; callers skip `desired_bounds` on mobile. Still
+  setting bounds, and still upstream's window: `editmap.cpp`, the `wish.cpp` debug menus, the
+  pocket selector at `item_contents.cpp:3111`.
+- The map test now only refuses the debug editor and the scent view.
+
 ## Two rules that decide most of it
 
 - **Sheet test** (`src/uilist.cpp:45-49`): a `uilist` becomes a bottom sheet only if it has
