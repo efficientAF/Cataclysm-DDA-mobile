@@ -36,6 +36,8 @@ class extended_description_window : public cataimgui::window
         void draw_furniture_tab();
         void draw_terrain_tab();
         void draw_vehicle_tab();
+        // Mobile UI: the phone's page instead of this window (mobile_describe.cpp)
+        void mobile_show();
 
         input_context ctxt;
         description_target cur_target = description_target::terrain;
