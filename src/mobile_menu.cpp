@@ -23,6 +23,25 @@
 namespace mobile_menu
 {
 
+static bool quit_after_save = false;
+
+void request_quit_after_save()
+{
+    quit_after_save = true;
+}
+
+void cancel_quit_after_save()
+{
+    quit_after_save = false;
+}
+
+bool take_quit_after_save()
+{
+    const bool wanted = quit_after_save;
+    quit_after_save = false;
+    return wanted;
+}
+
 bool enabled()
 {
 #if defined(TILES)
@@ -196,15 +215,17 @@ void main_menu_view::impl::draw_title( const ImVec2 &origin, const ImVec2 &size,
     }
     y += 56.0f * u + gap;
 
-    // three columns, two rows
-    const std::array<std::string, 6> labels = {
-        _( "Load" ), _( "World" ), _( "Tutorial" ), _( "Settings" ), _( "Help" ), _( "Credits" )
+    // four columns, two rows; Quit takes the last two cells
+    const std::array<std::string, 7> labels = {
+        _( "Load" ), _( "World" ), _( "Tutorial" ), _( "Settings" ), _( "Help" ), _( "Credits" ),
+        _( "Quit game" )
     };
-    const float cell_w = ( menu_w - 2.0f * gap ) / 3.0f;
-    for( int i = 0; i < 6; ++i ) {
-        const ImVec2 pos( menu_x + static_cast<float>( i % 3 ) * ( cell_w + gap ),
-                          y + static_cast<float>( i / 3 ) * ( 46.0f * u + gap ) );
-        if( !menu_button( "##row" + std::to_string( i ), pos, ImVec2( cell_w, 46.0f * u ), "", labels[i],
+    const float cell_w = ( menu_w - 3.0f * gap ) / 4.0f;
+    for( int i = 0; i < 7; ++i ) {
+        const ImVec2 pos( menu_x + static_cast<float>( i % 4 ) * ( cell_w + gap ),
+                          y + static_cast<float>( i / 4 ) * ( 46.0f * u + gap ) );
+        const float w = i == 6 ? 2.0f * cell_w + gap : cell_w;
+        if( !menu_button( "##row" + std::to_string( i ), pos, ImVec2( w, 46.0f * u ), "", labels[i],
                           "", false, true, interactive ) ) {
             continue;
         }
@@ -224,8 +245,11 @@ void main_menu_view::impl::draw_title( const ImVec2 &origin, const ImVec2 &size,
             case 4:
                 picked = choice{ choice_kind::help, 0 };
                 break;
-            default:
+            case 5:
                 open_sheet = sheet::credits;
+                break;
+            default:
+                picked = choice{ choice_kind::quit, 0 };
                 break;
         }
     }
@@ -451,7 +475,9 @@ action_id pause_sheet()
         { { "keyboard", _( "Keyboard" ), "" }, NUM_ACTIONS },
         { { "save", _( "Save game" ), "" }, ACTION_QUICKSAVE },
         { { "exit", _( "Save and quit to menu" ), "" }, ACTION_SAVE },
+        { { "close", _( "Save and quit game" ), "" }, ACTION_SAVE },
     };
+    cancel_quit_after_save();
     for( const std::pair<mobile_ui::sheet_row, action_id> &row : rows ) {
         spec.rows.push_back( row.first );
     }
@@ -463,6 +489,10 @@ action_id pause_sheet()
             mobile_hud_edit::run();
         }
         return ACTION_NULL;
+    }
+    if( tapped >= 0 && rows[tapped].first.icon == "close" ) {
+        // the last row: the main menu closes the program once the game is saved
+        request_quit_after_save();
     }
     return tapped >= 0 ? rows[tapped].second : ACTION_NULL;
 }

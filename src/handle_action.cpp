@@ -3000,6 +3000,10 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
                     uquit = QUIT_NOSAVED;
                 }
             }
+            // Mobile UI: "Save and quit game" that was not gone through with
+            if( uquit != QUIT_SAVED && uquit != QUIT_NOSAVED ) {
+                mobile_menu::cancel_quit_after_save();
+            }
             break;
 
         case ACTION_QUICKSAVE:

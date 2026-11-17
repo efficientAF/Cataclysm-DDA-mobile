@@ -586,6 +586,10 @@ void main_menu::load_char_templates()
 
 bool main_menu::opening_screen()
 {
+    // Mobile UI: "Save and quit game" on the pause sheet
+    if( mobile_menu::take_quit_after_save() ) {
+        return false;
+    }
     // set holiday based on local system time
     current_holiday = get_holiday_from_time();
 
@@ -788,6 +792,10 @@ bool main_menu::opening_screen()
                     case mobile_menu::choice_kind::help:
                         sel1 = getopt( main_menu_opts::HELP );
                         sel2 = 0;
+                        break;
+                    case mobile_menu::choice_kind::quit:
+                        // upstream's "Really quit?" below
+                        action = "QUIT";
                         break;
                 }
             }

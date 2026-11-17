@@ -19,6 +19,14 @@ namespace mobile_menu
 
 bool enabled();
 
+// "Save and quit game" on the pause sheet: the game saves and goes back to the
+// main menu as for "Save and quit to menu", and the main menu then closes the
+// program.  The request is dropped if the player does not go through with it.
+void request_quit_after_save();
+void cancel_quit_after_save();
+// True once, if the main menu should close the program at once.
+bool take_quit_after_save();
+
 // The pause sheet of the play screen.  Returns the action to perform:
 // ACTION_NULL to resume, ACTION_ACTIONMENU for upstream's full action menu.
 action_id pause_sheet();
@@ -56,6 +64,8 @@ enum class choice_kind : int {
     // index into settings
     settings,
     help,
+    // close the program
+    quit,
 };
 
 struct choice {
