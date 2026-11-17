@@ -217,6 +217,25 @@ own_controls::~own_controls()
     }
 }
 
+static std::vector<std::pair<const input_context *, std::vector<extra_keys::key>>> extra_key_lists;
+
+extra_keys::extra_keys( const input_context &ctxt,
+                        const std::vector<key> &keys ) : ctxt( &ctxt )
+{
+    extra_key_lists.emplace_back( this->ctxt, keys );
+}
+
+extra_keys::~extra_keys()
+{
+    const auto found = std::find_if( extra_key_lists.rbegin(), extra_key_lists.rend(),
+    [this]( const std::pair<const input_context *, std::vector<key>> &entry ) {
+        return entry.first == ctxt;
+    } );
+    if( found != extra_key_lists.rend() ) {
+        extra_key_lists.erase( std::next( found ).base() );
+    }
+}
+
 #if !defined(TILES)
 
 std::string take_key_hints( const std::string &message )
@@ -442,6 +461,21 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
             buttons.push_back( button );
         }
 #endif
+    }
+
+    // keys a screen reads by hand, on any platform, see extra_keys
+    for( const std::pair<const input_context *, std::vector<extra_keys::key>> &entry :
+         extra_key_lists ) {
+        if( entry.first != &ctxt ) {
+            continue;
+        }
+        for( const extra_keys::key &extra : entry.second ) {
+            bar_button button;
+            button.action = "manual " + std::to_string( extra.code );
+            button.event = input_event( extra.code, input_event_t::keyboard_char );
+            button.label = extra.label;
+            buttons.push_back( button );
+        }
     }
 
     // the answer that goes on is the orange one

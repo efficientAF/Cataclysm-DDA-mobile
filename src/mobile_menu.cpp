@@ -66,10 +66,17 @@ enum class sheet : int {
     none,
     load,
     worlds,
+    // which world a new character goes to
+    pick_world,
     settings,
     credits,
 };
 } // namespace
+
+// The view is made anew after a screen that it would draw over (the world
+// screens, settings).  These carry over what the new game screen was showing.
+static std::string new_game_world;
+static bool reopen_new_game = false;
 
 class main_menu_view::impl : public cataimgui::window
 {
@@ -78,12 +85,21 @@ class main_menu_view::impl : public cataimgui::window
                                         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                                         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
-                                        ImGuiWindowFlags_NoBackground ) {}
+                                        ImGuiWindowFlags_NoBackground ) {
+            if( reopen_new_game ) {
+                current_page = page::new_game;
+                reopen_new_game = false;
+            }
+        }
 
         main_menu_model model;
         page current_page = page::title;
         sheet open_sheet = sheet::none;
         std::optional<choice> picked;
+        // indices into model.worlds of the worlds a new character can go to
+        std::vector<int> playable_worlds() const;
+        // makes new_game_world name one of them, or empty if there are none
+        void settle_new_game_world();
 
     protected:
         cataimgui::bounds get_bounds() override {
@@ -255,6 +271,50 @@ void main_menu_view::impl::draw_title( const ImVec2 &origin, const ImVec2 &size,
     }
 }
 
+std::vector<int> main_menu_view::impl::playable_worlds() const
+{
+    std::vector<int> ret;
+    for( int i = 0; i < static_cast<int>( model.worlds.size() ); ++i ) {
+        // as worldfactory::pick_world
+        if( model.worlds[i].name != "TUTORIAL" && model.worlds[i].name != "DEFENSE" ) {
+            ret.push_back( i );
+        }
+    }
+    return ret;
+}
+
+void main_menu_view::impl::settle_new_game_world()
+{
+    const std::vector<int> playable = playable_worlds();
+    const auto has = [&]( const std::string & name ) {
+        return !name.empty() && std::any_of( playable.begin(), playable.end(), [&]( const int i ) {
+            return model.worlds[i].name == name;
+        } );
+    };
+    if( has( new_game_world ) ) {
+        return;
+    }
+    // a world without characters if there is one, as upstream's "play now"
+    // does; the one played last comes first
+    const auto empty = std::find_if( playable.begin(), playable.end(), [&]( const int i ) {
+        return model.worlds[i].characters == 0;
+    } );
+    const auto last = std::find_if( playable.begin(), playable.end(), [&]( const int i ) {
+        return model.worlds[i].name == model.last_world;
+    } );
+    if( last != playable.end() && model.worlds[*last].characters == 0 ) {
+        new_game_world = model.last_world;
+    } else if( empty != playable.end() ) {
+        new_game_world = model.worlds[*empty].name;
+    } else if( last != playable.end() ) {
+        new_game_world = model.last_world;
+    } else if( !playable.empty() ) {
+        new_game_world = model.worlds[playable.front()].name;
+    } else {
+        new_game_world.clear();
+    }
+}
+
 void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &size,
         const bool interactive )
 {
@@ -312,10 +372,16 @@ void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &si
                         held ? mobile_ui::col_button_down : mobile_ui::col_fill_soft, mobile_ui::col_line, 14.0f );
         mobile_ui::icon( draw, "globe", ImVec2( pos.x + 14.0f * u, pos.y + 19.0f * u ), 24.0f,
                          mobile_ui::col_accent );
-        const bool has_world = !model.worlds.empty();
-        const std::string name = has_world ? model.worlds.front().name : _( "A new world" );
-        const std::string detail = has_world ? model.worlds.front().detail :
-                                   _( "Created with the default settings when you start" );
+        settle_new_game_world();
+        const bool has_world = !new_game_world.empty();
+        std::string name = _( "A new world" );
+        std::string detail = _( "Created with the default settings when you start" );
+        for( const world_info &w : model.worlds ) {
+            if( has_world && w.name == new_game_world ) {
+                name = w.name;
+                detail = w.detail;
+            }
+        }
         mobile_ui::text( draw, face::bold, 15.0f, ImVec2( pos.x + 50.0f * u, pos.y + 12.0f * u ),
                          mobile_ui::col_fg, name );
         mobile_ui::text( draw, face::body, 12.5f, ImVec2( pos.x + 50.0f * u, pos.y + 33.0f * u ),
@@ -326,7 +392,7 @@ void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &si
                          ImVec2( pos.x + card.x - 14.0f * u - link_px.x, pos.y + ( card.y - link_px.y ) * 0.5f ),
                          mobile_ui::col_accent, link );
         if( tapped ) {
-            open_sheet = sheet::worlds;
+            open_sheet = has_world ? sheet::pick_world : sheet::worlds;
         }
         y += card.y;
     }
@@ -369,7 +435,7 @@ void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &si
             mobile_ui::text( draw, face::body, 13.0f, ImVec2( text_x, pos.y + 32.0f * u ),
                              mobile_ui::col_text_soft, opt.text, text_w );
             if( tapped ) {
-                picked = choice{ choice_kind::new_game, i };
+                picked = choice{ choice_kind::new_game, i, new_game_world };
             }
             if( col == columns - 1 || i + 1 == static_cast<int>( options.size() ) ) {
                 y += row_h + gap;
@@ -408,6 +474,17 @@ void main_menu_view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size 
             spec.rows.push_back( { "plus", _( "Create a world" ), _( "Choose mods and world options" ) } );
             results.push_back( { choice_kind::edit_world, -1 } );
             break;
+        case sheet::pick_world:
+            spec.title = _( "World for the new character" );
+            for( const int i : playable_worlds() ) {
+                const bool current = model.worlds[i].name == new_game_world;
+                spec.rows.push_back( { current ? "check" : "globe", model.worlds[i].name, model.worlds[i].detail } );
+                // not a choice for main_menu.cpp: handled below
+                results.push_back( { choice_kind::new_game, -1, model.worlds[i].name } );
+            }
+            spec.rows.push_back( { "gear", _( "Manage worlds" ), _( "Create a world, or change or delete one" ) } );
+            results.push_back( { choice_kind::edit_world, -2 } );
+            break;
         case sheet::settings:
             spec.title = _( "Settings" );
             for( int i = 0; i < static_cast<int>( model.settings.size() ); ++i ) {
@@ -431,7 +508,18 @@ void main_menu_view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size 
     if( tapped == mobile_ui::sheet_dismissed ) {
         open_sheet = sheet::none;
     } else if( tapped >= 0 && tapped < static_cast<int>( results.size() ) ) {
+        if( open_sheet == sheet::pick_world ) {
+            if( results[tapped].kind == choice_kind::new_game ) {
+                new_game_world = results[tapped].world;
+                open_sheet = sheet::none;
+            } else {
+                open_sheet = sheet::worlds;
+            }
+            return;
+        }
         picked = results[tapped];
+        // back to the new game screen after managing worlds from there
+        reopen_new_game = open_sheet == sheet::worlds && current_page == page::new_game;
         open_sheet = sheet::none;
     }
 }
@@ -454,7 +542,16 @@ void main_menu_view::impl::draw_controls()
         draw_new_game( origin, size, interactive );
     }
     if( open_sheet != sheet::none ) {
+        // in a layer of its own: the new game screen's scrolling area would
+        // otherwise be drawn over the sheet
+        ImGui::SetCursorScreenPos( origin );
+        ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+        ImGui::BeginChild( "##sheet_layer", size, ImGuiChildFlags_None,
+                           ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
+                           ImGuiWindowFlags_NoScrollWithMouse );
         draw_sheet( origin, size );
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
     }
 }
 

@@ -27,6 +27,7 @@
 #include "map.h"
 #include "map_iterator.h"
 #include "messages.h"
+#include "mobile_menu.h"
 #include "output.h"
 #include "overmapbuffer.h"
 #include "player_activity.h"
@@ -231,11 +232,14 @@ void veh_app_interact::init_ui_windows( map &here )
     ImVec2 text_metrics = { ImGui::CalcTextSize( "X" ).x, ImGui::GetTextLineHeight() };
     ImVec2 origin = text_metrics * ImVec2{ static_cast<float>( topleft.x ), static_cast<float>( topleft.y + win_height ) };
     ImVec2 size = text_metrics * ImVec2{ static_cast<float>( win_width ), static_cast<float>( height_input ) };
-    imenu.desired_bounds = { origin.x,
-                             origin.y,
-                             size.x,  // align the width of the input to be the same as the header
-                             -1,      // but let uilist choose the height as it pleases.
-                           };
+    // Mobile UI: no place of its own, so that the menu is a bottom sheet
+    if( !mobile_menu::enabled() ) {
+        imenu.desired_bounds = { origin.x,
+                                 origin.y,
+                                 size.x,  // align the width of the input to be the same as the header
+                                 -1,      // but let uilist choose the height as it pleases.
+                               };
+    }
 
     imenu.allow_cancel = true;
     imenu.border_color = c_white;
@@ -629,6 +633,10 @@ void veh_app_interact::populate_app_actions( map &here )
     imenu.entries.clear();
     imenu.title = veh->name;
     imenu.text = draw_info_imgui_header( here );
+    // Mobile UI: the sheet has one heading, the name and then the power lines
+    if( mobile_menu::enabled() ) {
+        imenu.text = veh->name + "\n" + imenu.text;
+    }
     app_actions.clear();
 
     /******************** General actions ********************/

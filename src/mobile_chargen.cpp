@@ -25,6 +25,7 @@
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "mutation.h"
+#include "options.h"
 #include "output.h"
 #include "player_difficulty.h"
 #include "proficiency.h"
@@ -86,6 +87,8 @@ enum class command_kind : int {
     gender,
     // a: start location (int id), or -1 for a random one
     location,
+    // asks for the blood type on a sheet
+    blood,
     next,
     back,
     leave,
@@ -913,6 +916,82 @@ float chargen_window::draw_summary( const ImVec2 &base )
     }
     y += 12.0f * u;
 
+    // what upstream has on its description tab: a row each, the value on the right
+    label( _( "DETAILS" ) );
+    {
+        struct detail {
+            std::string name;
+            std::string value;
+            command_kind kind;
+            std::string action;
+        };
+        std::vector<detail> details = {
+            { _( "Age" ), you.age_string( get_scenario()->start_of_game() ), command_kind::action, "CHANGE_AGE" },
+            { _( "Height" ), you.height_string(), command_kind::action, "CHANGE_HEIGHT" },
+            {
+                _( "Blood type" ), io::enum_to_string( you.my_blood_type ) + ( you.blood_rh_factor ? "+" : "-" ),
+                command_kind::blood, ""
+            },
+            {
+                _( "Start of cataclysm" ), to_string( get_scenario()->start_of_cataclysm() ),
+                command_kind::action, "CHANGE_START_OF_CATACLYSM"
+            },
+            {
+                _( "Start of game" ), to_string( get_scenario()->start_of_game() ),
+                command_kind::action, "CHANGE_START_OF_GAME"
+            },
+        };
+        if( get_option<bool>( "SELECT_STARTING_CITY" ) ) {
+            details.push_back( {
+                _( "Starting city" ), you.starting_city.has_value() ? you.starting_city->name : _( "Random" ),
+                command_kind::action, "CHOOSE_CITY"
+            } );
+        }
+        const int columns = landscape ? 2 : 1;
+        const float gap = 8.0f * u;
+        const float cell_w = ( width - static_cast<float>( columns - 1 ) * gap ) /
+                             static_cast<float>( columns );
+        const float cell_h = 48.0f * u;
+        for( int i = 0; i < static_cast<int>( details.size() ); ++i ) {
+            const detail &d = details[i];
+            const ImVec2 pos( left + static_cast<float>( i % columns ) * ( cell_w + gap ),
+                              y + static_cast<float>( i / columns ) * ( cell_h + gap ) );
+            bool held = false;
+            if( mobile_ui::pressable( "##detail" + std::to_string( i ), pos, ImVec2( cell_w, cell_h ),
+                                      &held ) ) {
+                ask( d.kind, 0, 0, d.action );
+            }
+            mobile_ui::box( draw, pos, ImVec2( pos.x + cell_w, pos.y + cell_h ),
+                            held ? mobile_ui::col_button_down : col_card, mobile_ui::col_line, 11.0f );
+            const ImVec2 name_px = mobile_ui::text_size( face::body, 14.0f, d.name );
+            mobile_ui::text( draw, face::body, 14.0f, ImVec2( pos.x + 12.0f * u,
+                             pos.y + ( cell_h - name_px.y ) * 0.5f ), mobile_ui::col_muted, d.name );
+            const ImVec2 value_px = mobile_ui::text_size( face::bold, 14.0f, d.value );
+            const float value_left = pos.x + 12.0f * u + name_px.x + 10.0f * u;
+            draw->PushClipRect( ImVec2( value_left, pos.y ), ImVec2( pos.x + cell_w - 8.0f * u,
+                                pos.y + cell_h ), true );
+            mobile_ui::text( draw, face::bold, 14.0f,
+                             ImVec2( std::max( value_left, pos.x + cell_w - 12.0f * u - value_px.x ),
+                                     pos.y + ( cell_h - value_px.y ) * 0.5f ), mobile_ui::col_fg, d.value );
+            draw->PopClipRect();
+        }
+        const int lines = ( static_cast<int>( details.size() ) + columns - 1 ) / columns;
+        y += static_cast<float>( lines ) * ( cell_h + gap );
+
+        // two buttons for the description as a whole
+        const float button_w = ( width - gap ) * 0.5f;
+        if( bar_button( "##random_description", ImVec2( left, y ), ImVec2( button_w, 44.0f * u ),
+                        _( "Random description" ), false, true ) ) {
+            ask( command_kind::action, 0, 0, "RANDOMIZE_CHAR_DESCRIPTION" );
+        }
+        if( bar_button( "##save_template", ImVec2( left + button_w + gap, y ),
+                        ImVec2( button_w, 44.0f * u ), _( "Save template" ), false, true ) ) {
+            ask( command_kind::action, 0, 0, "SAVE_TEMPLATE" );
+        }
+        y += 44.0f * u;
+    }
+    y += 12.0f * u;
+
     // the summary list
     std::vector<std::pair<std::string, std::string>> rows;
     rows.emplace_back( _( "Scenario" ),
@@ -1191,6 +1270,26 @@ void perform( character_creator_ui &ccui, const command &cmd )
                 }
             }
             break;
+        case command_kind::blood: {
+            // upstream's key steps through these eight one at a time
+            mobile_ui::sheet_spec spec;
+            spec.title = _( "Blood type" );
+            spec.grid = true;
+            for( int i = 0; i < static_cast<int>( blood_type::blood_acid ); ++i ) {
+                for( const char *const rh : {
+                         "-", "+"
+                     } ) {
+                    const std::string name = io::enum_to_string( static_cast<blood_type>( i ) ) + rh;
+                    spec.rows.push_back( { "", name, "" } );
+                }
+            }
+            const int picked = mobile_ui::show_sheet( spec );
+            if( picked >= 0 && picked < static_cast<int>( spec.rows.size() ) ) {
+                you.my_blood_type = static_cast<blood_type>( picked / 2 );
+                you.blood_rh_factor = picked % 2 == 1;
+            }
+            break;
+        }
         case command_kind::next:
             // on the last tab this is upstream's "finished?" question and its checks
             state.selected_tab = CHARCREATOR_SUMMARY;

@@ -24,6 +24,7 @@
 #include "map_iterator.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_menu.h"
 #include "output.h"
 #include "panels.h"
 #include "point.h"
@@ -202,23 +203,35 @@ std::optional<tripoint_abs_omt> teleporter_list::choose_teleport_location()
 {
     std::optional<tripoint_abs_omt> ret = std::nullopt;
 
+    // Mobile UI: a bottom sheet; the distance the side pane shows goes under each name
+    const bool mobile = mobile_menu::enabled();
     uilist teleport_selector;
-    teleport_selector.desired_bounds = {
-        -1.0,
+    if( !mobile ) {
+        teleport_selector.desired_bounds = {
             -1.0,
-            std::max( 80, TERMX * 3 / 8 ) *ImGui::CalcTextSize( "X" ).x,
-            clamp( static_cast<int>( known_teleporters.size() ), 24, TERMY * 9 / 10 ) *ImGui::GetTextLineHeightWithSpacing(),
-        };
+                -1.0,
+                std::max( 80, TERMX * 3 / 8 ) *ImGui::CalcTextSize( "X" ).x,
+                clamp( static_cast<int>( known_teleporters.size() ), 24, TERMY * 9 / 10 ) *ImGui::GetTextLineHeightWithSpacing(),
+            };
+    }
 
     int index = 0;
     std::map<int, tripoint_abs_omt> index_pairs;
     for( const std::pair<const tripoint_abs_omt, std::string> &gate : known_teleporters ) {
-        teleport_selector.addentry( index, true, 0, gate.second );
+        if( mobile ) {
+            teleport_selector.addentry_desc( index, true, 0, gate.second,
+                                             string_format( _( "Distance: %d %s" ),
+                                                     rl_dist( get_avatar().pos_abs_omt(), gate.first ), gate.first.to_string() ) );
+        } else {
+            teleport_selector.addentry( index, true, 0, gate.second );
+        }
         index_pairs.emplace( index, gate.first );
         index++;
     }
     teleporter_callback cb( index_pairs );
-    teleport_selector.callback = &cb;
+    if( !mobile ) {
+        teleport_selector.callback = &cb;
+    }
     teleport_selector.text = _( "Choose Translocation Location" );
 
     teleport_selector.query();

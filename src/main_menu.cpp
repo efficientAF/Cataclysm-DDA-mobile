@@ -736,9 +736,10 @@ bool main_menu::opening_screen()
         for( const std::string &name : world_generator->all_worldnames() ) {
             const size_t saves = world_generator->get_world( name )->world_saves.size();
             model.worlds.push_back( { name, string_format( n_gettext( "%d character", "%d characters", saves ),
-                                      static_cast<int>( saves ) )
+                                      static_cast<int>( saves ) ), static_cast<int>( saves )
                                     } );
         }
+        model.last_world = world_generator->last_world_name;
         for( const std::string &item : vSettingsSubItems ) {
             model.settings.push_back( remove_color_tags( shortcut_text( c_white, item ) ) );
         }
@@ -772,6 +773,9 @@ bool main_menu::opening_screen()
                     case mobile_menu::choice_kind::new_game:
                         sel1 = getopt( main_menu_opts::NEWCHAR );
                         sel2 = choice->index;
+                        // the world on the new game screen's card
+                        mobile_new_character_world =
+                            world_generator->has_world( choice->world ) ? choice->world : std::string();
                         break;
                     case mobile_menu::choice_kind::load_world:
                         sel1 = getopt( main_menu_opts::LOADCHAR );
@@ -1048,6 +1052,7 @@ bool main_menu::opening_screen()
                     break;
                 case main_menu_opts::NEWCHAR:
                     start = new_character_tab();
+                    mobile_new_character_world.clear();
                     break;
                 case main_menu_opts::MOTD:
                 case main_menu_opts::CREDITS:
@@ -1112,7 +1117,10 @@ bool main_menu::new_character_tab()
                     world_generator->set_active_world( nullptr );
                 } );
                 g->gamemode = nullptr;
-                WORLD *world = world_generator->pick_world();
+                // Mobile UI: the world on the new game screen's card
+                WORLD *world = !mobile_new_character_world.empty() ?
+                               world_generator->get_world( mobile_new_character_world ) :
+                               world_generator->pick_world();
                 if( world == nullptr ) {
                     continue;
                 }
