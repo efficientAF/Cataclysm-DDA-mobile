@@ -330,6 +330,9 @@ outcome show_all( const spec &what, int &tab, int &selected )
     const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "ANY_INPUT" );
+    // the first frame still draws what is under the screen (look-around's banner
+    // ends up over it); the screen hides those from the second frame on
+    ui_manager::redraw();
     while( !window.back && !window.acted && window.button < 0 ) {
         ui_manager::redraw();
         if( ctxt.handle_input() == "QUIT" ) {
