@@ -38,6 +38,7 @@
 #include "json.h"
 #include "line.h"
 #include "localized_comparator.h"
+#include "mobile_picker.h"
 #include "map.h"
 #include "map_selector.h"
 #include "memory_fast.h"
@@ -3935,6 +3936,10 @@ std::string inventory_selector::action_bound_to_key( char key ) const
 
 item_location inventory_pick_selector::execute()
 {
+    // Mobile UI: the item picker instead of the screen below
+    if( mobile_picker::wanted() ) {
+        return mobile_picker::pick_one( *this );
+    }
     shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
     debug_print_timer( tp_start );
     item_location startDragItem;
@@ -4572,9 +4577,14 @@ void inventory_multiselector::toggle_entries( int &count, const toggle_mode mode
 
 drop_locations inventory_multiselector::execute( bool allow_empty )
 {
-    shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
+    // Mobile UI: the item picker ticks the entries instead of the loop below
+    const bool mobile = mobile_picker::wanted();
+    if( mobile && !mobile_picker::pick_many( *this ) ) {
+        return drop_locations();
+    }
+    shared_ptr_fast<ui_adaptor> ui = mobile ? nullptr : create_or_get_ui_adaptor();
     debug_print_timer( tp_start );
-    while( true ) {
+    while( !mobile ) {
         ui_manager::redraw();
 
         const inventory_input input = get_input();
@@ -4864,9 +4874,21 @@ std::string haul_selector_preset::get_denial( const item_location &item ) const
 
 drop_locations inventory_drop_selector::execute()
 {
-    shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
+    // Mobile UI: the item picker ticks the entries instead of the loop below
+    const bool mobile = mobile_picker::wanted();
+    if( mobile ) {
+        if( !mobile_picker::pick_many( *this ) ) {
+            return drop_locations();
+        }
+        for( drop_location &stuff : to_use ) {
+            if( !avatar_action::check_stealing( get_player_character(), *stuff.first ) ) {
+                return drop_locations();
+            }
+        }
+    }
+    shared_ptr_fast<ui_adaptor> ui = mobile ? nullptr : create_or_get_ui_adaptor();
     debug_print_timer( tp_start );
-    while( true ) {
+    while( !mobile ) {
         ui_manager::redraw();
 
         const inventory_input input = get_input();

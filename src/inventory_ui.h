@@ -267,6 +267,10 @@ class inventory_selector_preset
         size_t get_cells_count() const {
             return cells.size();
         }
+        // Mobile UI: the heading of a column, for mobile_picker.h
+        std::string mobile_cell_title( const size_t cell_index ) const {
+            return cell_index < cells.size() ? cells[cell_index].title : std::string();
+        }
         /** Whether items should make new stacks if components differ. */
         bool get_checking_components() const {
             return check_components;
@@ -667,6 +671,22 @@ class inventory_selector
         void add_basecamp_items( const basecamp &camp );
         /** Remove all items. */
         void clear_items();
+        // Mobile UI: what mobile_picker.h shows of a selector
+        const std::string &mobile_title() const {
+            return title;
+        }
+        const std::string &mobile_hint() const {
+            return hint;
+        }
+        const inventory_selector_preset &mobile_preset() const {
+            return preset;
+        }
+        const Character &mobile_owner() const {
+            return u;
+        }
+        const std::vector<inventory_column *> &mobile_columns() const {
+            return columns;
+        }
         /** Assign a title. Shown on top of the menu. */
         void set_title( const std::string &title ) {
             this->title = title;
