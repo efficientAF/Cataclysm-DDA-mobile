@@ -159,6 +159,7 @@
 #include "mobile_death.h"
 #include "mobile_menu.h"
 #include "mobile_pick.h"
+#include "mobile_picker.h"
 #include "mod_manager.h"
 #include "monexamine.h"
 #include "mongroup.h"
@@ -2159,7 +2160,22 @@ int game::inventory_item_menu( item_location locThisItem,
                 action_menu.reset();
                 action_menu.allow_anykey = true;
                 float popup_width = 0.0;
+                // Mobile UI: a bottom sheet named after the item, with only the actions
+                // that apply, and no letters
+                const bool mobile_sheet = mobile_menu::enabled();
+                if( mobile_sheet ) {
+                    action_menu.text = oThisItem.display_name();
+                    action_menu.addentry( '?', true, 0, _( "Details" ) );
+                }
                 const auto addentry = [&]( const char key, const std::string & text, const hint_rating hint ) {
+                    if( mobile_sheet ) {
+                        if( hint != hint_rating::cant && key != '=' ) {
+                            action_menu.addentry( key, true, 0, key == '+' ? _( "Add to auto pickup" ) :
+                                                  key == '-' ? _( "Remove from auto pickup" ) :
+                                                  uppercase_first_letter( text ) );
+                        }
+                        return;
+                    }
                     popup_width = std::max( popup_width, ImGui::CalcTextSize( text.c_str() ).x );
                     // The char is used as retval from the uilist *and* as hotkey.
                     action_menu.addentry( key, true, key, text );
@@ -2259,6 +2275,13 @@ int game::inventory_item_menu( item_location locThisItem,
                     { "SCROLL_ITEM_INFO_UP", translation() },
                     { "SCROLL_ITEM_INFO_DOWN", translation() }
                 };
+                // Mobile UI: no item pane beside the sheet ("Details" opens the item
+                // card), and a swipe must not choose a row
+                if( mobile_sheet ) {
+                    ui = nullptr;
+                    action_menu.desired_bounds.reset();
+                    action_menu.additional_actions.clear();
+                }
 
                 lang_version = detail::get_current_language_version();
                 first_execution = false;
@@ -2412,6 +2435,14 @@ int game::inventory_item_menu( item_location locThisItem,
                     break;
                 case '=':
                     game_menus::inv::reassign_letter( oThisItem );
+                    break;
+                case '?':
+                    // Mobile UI: the item card, then the sheet again
+                    if( mobile_menu::enabled() ) {
+                        mobile_picker::show_details( oThisItem.tname(), oThisItem.type_name(),
+                                                     format_item_info( vThisItem, vDummy ) );
+                        exit = false;
+                    }
                     break;
                 case KEY_PPAGE:
                     iScrollPos -= iScrollHeight;
