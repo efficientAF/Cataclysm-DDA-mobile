@@ -127,6 +127,8 @@ class diary
         virtual ~diary() = default;
         /*static method to open a diary ui*/
         static void show_diary_ui( diary *c_diary );
+        // Mobile UI: the diary as a list screen, see mobile_diary.cpp
+        static void mobile_show( diary *c_diary );
         /*last entry in the diary, will be called after character death */
         void death_entry();
 

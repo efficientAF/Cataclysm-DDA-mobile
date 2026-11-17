@@ -39,6 +39,7 @@
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "proficiency.h"
+#include "scores_ui.h"
 #include "skill.h"
 #include "string_formatter.h"
 #include "translations.h"
@@ -580,9 +581,12 @@ tab actions_tab( const std::string &label, const std::vector<action_id> &actions
     return t;
 }
 
+// Scores has no action of its own in the game; this stands for its button.
+constexpr action_id action_scores = NUM_ACTIONS;
+
 std::vector<tab> actions_tabs()
 {
-    return {
+    std::vector<tab> tabs = {
         actions_tab( _( "Around" ), {
             ACTION_EXAMINE, ACTION_PICKUP, ACTION_LOOK, ACTION_LIST_ITEMS, ACTION_OPEN, ACTION_CLOSE,
             ACTION_SMASH, ACTION_GRAB, ACTION_HAUL, ACTION_BUTCHER, ACTION_CHAT, ACTION_PEEK,
@@ -615,6 +619,9 @@ std::vector<tab> actions_tabs()
             ACTION_TOGGLE_THIEF_MODE, ACTION_MAIN_MENU
         } ),
     };
+    // on "You", after the diary, which is the only other way to it
+    tabs[4].blocks.front().actions.emplace_back( action_scores, _( "Scores" ) );
+    return tabs;
 }
 
 tab nearby_tab()
@@ -1227,6 +1234,10 @@ action_id show( const drawer which )
                 };
             }
         }
+    }
+    if( window.chosen == action_scores ) {
+        show_scores_ui();
+        return ACTION_NULL;
     }
     return window.open_map ? ACTION_MAP : window.chosen;
 }

@@ -3062,6 +3062,11 @@ void game::disp_NPC_epilogues()
         if( !guy ) {
             continue;
         }
+        // Mobile UI: a page in the look of the death screen
+        if( mobile_menu::enabled() ) {
+            mobile_death::show_page( _( "EPILOGUE" ), guy->disp_name(), guy->get_epilogue() );
+            continue;
+        }
         const auto new_win = []() {
             return catacurses::newwin( FULL_SCREEN_HEIGHT, FULL_SCREEN_WIDTH,
                                        point( std::max( 0, ( TERMX - FULL_SCREEN_WIDTH ) / 2 ),
@@ -3076,6 +3081,15 @@ void game::display_faction_epilogues()
     for( const auto &elem : faction_manager_ptr->all() ) {
         if( elem.second.known_by_u ) {
             const std::vector<std::string> epilogue = elem.second.epilogue();
+            // Mobile UI: a page in the look of the death screen
+            if( !epilogue.empty() && mobile_menu::enabled() ) {
+                std::string all;
+                for( const std::string &part : epilogue ) {
+                    all += ( all.empty() ? "" : "\n" ) + part;
+                }
+                mobile_death::show_page( _( "EPILOGUE" ), elem.second.get_name(), all );
+                continue;
+            }
             if( !epilogue.empty() ) {
                 const auto new_win = []() {
                     return catacurses::newwin( FULL_SCREEN_HEIGHT, FULL_SCREEN_WIDTH,

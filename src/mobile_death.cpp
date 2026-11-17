@@ -394,7 +394,116 @@ void death_window::draw_controls()
     ImGui::PopStyleVar();
 }
 
+class page_window : public cataimgui::window
+{
+    public:
+        page_window( const std::string &label, const std::string &title, const std::string &text ) :
+            cataimgui::window( "MOBILE_DEATH_PAGE",
+                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                               ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground ),
+            label( label ), title( title ), text( text ) {}
+        bool done = false;
+    protected:
+        cataimgui::bounds get_bounds() override {
+            return { 0.0f, 0.0f, 1.0f, 1.0f };
+        }
+        void draw_controls() override;
+    private:
+        std::string label;
+        std::string title;
+        std::string text;
+};
+
+void page_window::draw_controls()
+{
+    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    const ImVec2 origin = viewport->Pos;
+    const ImVec2 size = viewport->Size;
+    const float u = mobile_ui::unit();
+    const ImVec4 safe = mobile_ui::safe_insets();
+    ImDrawList *const back = ImGui::GetWindowDrawList();
+    back->PushClipRectFullScreen();
+    back->AddRectFilled( origin, ImVec2( origin.x + size.x, origin.y + size.y ),
+                         mobile_ui::col_screen );
+    back->PopClipRect();
+
+    const float left = origin.x + safe.x;
+    const float width = size.x - safe.x - safe.z;
+
+    // Continue, in a bar at the bottom
+    const float button_h = 48.0f * u;
+    const float bar_h = 10.0f * u + button_h + 10.0f * u + safe.w;
+    const float bar_y = origin.y + size.y - bar_h;
+    back->AddRectFilled( ImVec2( origin.x, bar_y ), ImVec2( origin.x + size.x, origin.y + size.y ),
+                         col_bar );
+    back->AddLine( ImVec2( origin.x, bar_y ), ImVec2( origin.x + size.x, bar_y ), mobile_ui::col_line,
+                   std::max( 1.0f, u ) );
+    {
+        const ImVec2 pos( left + 12.0f * u, bar_y + 10.0f * u );
+        const ImVec2 button_size( width - 24.0f * u, button_h );
+        bool held = false;
+        if( mobile_ui::pressable( "##page_continue", pos, button_size, &held ) ) {
+            done = true;
+        }
+        mobile_ui::box( back, pos, ImVec2( pos.x + button_size.x, pos.y + button_size.y ),
+                        held ? mobile_ui::col_accent_down : mobile_ui::col_accent, 0, 12.0f );
+        const std::string name = _( "Continue" );
+        const ImVec2 name_px = mobile_ui::text_size( face::bold, 15.0f, name );
+        mobile_ui::text( back, face::bold, 15.0f, ImVec2( pos.x + ( button_size.x - name_px.x ) * 0.5f,
+                         pos.y + ( button_size.y - name_px.y ) * 0.5f ), mobile_ui::col_on_accent, name );
+    }
+
+    // everything above the bar scrolls
+    ImGui::SetCursorScreenPos( ImVec2( left, origin.y + safe.y ) );
+    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+    ImGui::BeginChild( "##page_scroll", ImVec2( width, bar_y - origin.y - safe.y ),
+                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+    ImDrawList *const draw = ImGui::GetWindowDrawList();
+    const ImVec2 base = ImGui::GetCursorScreenPos();
+    const float pad = 20.0f * u;
+    // text is easier to read in a column than across a phone held sideways
+    const float inner_w = std::min( width - 2.0f * pad, 560.0f * u );
+    const float inner_x = base.x + ( width - inner_w ) * 0.5f;
+    float y = base.y + 22.0f * u;
+    if( !label.empty() ) {
+        mobile_ui::text( draw, face::mono, 10.5f, ImVec2( inner_x, y ), mobile_ui::col_muted, label );
+        y += mobile_ui::text_size( face::mono, 10.5f, label ).y + 6.0f * u;
+    }
+    mobile_ui::text( draw, face::display, 34.0f, ImVec2( inner_x, y ), col_died, title, inner_w );
+    y += mobile_ui::text_size( face::display, 34.0f, title, inner_w ).y + 12.0f * u;
+    const float text_w = inner_w - 28.0f * u;
+    const float text_h = mobile_ui::text_size( face::body, 15.0f, text, text_w ).y;
+    mobile_ui::box( draw, ImVec2( inner_x, y ), ImVec2( inner_x + inner_w, y + text_h + 28.0f * u ),
+                    IM_COL32( 255, 255, 255, 10 ), 0, 12.0f );
+    mobile_ui::text( draw, face::body, 15.0f, ImVec2( inner_x + 14.0f * u, y + 14.0f * u ), col_cause,
+                     text, text_w );
+    y += text_h + 28.0f * u + pad;
+    ImGui::SetCursorScreenPos( base );
+    ImGui::Dummy( ImVec2( 1.0f, y - base.y ) );
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+}
+
 } // namespace
+
+void show_page( const std::string &label, const std::string &title, const std::string &text )
+{
+    page_window window( label, remove_color_tags( title ), remove_color_tags( text ) );
+    input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
+    ctxt.register_action( "QUIT" );
+    ctxt.register_action( "CONFIRM" );
+    ctxt.register_action( "ANY_INPUT" );
+    while( !window.done ) {
+        ui_manager::redraw();
+        const std::string action = ctxt.handle_input();
+        // the back button goes on, as there is nothing to go back to
+        if( action == "QUIT" || action == "CONFIRM" ) {
+            break;
+        }
+    }
+}
 
 void note_death()
 {
@@ -464,6 +573,8 @@ namespace mobile_death
 {
 
 void note_death() {}
+
+void show_page( const std::string &, const std::string &, const std::string & ) {}
 
 void show() {}
 
