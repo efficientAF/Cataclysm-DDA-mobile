@@ -25,6 +25,7 @@
 #include "cata_imgui.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_stdlib.h"
+#include "input.h"
 #include "input_context.h"
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
@@ -196,6 +197,7 @@ void text_window::draw_controls()
     ImGui::PushStyleColor( ImGuiCol_FrameBg, col_field );
     ImGui::PushStyleColor( ImGuiCol_Border, mobile_ui::col_accent );
     ImGui::PushStyleColor( ImGuiCol_Text, mobile_ui::col_fg );
+    ImGui::PushStyleColor( ImGuiCol_NavCursor, 0 );
     ImGui::SetCursorScreenPos( ImVec2( left + pad, field_y ) );
     if( focus_field ) {
         // brings up the system keyboard
@@ -204,7 +206,7 @@ void text_window::draw_controls()
     }
     ImGui::InputTextMultiline( "##diary_text", &text, ImVec2( width - 2.0f * pad, field_h ),
                                ImGuiInputTextFlags_WordWrap );
-    ImGui::PopStyleColor( 3 );
+    ImGui::PopStyleColor( 4 );
     ImGui::PopStyleVar( 4 );
     ImGui::PopFont();
     if( ImGui::IsKeyPressed( ImGuiKey_Escape, false ) ) {
@@ -219,7 +221,6 @@ void text_window::draw_controls()
 std::pair<bool, std::string> edit_text( const std::string &text )
 {
     text_window window( edit_title.empty() ? std::string( _( "Edit text" ) ) : edit_title, text );
-    edit_title.clear();
     input_context ctxt( "default", keyboard_mode::keychar );
     const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
@@ -229,7 +230,12 @@ std::pair<bool, std::string> edit_text( const std::string &text )
     while( !window.saved && !window.cancelled ) {
         ui_manager::redraw();
         if( ctxt.handle_input() == "QUIT" ) {
-            window.cancelled = true;
+            // other keys that mean QUIT elsewhere, like the space bar, are text here
+            const input_event event = ctxt.get_raw_input();
+            if( event.type != input_event_t::keyboard_char || event.sequence.empty() ||
+                event.get_first_input() == KEY_ESCAPE ) {
+                window.cancelled = true;
+            }
         }
     }
     return { window.saved, window.kept };
@@ -271,6 +277,7 @@ void diary::mobile_show( diary *const c_diary )
     const auto edit = [&]() {
         mobile_diary::set_edit_title( c_diary->get_page_ptr()->entry_name() );
         c_diary->edit_page_ui( no_window );
+        mobile_diary::set_edit_title( std::string() );
     };
     int tab = 0;
     int selected = count() - 1;
@@ -296,10 +303,10 @@ void diary::mobile_show( diary *const c_diary )
             const bool summary = page.is_summary();
             mobile_list::row r;
             r.name = page.entry_name();
-            r.description = c_diary->get_head_text( summary ) + "\n";
             if( summary ) {
                 r.detail = c_diary->get_head_text( true );
             } else {
+                r.description = c_diary->get_head_text( false ) + "\n";
                 r.detail = first_line( page.m_text );
                 if( r.detail.empty() ) {
                     r.detail = _( "Nothing written." );
@@ -312,7 +319,7 @@ void diary::mobile_show( diary *const c_diary )
             // what upstream's side panes show: what changed since the page before
             const std::vector<std::string> &changes = c_diary->get_change_list();
             std::map<int, std::string> &descriptions = c_diary->get_desc_map();
-            if( !changes.empty() ) {
+            if( !changes.empty() && !r.description.empty() ) {
                 r.description += "\n";
             }
             for( int n = 0; n < static_cast<int>( changes.size() ); ++n ) {
