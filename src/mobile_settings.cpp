@@ -433,7 +433,7 @@ void settings_window::draw_controls()
     switch_row( "AUTOSAFEMODE", _( "Safe mode turns itself back on" ),
                 _( "Safe mode stops you and warns when a monster comes into view" ) );
 
-    lead( _( "Everything else from the desktop options lives under All options, unchanged." ) );
+    lead( _( "Every other option of the game is under All options." ) );
     if( link_row( "##all_options", _( "All options" ), _( "Graphics, sound, interface, debug…" ) ) ) {
         open_all = true;
     }

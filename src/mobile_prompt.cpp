@@ -425,9 +425,8 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
                 add( action, action_label( ctxt, action ) );
             }
         }
-        if( buttons.size() > hint_count && is_registered( ctxt, "HELP_KEYBINDINGS" ) ) {
-            add( "HELP_KEYBINDINGS", action_label( ctxt, "HELP_KEYBINDINGS" ) );
-        }
+        // no button for the keybindings screen: nothing on a touch screen needs
+        // it, and upstream's window is not made for fingers
         // a screen that only knows "back" has the system back button for that
         if( hint_count == 0 && buttons.size() == 1 && buttons.front().action == "QUIT" ) {
             buttons.clear();

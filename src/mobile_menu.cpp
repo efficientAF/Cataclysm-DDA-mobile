@@ -387,6 +387,11 @@ void main_menu_view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size 
         case sheet::settings:
             spec.title = _( "Settings" );
             for( int i = 0; i < static_cast<int>( model.settings.size() ); ++i ) {
+                // keybindings, colors and the ImGui style and demo screens are
+                // for a keyboard and a mouse: not on the phone's list
+                if( i == 1 || i >= 4 ) {
+                    continue;
+                }
                 spec.rows.push_back( { "gear", model.settings[i], "" } );
                 results.push_back( { choice_kind::settings, i } );
             }
