@@ -427,11 +427,11 @@ void safemode::mobile_show( const std::string &custom_name_in, const bool is_saf
                 const rules_class &rule = rules[i];
                 mobile_list::row r;
                 r.name = rule.rule.empty() ? _( "<empty rule>" ) : rule.rule;
-                r.detail = string_format( "%s · %s", list_name( rule.whitelist ),
-                                          category_name( rule.category ) );
-                if( has_attitude( rule ) ) {
-                    r.detail += " · " + Creature::get_attitude_ui_data( rule.attitude ).first.translated();
-                }
+                // upstream's category "Hostile" would read oddly next to the attitude
+                r.detail = string_format( "%s · %s", list_name( rule.whitelist ), has_attitude( rule ) ?
+                                          string_format( _( "Attitude: %s" ),
+                                                  Creature::get_attitude_ui_data( rule.attitude ).first.translated() ) :
+                                          std::string( category_name( rule.category ) ) );
                 if( has_distance( rule ) ) {
                     r.detail += " · " + string_format( _( "Dist %d" ), rule.proximity );
                 }
