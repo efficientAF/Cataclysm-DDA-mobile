@@ -67,6 +67,7 @@
 #include "map_selector.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_crafting.h"
 #include "mutation.h"
 #include "npc.h"
 #include "options.h"
@@ -463,6 +464,8 @@ void Character::long_craft( const std::optional<tripoint_bub_ms> &loc,
                             const recipe_id &goto_recipe )
 {
     int batch_size = 0;
+    // Mobile UI: the crafting screen's title says that this is a long craft
+    mobile_crafting::next_is_long();
     const auto [crafter, rec] = select_crafter_and_crafting_recipe( batch_size, goto_recipe, this );
     if( rec ) {
         if( crafting_allowed( *crafter, *rec ) ) {

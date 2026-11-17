@@ -50,6 +50,7 @@
 #include "map.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_compare.h"
 #include "mobile_inventory.h"
 #include "mobile_menu.h"
 #include "npc.h"
@@ -2686,6 +2687,11 @@ static void draw_column( const std::string &label, const ImVec2 &size, const ite
 
 void game_menus::inv::compare_item_menu::draw_controls()
 {
+    // Mobile UI: the mobile page shows instead
+    if( hide_ui ) {
+        hide_if_hidden();
+        return;
+    }
     float half_width = ImGui::GetContentRegionAvail().x / 2;
     float height = ImGui::GetContentRegionAvail().y;
     ImGuiStyle &style = ImGui::GetStyle();
@@ -2723,6 +2729,15 @@ cataimgui::bounds game_menus::inv::compare_item_menu::get_bounds()
 
 bool game_menus::inv::compare_item_menu::show()
 {
+    // Mobile UI: the comparison as a mobile page; this window hides meanwhile
+    if( mobile_compare::wanted() ) {
+        hide_ui = true;
+        const bool confirmed = mobile_compare::show( first.tname(),
+                               format_item_info( first_info, second_info ), second.tname(),
+                               format_item_info( second_info, first_info ), confirm_message );
+        hide_ui = false;
+        return confirmed;
+    }
     while( true ) {
         ui_manager::redraw();
 

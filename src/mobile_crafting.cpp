@@ -1,6 +1,7 @@
 #include "mobile_crafting.h"
 
 #include "avatar.h"
+#include "mobile_menu.h"
 
 #if defined(TILES)
 #include <algorithm>
@@ -44,6 +45,15 @@
 
 namespace mobile_crafting
 {
+
+bool wanted()
+{
+#if defined(TILES)
+    return mobile_menu::enabled();
+#else
+    return false;
+#endif
+}
 
 #if defined(TILES)
 
@@ -175,9 +185,12 @@ std::vector<req_group> requirement_lines( const Character &you, const recipe &re
         const availability &avail, const int batch )
 {
     std::vector<req_group> groups;
-    const temp_crafting_inventory &inv = you.crafting_inventory();
+    // a camp crafts from its own stores, and upstream checks it for the whole craft
+    const temp_crafting_inventory &inv = avail.inv_override != nullptr ? *avail.inv_override :
+                                         you.crafting_inventory();
     const std::function<bool( const item & )> filter = rec.get_component_filter();
-    const craft_flags flags = craft_flags::start_only;
+    const craft_flags flags = avail.inv_override != nullptr ? craft_flags::none :
+                              craft_flags::start_only;
 
     req_group skills;
     skills.title = _( "Skills" );
@@ -370,7 +383,8 @@ std::vector<req_group> requirement_lines( const Character &you, const recipe &re
 class crafting_window : public cataimgui::window
 {
     public:
-        explicit crafting_window( avatar &you );
+        crafting_window( Character &you, const recipe_id &goto_recipe, const std::string &filter,
+                         bool camp, temp_crafting_inventory *inv_override, const std::string &title );
 
         // the recipe to craft, once Craft was tapped
         const recipe *chosen = nullptr;
@@ -397,7 +411,13 @@ class crafting_window : public cataimgui::window
         void draw_controls() override;
 
     private:
-        avatar &you;
+        Character &you;
+        // camp crafting: the camp's stores stand in for the crafter's surroundings
+        bool camp = false;
+        temp_crafting_inventory *inv_override = nullptr;
+        std::string title;
+        // the recipe the screen was opened for: its row is brought into view once
+        const recipe *scroll_to = nullptr;
         const recipe_subset *known = nullptr;
         std::map<const recipe *, availability> availability_cache;
         std::map<const recipe *, row_info> row_cache;
@@ -441,16 +461,33 @@ class crafting_window : public cataimgui::window
         void draw_sheet( const ImVec2 &origin, const ImVec2 &size );
 };
 
-crafting_window::crafting_window( avatar &you ) : cataimgui::window( "MOBILE_CRAFTING",
-            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
-            ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground |
-            ImGuiWindowFlags_NoNav ), you( you )
+crafting_window::crafting_window( Character &you, const recipe_id &goto_recipe,
+                                  const std::string &filter, const bool camp,
+                                  temp_crafting_inventory *const inv_override,
+                                  const std::string &title ) : cataimgui::window( "MOBILE_CRAFTING",
+                                              ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                                              ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground |
+                                              ImGuiWindowFlags_NoNav ), you( you ), camp( camp ), inv_override( inv_override ),
+    title( title ), query( filter )
 {
-    known = &you.get_group_available_recipes();
+    known = &you.get_group_available_recipes( inv_override );
     for( const crafting_category &cat : get_crafting_categories() ) {
         if( !cat.is_hidden && !cat.is_wildcard && !known->in_category( cat.id ).empty() ) {
             chips.push_back( { cat.id, category_label( cat.id ) } );
+        }
+    }
+    // opened for one recipe ("view recipe"): its category, its row, its detail
+    if( goto_recipe.is_valid() && known->contains( &goto_recipe.obj() ) ) {
+        const recipe *const rec = &goto_recipe.obj();
+        for( int i = 0; i < static_cast<int>( chips.size() ); ++i ) {
+            if( chips[i].id == rec->category ) {
+                category = i;
+            }
+        }
+        if( category >= 0 ) {
+            select( rec );
+            scroll_to = rec;
         }
     }
 }
@@ -460,7 +497,10 @@ bool crafting_window::back()
     refresh = true;
     if( sheet_open ) {
         sheet_open = false;
-        return true;
+        // in landscape there is no sheet to close: go on to the next step
+        if( !landscape ) {
+            return true;
+        }
     }
     // in portrait the sheet was the detail, so there is nothing more to close
     if( selected != nullptr && landscape ) {
@@ -511,8 +551,8 @@ void crafting_window::rebuild_list()
         }
     }
     // upstream's list: hidden recipes dropped, what can be made first, groups expanded
-    list = build_recipe_list( std::move( picking ), false, false, you, false, nullptr, false, false,
-                              availability_cache, *known );
+    list = build_recipe_list( std::move( picking ), false, false, you, camp, inv_override, false,
+                              false, availability_cache, *known );
     rows.clear();
     for( int i = 0; i < static_cast<int>( list.entries.size() ); ++i ) {
         if( !only_craftable || list.available[i].can_craft_recipe ) {
@@ -596,7 +636,7 @@ void crafting_window::update_detail()
     detail = detail_info();
     detail.rec = selected;
     detail.batch = batch;
-    detail_availability.emplace( you, selected, batch );
+    detail_availability.emplace( you, selected, batch, camp, inv_override );
     const availability &avail = *detail_availability;
     const craft_confirm_result confirm = can_start_craft( rec, avail, you, batch );
     detail.can_craft = confirm == craft_confirm_result::ok;
@@ -813,6 +853,15 @@ void crafting_window::draw_list( const ImVec2 &pos, const ImVec2 &size, const bo
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const int count = static_cast<int>( rows.size() );
+    if( scroll_to != nullptr ) {
+        for( int r = 0; r < count; ++r ) {
+            if( list.entries[rows[r]] == scroll_to ) {
+                ImGui::SetScrollY( std::max( 0.0f, static_cast<float>( r ) * row_h - size.y * 0.3f ) );
+                refresh = true;
+            }
+        }
+        scroll_to = nullptr;
+    }
     if( count == 0 ) {
         const std::string none = _( "No recipes match." );
         const ImVec2 none_size = mobile_ui::text_size( face::body, 13.5f, none );
@@ -899,7 +948,7 @@ void crafting_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const bo
 {
     const float u = mobile_ui::unit();
     float bar_h = 0.0f;
-    if( mobile_ui::app_bar( _( "Crafting" ), pos, size.x, &bar_h ) ) {
+    if( mobile_ui::app_bar( title, pos, size.x, &bar_h ) ) {
         if( interactive ) {
             close = true;
         } else {
@@ -1063,8 +1112,9 @@ float crafting_window::draw_detail( const ImVec2 &pos, const float width )
                      ImVec2( craft_pos.x + ( craft_max.x - craft_pos.x - label_size.x ) * 0.5f,
                              craft_pos.y + ( 48.0f * u - label_size.y ) * 0.5f ),
                      detail.can_craft ? mobile_ui::col_on_accent : ( mobile_ui::col_fg & fade ), label );
-    if( tapped && detail.can_craft &&
-        you.check_eligible_containers_for_crafting( rec, batch ) ) {
+    // as upstream's menu: a camp has its own check for somewhere to put liquids
+    if( tapped && detail.can_craft && ( inv_override != nullptr ||
+                                        you.check_eligible_containers_for_crafting( rec, batch ) ) ) {
         chosen = selected;
     }
     y += 48.0f * u + 14.0f * u;
@@ -1167,57 +1217,82 @@ void crafting_window::draw_controls()
 
 } // namespace
 
-void show()
+static bool long_next = false;
+
+void next_is_long()
 {
-    avatar &you = get_avatar();
-    const recipe *rec = nullptr;
-    int batch = 1;
-    {
-        crafting_window window( you );
-        // keychar: the search field takes text
-        input_context ctxt( "MOBILE_CRAFTING", keyboard_mode::keychar );
-        const mobile_prompt::own_controls own_controls( ctxt );
-        ctxt.register_action( "QUIT" );
-        ctxt.register_action( "LEFT" );
-        ctxt.register_action( "RIGHT" );
-        ctxt.register_action( "ANY_INPUT" );
-        while( true ) {
-            ui_manager::redraw();
-            if( window.close || window.chosen != nullptr ) {
+    long_next = true;
+}
+
+std::pair<Character *, const recipe *> select( int &batch_size_out, const recipe_id &goto_recipe,
+        Character *const crafter, const std::string &filter, const bool camp,
+        temp_crafting_inventory *const inv_override )
+{
+    const bool is_long = long_next;
+    long_next = false;
+    if( crafter == nullptr ) {
+        return { nullptr, nullptr };
+    }
+    // as upstream's menu: nothing reachable from here changes what the query caches read
+    const temp_crafting_inventory::query_cache_scope cache_scope;
+    const std::string title = camp ? _( "Camp crafting" ) :
+                              is_long ? _( "Craft as long as possible" ) : _( "Crafting" );
+    crafting_window window( *crafter, goto_recipe, filter, camp, inv_override, title );
+    // keychar: the search field takes text
+    input_context ctxt( "MOBILE_CRAFTING", keyboard_mode::keychar );
+    const mobile_prompt::own_controls own_controls( ctxt );
+    ctxt.register_action( "QUIT" );
+    ctxt.register_action( "LEFT" );
+    ctxt.register_action( "RIGHT" );
+    ctxt.register_action( "ANY_INPUT" );
+    while( true ) {
+        ui_manager::redraw();
+        if( window.close || window.chosen != nullptr ) {
+            break;
+        }
+        // a tap changes things after they were drawn, so draw once more
+        const bool again = window.refresh;
+        window.refresh = false;
+        const std::string action = again ? ctxt.handle_input( 10 ) : ctxt.handle_input();
+        if( window.typing() ) {
+            // back closes the keyboard first
+            if( action == "QUIT" ) {
+                window.stop_typing();
+            }
+        } else if( action == "QUIT" ) {
+            if( !window.back() ) {
                 break;
             }
-            // a tap changes things after they were drawn, so draw once more
-            const bool again = window.refresh;
-            window.refresh = false;
-            const std::string action = again ? ctxt.handle_input( 10 ) : ctxt.handle_input();
-            if( window.typing() ) {
-                // back closes the keyboard first
-                if( action == "QUIT" ) {
-                    window.stop_typing();
-                }
-            } else if( action == "QUIT" ) {
-                if( !window.back() ) {
-                    break;
-                }
-            } else if( action == "LEFT" || action == "RIGHT" ) {
-                // a swipe to the left brings the chips on the right into view
-                window.scroll_chips( action == "LEFT" ? 1 : -1 );
-            }
+        } else if( action == "LEFT" || action == "RIGHT" ) {
+            // a swipe to the left brings the chips on the right into view
+            window.scroll_chips( action == "LEFT" ? 1 : -1 );
         }
-        rec = window.chosen;
-        batch = window.batch;
     }
-    if( rec == nullptr ) {
-        return;
+    if( window.chosen == nullptr ) {
+        return { nullptr, nullptr };
     }
-    // from here on it is what Character::craft does with the menu's answer
-    uistate.read_recipes.insert( rec->ident() );
-    if( crafting_allowed( you, *rec ) ) {
-        you.make_craft( rec->ident(), batch );
-    }
+    uistate.read_recipes.insert( window.chosen->ident() );
+    batch_size_out = window.batch;
+    return { crafter, window.chosen };
+}
+
+void show()
+{
+    // Character::craft asks select_crafter_and_crafting_recipe, which hands over to select()
+    get_avatar().craft();
 }
 
 #else // !TILES
+
+void next_is_long()
+{
+}
+
+std::pair<Character *, const recipe *> select( int &, const recipe_id &, Character *,
+        const std::string &, bool, temp_crafting_inventory * )
+{
+    return { nullptr, nullptr };
+}
 
 void show()
 {

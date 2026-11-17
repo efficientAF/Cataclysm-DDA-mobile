@@ -47,6 +47,7 @@
 #include "itype.h"
 #include "localized_comparator.h"
 #include "magic_type.h"
+#include "mobile_crafting.h"
 #include "mutation.h"
 #include "options.h"
 #include "output.h"
@@ -2980,6 +2981,11 @@ std::pair<Character *, const recipe *> select_crafter_and_crafting_recipe( int &
 {
     if( crafter == nullptr ) {
         return { nullptr, nullptr };
+    }
+    // Mobile UI: the canvas crafting screen, for every way into crafting
+    if( mobile_crafting::wanted() ) {
+        return mobile_crafting::select( batch_size_out, goto_recipe, crafter, filterstring,
+                                        camp_crafting, inventory_override );
     }
 
     // nothing reachable from this menu changes what the query caches read
