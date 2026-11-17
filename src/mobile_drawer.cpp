@@ -1060,7 +1060,10 @@ void drawer_window::draw_controls()
     ImVec2 max;
     ImDrawFlags corners = ImDrawFlags_RoundCornersNone;
     if( from == edge::top || from == edge::bottom ) {
-        const float depth = ( size.y - safe.y - safe.w ) * cfg.size;
+        // never so shallow that its content does not fit: on a phone held
+        // sideways a share of the height alone is only a few rows
+        const float room = size.y - safe.y - safe.w;
+        const float depth = std::max( room * cfg.size, std::min( room, 320.0f * u ) );
         min = ImVec2( origin.x + safe.x + 8.0f * u, origin.y + safe.y );
         max = ImVec2( origin.x + size.x - safe.z - 8.0f * u, min.y + depth );
         corners = ImDrawFlags_RoundCornersBottom;
@@ -1070,7 +1073,8 @@ void drawer_window::draw_controls()
             corners = ImDrawFlags_RoundCornersTop;
         }
     } else {
-        const float depth = ( size.x - safe.x - safe.z ) * cfg.size;
+        const float room = size.x - safe.x - safe.z;
+        const float depth = std::max( room * cfg.size, std::min( room, 320.0f * u ) );
         min = ImVec2( origin.x + safe.x, origin.y + safe.y + 8.0f * u );
         max = ImVec2( min.x + depth, origin.y + size.y - safe.w - 8.0f * u );
         corners = ImDrawFlags_RoundCornersRight;
