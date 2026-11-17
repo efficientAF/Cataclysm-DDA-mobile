@@ -116,6 +116,10 @@ Round 4, not seen by anyone: the options screen's Previous / Next bar (copying a
 
 Test tips: `tools/mobile_ui/drive.sh tap` parks the real mouse on the spot first, and in look-around that already moves the cursor, so one scripted tap there confirms where a phone needs two. The debug menu has no key by default; bind one in the test folder's `config/keybindings.json` (`debug`, `DEFAULTMODE`). "Debug Hammerspace" (debug menu, Player, Mutate) lifts the requirements for installing and removing vehicle parts, but not for repairing.
 
+**The UI is not finished.** `tools/mobile_ui/AUDIT.md` (17 Nov 2026, from reading the code) lists every desktop screen a touch player can still reach, with file and line, a priority and a suggested order, and what a Steam Deck build (desktop Linux, touch plus controller) needs. The owner wants a full replacement and plans to try a Steam Deck. Start there. In short: the item action menu behind the inventory's "More…", the surroundings list and look-around's Describe are still desktop screens met in ordinary play; the mobile options are off by default off Android; and the mobile screens cannot be worked with a controller (no focus model).
+
+Also done in the fifth session: "Quit game" on the home screen (its small buttons are four to a row) and "Save and quit game" at the end of the pause sheet (`mobile_menu::request_quit_after_save`, consumed at the top of `main_menu::opening_screen`); both seen working on the desktop build, the home screen in landscape only.
+
 Open, most important first:
 
 0. **Written but not seen on screen:**
@@ -130,7 +134,7 @@ Open, most important first:
    - A popup that follows a list screen (e.g. the vehicle screen's "too dark" message) shows over the map, not over the list: the list's window is closed by then.
    - Compare ends in upstream's two-column text window; Describe (look-around) opens upstream's text screen. Both are readable in landscape only.
    - The pause sheet (`mobile_menu`) still has a black background.
-2. **Still upstream's:** `uilist` menus whose callback draws a pane (body status and others), appliances, the smart engine controller, armor layering, morale, the full character sheet, the diary (and with it the way to scores), camps' mission screens, follower rules, auto-notes and distraction settings, the long text editor, computer terminals. Keybindings, the colour manager and the ImGui style and demo screens are hidden on purpose.
+2. **Still upstream's:** see `tools/mobile_ui/AUDIT.md`. Keybindings, the colour manager and the ImGui style and demo screens are hidden on purpose.
 
 3. **Try on a phone:** the zoom and pan dials, the fixed pad and the floating joystick (upstream's code path, which the desktop stand-in does not exercise), pinch with the setting off (must do nothing on the play screen) and on, the Tiles/ASCII switch in Settings.
 4. **ASCII map (`USE_TILES` off)** works with the HUD, taps, pan and the pad. Known gaps: no zoom at all (the dial hides); the letters are the size of the map font, small on a phone, and only the text size setting changes that; the start zoom of `touch_input::default_zoom` does not apply. Without `fetch_tilesets.sh` the only tileset is letters drawn as tiles.
