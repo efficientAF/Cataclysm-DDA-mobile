@@ -46,6 +46,8 @@ class look_banner
         look_banner &operator=( const look_banner & ) = delete;
         // The tile the cursor is on now.
         void show( const tripoint_bub_ms &pos );
+        // Any heading and lines, for other map pick modes (aiming).
+        void set( const std::string &title, const std::vector<std::string> &lines );
     private:
         class impl;
         std::unique_ptr<impl> window;

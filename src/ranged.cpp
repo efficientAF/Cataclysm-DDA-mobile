@@ -61,6 +61,7 @@
 #include "math_defines.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_pick.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
@@ -307,6 +308,8 @@ class target_ui
         catacurses::window w_target;
         // Input context
         input_context ctxt;
+        // Mobile UI: a banner over the map in place of w_target, see draw_ui_window
+        std::unique_ptr<mobile_pick::look_banner> mobile_banner;
 
         /* These members are relevant for TargetMode::Fire */
         // Weapon sight dispersion
@@ -2368,6 +2371,46 @@ static void draw_throw_aim( const target_ui &ui, const Character &you, const cat
     text_y = print_ranged_chance( w, text_y, aim_chances, 0 );
 }
 
+// Mobile UI: the odds that print_aim and draw_throw_aim draw as bars, as one
+// line per way of aiming: "Careful: 62% to hit, 85 moves".
+static std::vector<std::string> mobile_aim_lines( const target_ui &ui, Character &you,
+        const target_ui::TargetMode mode, input_context &ctxt, const item &weapon,
+        const tripoint_bub_ms &pos, item_location &load_loc )
+{
+    static const std::vector<confidence_rating> confidence_config = {{
+            { accuracy_critical, '*', "green", translate_marker_context( "aim_confidence", "Great" ) },
+            { accuracy_standard, '+', "light_gray", translate_marker_context( "aim_confidence", "Normal" ) },
+            { accuracy_grazing, '|', "magenta", translate_marker_context( "aim_confidence", "Graze" ) }
+        }
+    };
+    std::vector<aim_type_prediction> chances;
+    if( mode == target_ui::TargetMode::Fire ) {
+        dispersion_sources dispersion = you.get_weapon_dispersion( weapon );
+        dispersion.add_range( you.recoil_vehicle() );
+        chances = calculate_ranged_chances( ui, you, mode, ctxt, weapon, dispersion, confidence_config,
+                                            Target_attributes( you.pos_bub(), pos ), pos, load_loc );
+    } else {
+        const map &here = get_map();
+        Creature *target = get_creature_tracker().creature_at( pos, true );
+        if( target != nullptr && !you.sees( here, *target ) ) {
+            target = nullptr;
+        }
+        const bool blind = mode == target_ui::TargetMode::ThrowBlind;
+        const dispersion_sources dispersion( you.throwing_dispersion( weapon, target, blind ) );
+        const Target_attributes attributes( rl_dist( you.pos_bub(), pos ),
+                                            target != nullptr ? target->ranged_target_size() : 1.0f,
+                                            here.ambient_light_at( pos ), you.sees( here, pos ) );
+        chances = calculate_ranged_chances( ui, you, mode, ctxt, weapon, dispersion, confidence_config,
+                                            attributes, pos, item_location() );
+    }
+    std::vector<std::string> lines;
+    for( const aim_type_prediction &chance : chances ) {
+        lines.push_back( string_format( _( "%1$s: %2$d%% to hit, %3$d moves" ), chance.name,
+                                        std::clamp( chance.chance_to_hit, 0, 100 ), chance.moves ) );
+    }
+    return lines;
+}
+
 std::vector<aim_type> Character::get_aim_types( const item &gun ) const
 {
     std::vector<aim_type> aim_types { get_default_aim_type() };
@@ -2885,6 +2928,9 @@ target_handler::trajectory target_ui::run()
     ui.on_redraw( [&]( const ui_adaptor & ) {
         draw_ui_window();
     } );
+    if( mobile_pick::wanted() ) {
+        mobile_banner = std::make_unique<mobile_pick::look_banner>();
+    }
 
     // Handle multi-turn aiming
     std::string action;
@@ -4076,6 +4122,38 @@ void target_ui::draw_terrain_overlay()
 
 void target_ui::draw_ui_window()
 {
+    // Mobile UI: what the window below says, in a few lines over the map.  The
+    // prompt bar has Fire, Next target and the ways of aiming.
+    if( mobile_banner ) {
+        const map &here = get_map();
+        std::vector<std::string> lines;
+        std::string where = src == dst ? string_format( _( "Range: %d" ), range ) :
+                            string_format( _( "Range: %d/%d" ), dist_fn( dst ), range );
+        if( status == Status::OutOfRange ) {
+            where += _( " (out of range)" );
+        }
+        if( dst_critter != nullptr && you->sees( here, *dst_critter ) ) {
+            where = string_format( "%s · %s", remove_color_tags( dst_critter->get_name() ), where );
+        } else if( dst_veh != nullptr ) {
+            where = string_format( "%s · %s", dst_veh->name, where );
+        }
+        lines.push_back( where );
+        if( status == Status::Good && ( mode == TargetMode::Fire || mode == TargetMode::Throw ||
+                                        mode == TargetMode::ThrowBlind ) ) {
+            item_location load_loc = mode == TargetMode::Fire ? activity->reload_loc : item_location();
+            const item &weapon = mode == TargetMode::Fire ? *relevant->gun_current_mode() : *relevant;
+            for( const std::string &line : mobile_aim_lines( *this, *you, mode, ctxt, weapon, dst,
+                    load_loc ) ) {
+                lines.push_back( line );
+            }
+        } else if( targets.empty() ) {
+            lines.emplace_back( _( "No targets in sight.  Tap a tile to aim at it." ) );
+        } else {
+            lines.emplace_back( _( "Tap a tile to aim at it, or use Next target." ) );
+        }
+        mobile_banner->set( remove_color_tags( uitext_title() ), lines );
+        return;
+    }
     // Clear target window and make it non-transparent.
     int width = getmaxx( w_target );
     int height = getmaxy( w_target );

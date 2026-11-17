@@ -346,6 +346,11 @@ void look_banner::show( const tripoint_bub_ms &pos )
             lines.emplace_back( _( "Tap a tile to look at it.  Tap it again, or OK, to choose it." ) );
         }
     }
+    set( title, lines );
+}
+
+void look_banner::set( const std::string &title, const std::vector<std::string> &lines )
+{
     if( title != window->title || lines != window->lines ) {
         window->title = title;
         window->lines = lines;
@@ -410,6 +415,7 @@ class look_banner::impl
 look_banner::look_banner() = default;
 look_banner::~look_banner() = default;
 void look_banner::show( const tripoint_bub_ms & ) {}
+void look_banner::set( const std::string &, const std::vector<std::string> & ) {}
 
 std::optional<tripoint_rel_ms> direction( const std::string &, bool, int )
 {
