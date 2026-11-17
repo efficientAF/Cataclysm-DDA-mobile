@@ -114,6 +114,7 @@ Open, most important first:
    - Pocket settings: "Move an item", the whitelist and blacklist choices, presets.
    - Trade: the bank account row; a trade that the NPC refuses.
    - Zones: Edit (opens upstream's "What do you want to change" sheet, seen) beyond its first menu; personal zones.
+1. **The canvas is behind the game in one place:** the quick actions' Order list and the eight extra buttons exist in the game but not in the UI canvas (its `QA` list, the `quick` case of the piece renderer and the `quick` rows of `renderProps`). Add them there: `items` in the layout JSON, a sortable list under "Buttons".
 1. **Known rough edges:**
    - A popup that follows a list screen (e.g. the vehicle screen's "too dark" message) shows over the map, not over the list: the list's window is closed by then.
    - Compare ends in upstream's two-column text window; Describe (look-around) opens upstream's text screen. Both are readable in landscape only.
