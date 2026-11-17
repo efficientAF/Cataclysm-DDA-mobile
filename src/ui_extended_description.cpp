@@ -9,6 +9,7 @@
 #include "creature_tracker.h"
 #include "map.h"
 #include "mapdata.h"
+#include "mobile_describe.h"
 #include "point.h"
 #include "string_formatter.h"
 #include "text.h"
@@ -237,6 +238,11 @@ cataimgui::bounds extended_description_window::get_bounds()
 
 void extended_description_window::show()
 {
+    // Mobile UI: a full-screen page of the same texts
+    if( mobile_describe::wanted() ) {
+        mobile_show();
+        return;
+    }
     while( true ) {
         ui_manager::redraw_invalidated();
         std::string action = ctxt.handle_input();

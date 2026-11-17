@@ -33,6 +33,7 @@
 #include "map.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_list.h"
 #include "monster.h"
 #include "npc.h"
 #include "options.h"
@@ -1195,13 +1196,18 @@ void surroundings_menu::draw_examine_info()
 void surroundings_menu::execute()
 {
     while( true ) {
+        // Mobile UI: upstream's window stays out of sight
+        hide_ui = hide_ui || mobile_list::wanted();
         update_path_end();
         g->invalidate_main_ui_adaptor();
 
         ui_manager::redraw();
 
         std::string action;
-        if( has_button_action() ) {
+        // Mobile UI: the phone's list screen chooses the action
+        if( mobile_list::wanted() ) {
+            action = mobile_action();
+        } else if( has_button_action() ) {
             action = get_button_action();
         } else {
             action = get_selected_data()->ctxt.handle_input();
