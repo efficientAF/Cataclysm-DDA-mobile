@@ -50,6 +50,7 @@ enum class drawer_id : int {
     info,
     log,
     actions,
+    nearby,
     num
 };
 

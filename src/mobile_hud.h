@@ -46,6 +46,8 @@ enum class hit_kind : int {
     map_drawer,
     // open the Actions drawer
     actions_drawer,
+    // open the Nearby drawer
+    nearby_drawer,
     // show or hide the movement pad
     pad_toggle,
     // the movement pad itself

@@ -3321,9 +3321,13 @@ bool game::handle_action()
             destination_preview.clear();
             // Mobile UI: the pause sheet first; it can still open the full menu
             // or the Actions drawer, if its handle was what was tapped
-            act = !mobile_menu::enabled() ? ACTION_ACTIONMENU :
-                  mobile_drawer::take_actions_request() ? mobile_drawer::show( mobile_drawer::drawer::actions ) :
-                  mobile_menu::pause_sheet();
+            if( !mobile_menu::enabled() ) {
+                act = ACTION_ACTIONMENU;
+            } else if( const std::optional<mobile_drawer::drawer> drawer = mobile_drawer::take_request() ) {
+                act = mobile_drawer::show( *drawer );
+            } else {
+                act = mobile_menu::pause_sheet();
+            }
             if( act == ACTION_ACTIONMENU ) {
                 act = handle_action_menu( here );
             }

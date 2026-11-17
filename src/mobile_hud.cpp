@@ -686,7 +686,7 @@ static void draw_drawer_handles()
         handle_rects[i] = rect;
         const bool horizontal = cfg.edge == screen_edge::top || cfg.edge == screen_edge::bottom;
         const char *const icon = id == drawer_id::info ? "person" : id == drawer_id::log ? "globe" :
-                                 "bolt";
+                                 id == drawer_id::actions ? "bolt" : "pickup";
         fill_round( rect, 12.0f * unit, col_panel_solid );
         stroke_round( rect, 12.0f * unit, std::max( 1.0f, unit ), col_line );
         const float icon_size = 16.0f * unit;
@@ -708,7 +708,8 @@ static void draw_drawer_handles()
         target.h += 2.0f * grow;
         // the Log drawer's handle opens straight onto its map
         add_button( target, id == drawer_id::info ? hit_kind::action : id == drawer_id::log ?
-                    hit_kind::map_drawer : hit_kind::actions_drawer,
+                    hit_kind::map_drawer : id == drawer_id::actions ? hit_kind::actions_drawer :
+                    hit_kind::nearby_drawer,
                     id == drawer_id::info ? ACTION_PL_INFO : id == drawer_id::log ? ACTION_MESSAGES :
                     ACTION_ACTIONMENU );
     }

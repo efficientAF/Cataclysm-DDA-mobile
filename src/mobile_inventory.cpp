@@ -1639,6 +1639,35 @@ drop_locations pick_up_from( const std::set<tripoint_bub_ms> &targets )
     return picked;
 }
 
+std::vector<nearby_item> nearby_items()
+{
+    std::vector<nearby_item> items;
+    for( const entry &e : read_nearby( get_avatar(), {} ) ) {
+        nearby_item item;
+        item.name = e.quantity.empty() ? e.name : e.quantity + " " + e.name;
+        item.detail = e.meta_top;
+        if( !e.meta_bottom.empty() ) {
+            item.detail += ( item.detail.empty() ? "" : " · " ) + e.meta_bottom;
+        }
+        item.symbol = e.symbol;
+        item.color = e.color;
+        item.locs = e.locs;
+        items.push_back( item );
+    }
+    return items;
+}
+
+std::string pick_up_now( const std::vector<item_location> &locs )
+{
+    const drop_locations what = pick_up_what_fits( locs );
+    if( !what.empty() ) {
+        get_avatar().pick_up( what );
+    }
+    const std::string said = state.notice;
+    state.notice.clear();
+    return said;
+}
+
 } // namespace mobile_inventory
 
 #else // !TILES
@@ -1653,6 +1682,16 @@ void show( tab )
 drop_locations pick_up_from( const std::set<tripoint_bub_ms> & )
 {
     return drop_locations();
+}
+
+std::vector<nearby_item> nearby_items()
+{
+    return {};
+}
+
+std::string pick_up_now( const std::vector<item_location> & )
+{
+    return std::string();
 }
 
 } // namespace mobile_inventory

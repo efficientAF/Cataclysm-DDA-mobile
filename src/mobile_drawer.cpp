@@ -27,6 +27,7 @@
 #include "item_location.h"
 #include "line.h"
 #include "messages.h"
+#include "mobile_inventory.h"
 #include "mobile_hud_layout.h"
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
@@ -37,6 +38,7 @@
 #include "string_formatter.h"
 #include "translations.h"
 #include "type_id.h"
+#include "uistate.h"
 #include "ui_manager.h"
 #include "units.h"
 #include "units_utility.h"
@@ -97,6 +99,8 @@ enum class block_kind : int {
     minimap,
     // a grid of buttons, one per action
     actions,
+    // what lies nearby: buttons for all of it, then a row per item
+    items,
 };
 
 struct pill {
@@ -121,6 +125,8 @@ struct block {
     std::vector<int> notes;
     // actions: what each button does, and its name
     std::vector<std::pair<action_id, std::string>> actions;
+    // items: what lies nearby
+    std::vector<mobile_inventory::nearby_item> items;
 };
 
 struct tab {
@@ -515,9 +521,22 @@ std::vector<tab> actions_tabs()
     };
 }
 
+tab nearby_tab()
+{
+    tab t;
+    t.label = _( "Nearby" );
+    block b;
+    b.kind = block_kind::items;
+    b.items = mobile_inventory::nearby_items();
+    t.blocks.push_back( b );
+    return t;
+}
+
 // set by open_on_map()
 static bool start_on_map = false;
-static bool actions_requested = false;
+static std::optional<drawer> requested;
+// what the last pick-up from the Nearby drawer had to say
+static std::string nearby_note;
 // the tab the Actions drawer was left on
 static int actions_page = 0;
 
@@ -535,6 +554,8 @@ class drawer_window : public cataimgui::window
             } else if( which == drawer::actions ) {
                 tabs = actions_tabs();
                 current = std::clamp( actions_page, 0, static_cast<int>( tabs.size() ) - 1 );
+            } else if( which == drawer::nearby ) {
+                tabs = { nearby_tab() };
             } else {
                 tabs = { log_tab(), map_tab() };
                 if( start_on_map ) {
@@ -548,6 +569,18 @@ class drawer_window : public cataimgui::window
         bool open_map = false;
         // the button tapped in the Actions drawer
         action_id chosen = ACTION_NULL;
+        // Nearby drawer: the row tapped, or -2 for "Pick up all"; -1 for none
+        int picked = -1;
+        std::vector<item_location> picked_locs() const {
+            std::vector<item_location> locs;
+            const std::vector<mobile_inventory::nearby_item> &items = tabs.front().blocks.front().items;
+            for( size_t i = 0; i < items.size(); ++i ) {
+                if( picked == -2 || picked == static_cast<int>( i ) ) {
+                    locs.insert( locs.end(), items[i].locs.begin(), items[i].locs.end() );
+                }
+            }
+            return locs;
+        }
         int page() const {
             return current;
         }
@@ -649,6 +682,10 @@ float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float w
                 height = static_cast<float>( rows ) * 54.0f * u;
                 break;
             }
+            case block_kind::items:
+                height = 56.0f * u + ( nearby_note.empty() ? 0.0f : 40.0f * u ) +
+                         std::max<float>( 1.0f, static_cast<float>( b.items.size() ) ) * 52.0f * u;
+                break;
             case block_kind::minimap:
                 // square, as large as fits with the place name and the button under it
                 height = std::max( 96.0f * u, std::min( width, ImGui::GetWindowSize().y -
@@ -789,6 +826,72 @@ float drawer_window::draw_blocks( const tab &t, const ImVec2 &pos, const float w
                 draw->AddRect( ImVec2( pos.x, y ), map_max, mobile_ui::col_line, 8.0f * u, 0, hairline );
                 break;
             }
+            case block_kind::items: {
+                // everything at once, or the full screen with search and details
+                const float half = ( width - 8.0f * u ) * 0.5f;
+                const auto top_button = [&]( const char *const id, const float x, const std::string & label,
+                const bool primary, const bool enabled ) {
+                    bool held = false;
+                    const bool hit = enabled &&
+                                     mobile_ui::pressable( id, ImVec2( x, y ), ImVec2( half, 46.0f * u ), &held );
+                    mobile_ui::box( draw, ImVec2( x, y ), ImVec2( x + half, y + 46.0f * u ),
+                                    primary ? ( !enabled ? IM_COL32( 240, 145, 63, 70 ) : held ?
+                                                mobile_ui::col_accent_down : mobile_ui::col_accent ) :
+                                    ( held ? mobile_ui::col_button_down : IM_COL32( 255, 255, 255, 15 ) ),
+                                    primary ? 0 : mobile_ui::col_line, 11.0f );
+                    const ImVec2 label_px = mobile_ui::text_size( face::bold, 13.5f, label );
+                    mobile_ui::text( draw, face::bold, 13.5f, ImVec2( x + ( half - label_px.x ) * 0.5f,
+                                     y + ( 46.0f * u - label_px.y ) * 0.5f ),
+                                     primary ? mobile_ui::col_on_accent : mobile_ui::col_fg, label );
+                    return hit;
+                };
+                if( top_button( "##nearby_all", pos.x, _( "Pick up all" ), true, !b.items.empty() ) ) {
+                    picked = -2;
+                }
+                if( top_button( "##nearby_list", pos.x + half + 8.0f * u, _( "Full list" ), false, true ) ) {
+                    chosen = ACTION_PICKUP;
+                }
+                float row_y = y + 56.0f * u;
+                if( !nearby_note.empty() ) {
+                    mobile_ui::text( draw, face::body, 12.0f, ImVec2( pos.x, row_y ),
+                                     IM_COL32( 216, 187, 66, 255 ), nearby_note, width );
+                    row_y += 40.0f * u;
+                }
+                if( b.items.empty() ) {
+                    mobile_ui::text( draw, face::body, text_px, ImVec2( pos.x, row_y + 14.0f * u ),
+                                     mobile_ui::col_muted, _( "Nothing to pick up here." ) );
+                }
+                for( size_t n = 0; n < b.items.size(); ++n ) {
+                    const mobile_inventory::nearby_item &item = b.items[n];
+                    bool held = false;
+                    if( mobile_ui::pressable( "##nearby_item" + std::to_string( n ), ImVec2( pos.x - 6.0f * u,
+                                              row_y ), ImVec2( width + 12.0f * u, 52.0f * u ), &held ) ) {
+                        picked = static_cast<int>( n );
+                    }
+                    if( held ) {
+                        draw->AddRectFilled( ImVec2( pos.x - 6.0f * u, row_y ),
+                                             ImVec2( pos.x + width + 6.0f * u, row_y + 52.0f * u ),
+                                             mobile_ui::col_button_down, 8.0f * u );
+                    }
+                    const ImVec2 icon_min( pos.x, row_y + 9.0f * u );
+                    mobile_ui::box( draw, icon_min, ImVec2( icon_min.x + 34.0f * u, icon_min.y + 34.0f * u ),
+                                    IM_COL32( 8, 10, 7, 255 ), mobile_ui::col_line, 9.0f );
+                    const ImVec2 symbol_px = mobile_ui::text_size( face::mono, 16.0f, item.symbol );
+                    mobile_ui::text( draw, face::mono, 16.0f,
+                                     ImVec2( icon_min.x + ( 34.0f * u - symbol_px.x ) * 0.5f,
+                                             icon_min.y + ( 34.0f * u - symbol_px.y ) * 0.5f ), item.color, item.symbol );
+                    const float text_x = pos.x + 44.0f * u;
+                    const float text_w = width - 44.0f * u;
+                    mobile_ui::text( draw, face::bold, 14.0f, ImVec2( text_x, row_y + 8.0f * u ),
+                                     mobile_ui::col_fg, fit( face::bold, 14.0f, item.name, text_w ) );
+                    mobile_ui::text( draw, face::body, 12.0f, ImVec2( text_x, row_y + 28.0f * u ),
+                                     mobile_ui::col_muted, fit( face::body, 12.0f, item.detail, text_w ) );
+                    row_y += 52.0f * u;
+                    draw->AddLine( ImVec2( pos.x, row_y ), ImVec2( pos.x + width, row_y ),
+                                   IM_COL32( 255, 255, 255, 13 ), hairline );
+                }
+                break;
+            }
             case block_kind::actions: {
                 const int columns = width > 420.0f * u ? 3 : 2;
                 const float gap = 6.0f * u;
@@ -853,7 +956,8 @@ void drawer_window::draw_controls()
     // Where the drawer sits: the edge and depth of the HUD layout in use.
     const mobile_hud::drawer &cfg = mobile_hud::active_layout( landscape )[which == drawer::log ?
                                           mobile_hud::drawer_id::log : which == drawer::actions ?
-                                          mobile_hud::drawer_id::actions : mobile_hud::drawer_id::info];
+                                          mobile_hud::drawer_id::actions : which == drawer::nearby ?
+                                          mobile_hud::drawer_id::nearby : mobile_hud::drawer_id::info];
     const mobile_hud::screen_edge from = cfg.edge;
     using edge = mobile_hud::screen_edge;
     ImVec2 min;
@@ -987,7 +1091,7 @@ action_id show( const drawer which )
     ctxt.register_action( "RIGHT" );
     ctxt.register_action( "ANY_INPUT" );
     ctxt.register_action( "TIMEOUT" );
-    while( !window.closed && !window.open_map && window.chosen == ACTION_NULL ) {
+    while( !window.closed && !window.open_map && window.chosen == ACTION_NULL && window.picked == -1 ) {
         ui_manager::redraw();
         // while the drawer slides in, redraw without waiting for input
         if( window.sliding() ) {
@@ -1008,6 +1112,22 @@ action_id show( const drawer which )
     if( which == drawer::actions ) {
         actions_page = window.page();
     }
+    if( which == drawer::nearby ) {
+        nearby_note.clear();
+        if( window.picked != -1 ) {
+            nearby_note = mobile_inventory::pick_up_now( window.picked_locs() );
+            // Picking up takes game time.  The drawer comes back afterwards
+            // while there is more to take, so that things can be tapped in turn.
+            if( window.picked >= 0 ) {
+                uistate.open_menu = []() {
+                    if( !mobile_inventory::nearby_items().empty() &&
+                        show( drawer::nearby ) == ACTION_PICKUP ) {
+                        mobile_inventory::show( mobile_inventory::tab::nearby );
+                    }
+                };
+            }
+        }
+    }
     return window.open_map ? ACTION_MAP : window.chosen;
 }
 
@@ -1016,15 +1136,15 @@ void open_on_map()
     start_on_map = true;
 }
 
-void request_actions()
+void request( const drawer which )
 {
-    actions_requested = true;
+    requested = which;
 }
 
-bool take_actions_request()
+std::optional<drawer> take_request()
 {
-    const bool was = actions_requested;
-    actions_requested = false;
+    const std::optional<drawer> was = requested;
+    requested.reset();
     return was;
 }
 
@@ -1039,13 +1159,13 @@ void open_on_map()
 {
 }
 
-void request_actions()
+void request( drawer )
 {
 }
 
-bool take_actions_request()
+std::optional<drawer> take_request()
 {
-    return false;
+    return std::nullopt;
 }
 
 #endif // TILES

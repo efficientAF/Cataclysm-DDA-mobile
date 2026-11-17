@@ -20,7 +20,7 @@ static constexpr std::array<piece_id, num_pieces> all_pieces = { {
         piece_id::quick, piece_id::zoom, piece_id::recenter, piece_id::joy, piece_id::pan
     }
 };
-static constexpr std::array<drawer_id, num_drawers> all_drawers = { { drawer_id::info, drawer_id::log, drawer_id::actions } };
+static constexpr std::array<drawer_id, num_drawers> all_drawers = { { drawer_id::info, drawer_id::log, drawer_id::actions, drawer_id::nearby } };
 
 const char *json_name( const piece_id id )
 {
@@ -53,7 +53,8 @@ const char *json_name( const piece_id id )
 
 const char *json_name( const drawer_id id )
 {
-    return id == drawer_id::info ? "info" : id == drawer_id::log ? "logd" : "actions";
+    return id == drawer_id::info ? "info" : id == drawer_id::log ? "logd" :
+           id == drawer_id::actions ? "actions" : "nearby";
 }
 
 std::string display_name( const piece_id id )
@@ -88,7 +89,7 @@ std::string display_name( const piece_id id )
 std::string display_name( const drawer_id id )
 {
     return id == drawer_id::info ? _( "Info drawer" ) : id == drawer_id::log ? _( "Log drawer" ) :
-           _( "Actions drawer" );
+           id == drawer_id::actions ? _( "Actions drawer" ) : _( "Nearby drawer" );
 }
 
 insets canvas_insets( const bool landscape )
@@ -262,6 +263,7 @@ static preset make_balanced()
     p[drawer_id::info] = { true, screen_edge::right, 0.42f, 0.8f };
     p[drawer_id::log] = { true, screen_edge::left, 0.5f, 0.8f };
     p[drawer_id::actions] = { true, screen_edge::right, 0.62f, 0.8f };
+    p[drawer_id::nearby] = { true, screen_edge::left, 0.68f, 0.8f };
 
     layout &l = b.landscape;
     l[piece_id::location] = make_piece( true, anchor::top_left, 58, 12 );
@@ -289,6 +291,7 @@ static preset make_balanced()
     l[drawer_id::info] = { true, screen_edge::top, 0.5f, 0.72f };
     l[drawer_id::log] = { true, screen_edge::left, 0.42f, 0.42f };
     l[drawer_id::actions] = { true, screen_edge::right, 0.5f, 0.5f };
+    l[drawer_id::nearby] = { true, screen_edge::left, 0.76f, 0.42f };
     return b;
 }
 
