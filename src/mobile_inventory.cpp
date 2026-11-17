@@ -165,6 +165,8 @@ struct screen_state {
     std::string title;
     // the newest message before an action that closed the screen for a while
     std::optional<std::string> message_before;
+    // something the screen itself has to say, shown instead of the game's last message
+    std::string notice;
     bool select_wielded = false;
 };
 
@@ -609,18 +611,21 @@ static drop_locations pick_up_what_fits( const std::vector<item_location> &locs 
     } );
     if( left.size() == 1 && fits.empty() && !you.is_armed() &&
         you.can_wield( *left.front() ).success() ) {
-        add_msg( m_info, _( "Nothing you wear has room for the %s, so you hold it." ),
-                 left.front()->tname() );
+        state.notice = string_format( _( "Nothing you wear has room for the %s, so you hold it." ),
+                                      remove_color_tags( left.front()->tname() ) );
         you.wield( left.front() );
     } else if( left.size() == 1 ) {
-        add_msg( m_info,
-                 _( "No room for the %s.  Wield it or wear it, or wear something that can hold it." ),
-                 left.front()->tname() );
+        state.notice = string_format(
+                           _( "No room for the %s.  Wield it or wear it, or wear something that can hold it." ),
+                           remove_color_tags( left.front()->tname() ) );
     } else if( !left.empty() ) {
-        add_msg( m_info, n_gettext(
-                     "%d thing has no room.  Wield it or wear it, or wear something that can hold it.",
-                     "%d things have no room.  Wield or wear them, or wear something that can hold them.",
-                     left.size() ), static_cast<int>( left.size() ) );
+        state.notice = string_format( n_gettext(
+                                          "%d thing has no room.  Wield it or wear it, or wear something that can hold it.",
+                                          "%d things have no room.  Wield or wear them, or wear something that can hold them.",
+                                          left.size() ), static_cast<int>( left.size() ) );
+    }
+    if( !state.notice.empty() ) {
+        add_msg( m_info, "%s", state.notice );
     }
     return fits;
 }
@@ -1557,6 +1562,10 @@ void show( const tab start )
         state.toast = now != *state.message_before ? now : std::string();
         state.message_before.reset();
     }
+    if( !state.notice.empty() ) {
+        state.toast = state.notice;
+        state.notice.clear();
+    }
     while( true ) {
         request req = ask();
         // The screen is gone now, so that upstream's prompts and menus can show.
@@ -1571,6 +1580,10 @@ void show( const tab start )
         perform( req );
         const std::string after = last_message();
         state.toast = after != before ? after : std::string();
+        if( !state.notice.empty() && !( you.activity || you.get_moves() <= 0 ) ) {
+            state.toast = state.notice;
+            state.notice.clear();
+        }
         if( you.activity || you.get_moves() <= 0 || you.is_dead_state() ) {
             // Game time has to pass.  Come back when the avatar can act again,
             // unless the action was one that leaves for the game anyway.
@@ -1621,6 +1634,8 @@ drop_locations pick_up_from( const std::set<tripoint_bub_ms> &targets )
             perform( req );
         }
     }
+    // the caller's pick-up says the rest in the log
+    state.notice.clear();
     return picked;
 }
 

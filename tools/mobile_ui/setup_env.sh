@@ -37,5 +37,7 @@ cd "$START"
 if [ -d Cataclysm-DDA-mobile/android ]; then
   echo "sdk.dir=$SDK" > Cataclysm-DDA-mobile/android/local.properties
 fi
+# picture tilesets, for the desktop game and bundled into the APK
+[ -d Cataclysm-DDA-mobile/gfx ] && bash Cataclysm-DDA-mobile/tools/mobile_ui/fetch_tilesets.sh || true
 echo "setup done"
 exit 0
