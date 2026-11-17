@@ -81,6 +81,24 @@ class own_controls
         const input_context *ctxt;
 };
 
+// Buttons for keys that a screen reads by hand, without registering actions
+// (the debug message screen: space, I, C).  Keep one next to the input context
+// that is on top while the screen waits.
+class extra_keys
+{
+    public:
+        struct key {
+            int code;
+            std::string label;
+        };
+        extra_keys( const input_context &ctxt, const std::vector<key> &keys );
+        ~extra_keys();
+        extra_keys( const extra_keys & ) = delete;
+        extra_keys &operator=( const extra_keys & ) = delete;
+    private:
+        const input_context *ctxt;
+};
+
 #if defined(TILES)
 
 // Draws the bar over the finished UI frame.  Called at the end of every ImGui

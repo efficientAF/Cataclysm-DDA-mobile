@@ -35,7 +35,9 @@
 #include "filesystem.h"
 #include "get_version.h"
 #include "input.h"
+#include "input_context.h"
 #include "loading_ui.h"
+#include "mobile_prompt.h"
 #include "mod_manager.h"
 #include "options.h"
 #include "output.h"
@@ -401,6 +403,16 @@ static void debug_error_prompt(
     ctxt.register_manual_key( 'C' );
     ctxt.register_manual_key( 'I' );
     ctxt.register_manual_key( ' ' );
+#else
+    // Mobile UI: the same three keys as buttons on a desktop build with the
+    // mobile options on (a Steam Deck has no keyboard either)
+    input_context ctxt( "DEBUG_MSG", keyboard_mode::keycode );
+    const mobile_prompt::extra_keys mobile_keys( ctxt, {
+        { ' ', _( "Continue" ) }, { 'I', _( "Ignore from now on" ) },
+#if defined(TILES)
+        { 'C', _( "Copy" ) },
+#endif
+    } );
 #endif
     for( bool stop = false; !stop; ) {
         ui_manager::redraw();
