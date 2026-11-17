@@ -18,6 +18,7 @@
 #include "character.h"
 #include "character_attire.h"
 #include "creature.h"
+#include "debug.h"
 #include "effect.h"
 #include "flag.h"
 #include "game_inventory.h"
@@ -39,6 +40,8 @@ static const bodygraph_id bodygraph_full_body( "full_body" );
 
 static const flag_id json_flag_HIDDEN( "HIDDEN" );
 
+static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
+
 namespace mobile_body
 {
 
@@ -58,6 +61,14 @@ std::string join( const std::vector<std::string> &parts, const std::string &with
         out += part;
     }
     return out;
+}
+
+std::string trimmed( std::string text )
+{
+    while( !text.empty() && ( text.back() == '\n' || text.back() == ' ' ) ) {
+        text.pop_back();
+    }
+    return text;
 }
 
 std::string hp_bar( const int cur, const int max )
@@ -144,7 +155,10 @@ mobile_list::row medical_row( const Character &you, const bodypart_id &part )
         marks.emplace_back( _( "Broken" ) );
     }
     for( const effect &eff : you.get_effects_from_bp( part ) ) {
-        const std::string name = eff.disp_name();
+        std::string name = eff.get_speed_name();
+        if( name.empty() ) {
+            name = eff.disp_name();
+        }
         if( !name.empty() ) {
             marks.push_back( name );
         }
@@ -171,11 +185,12 @@ mobile_list::row medical_row( const Character &you, const bodypart_id &part )
     r.right = health;
     r.current = broken || wounded || !marks.empty();
     r.description = string_format( "%s\n%s\n\n%s\n%s\n\n%s\n%s", _( "Limb Effects:" ),
-                                   medical_ui::get_limb_effects( you, part ),
-                                   _( "Limb Wounds:" ), medical_ui::get_limb_wounds( you, part ),
+                                   trimmed( medical_ui::get_limb_effects( you, part ) ),
+                                   _( "Limb Wounds:" ), trimmed( medical_ui::get_limb_wounds( you, part ) ),
                                    _( "Limb Scores/Modifiers:" ),
-                                   medical_ui::get_limb_scores_and_modifiers( you, part ) );
-    if( wounded ) {
+                                   trimmed( medical_ui::get_limb_scores_and_modifiers( you, part ) ) );
+    // upstream offers its debug wound menu on any limb
+    if( wounded || debug_mode || you.has_trait( trait_DEBUG_HS ) ) {
         r.action = _( "Treat wounds" );
     }
     return r;
@@ -292,7 +307,8 @@ std::string part_encumbrance_text( const Character &guy, const bodypart_id &bp )
     const int total = guy.get_part_encumbrance( bp );
     const int layers = guy.get_part_layer_penalty( bp );
     //~ %1$s: body part, %2$d: encumbrance from what is worn, %3$d: extra encumbrance from layering
-    return string_format( _( "%1$s encumbrance: %2$d + %3$d" ), body_part_name_as_heading( bp, 1 ),
+    return string_format( _( "%1$s encumbrance: %2$d + %3$d" ),
+                          uppercase_first_letter( body_part_name( bp, 1 ) ),
                           total - layers, layers );
 }
 
@@ -370,7 +386,7 @@ std::optional<bodypart_id> encumbrance_list( Character &guy )
         }
         done.insert( bp );
         mobile_list::row r;
-        r.name = body_part_name_as_heading( bp, both ? 2 : 1 );
+        r.name = uppercase_first_letter( body_part_name( bp, both ? 2 : 1 ) );
         const int total = guy.get_part_encumbrance( bp );
         const int layers = guy.get_part_layer_penalty( bp );
         r.right = string_format( "%d + %d", total - layers, layers );
@@ -465,7 +481,7 @@ void sort_armor( Character &guy )
         for( const bodypart_id &bp : guy.get_all_body_parts( get_body_part_flags::sorted ) ) {
             if( !worn.filter_by_bodypart( bp ).empty() ) {
                 tab_parts.push_back( bp );
-                what.tabs.push_back( body_part_name_as_heading( bp, 1 ) );
+                what.tabs.push_back( uppercase_first_letter( body_part_name( bp, 1 ) ) );
             }
         }
         int tab = 0;
@@ -616,10 +632,12 @@ void morale( const morale_data &data )
     what.header = string_format( "%s %s  ·  %s %d", _( "Total morale:" ), signed_or_dash( data.total ),
                                  _( "Focus trends towards:" ), data.focus_equilibrium );
     what.empty_text = _( "Nothing affects your morale" );
-    const auto caption = [&what]( const std::string & name, const std::string & value ) {
+    const auto caption = [&what]( const std::string & name, const std::string & value,
+    const std::string & description ) {
         mobile_list::row r;
         r.name = name;
         r.right = value;
+        r.description = description;
         r.current = true;
         what.rows.push_back( r );
     };
@@ -634,13 +652,16 @@ void morale( const morale_data &data )
         }
     };
     if( !data.positive.empty() || !data.negative.empty() ) {
-        caption( _( "Total positive morale" ), signed_or_dash( data.total_positive ) );
+        caption( _( "Total positive morale" ), signed_or_dash( data.total_positive ),
+                 _( "Everything that lifts your morale, added up.  The sources follow, each with its share." ) );
         sources( data.positive, _( "This is %d%% of what lifts your morale." ) );
-        caption( _( "Total negative morale" ), signed_or_dash( -data.total_negative ) );
+        caption( _( "Total negative morale" ), signed_or_dash( -data.total_negative ),
+                 _( "Everything that lowers your morale, added up.  The sources follow, each with its share." ) );
         sources( data.negative, _( "This is %d%% of what lowers your morale." ) );
     }
     // upstream's bottom lines
-    caption( _( "Total morale:" ), signed_or_dash( data.total ) );
+    caption( _( "Total morale:" ), signed_or_dash( data.total ),
+             _( "Your morale as the game uses it.  It pulls your focus up or down." ) );
     const auto line = [&what]( const std::string & name, const std::string & value ) {
         mobile_list::row r;
         r.name = name;
