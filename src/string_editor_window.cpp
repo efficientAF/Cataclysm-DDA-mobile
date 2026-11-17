@@ -24,6 +24,7 @@
 #include "input.h"
 #include "input_context.h"
 #include "input_enums.h"
+#include "mobile_diary.h"
 #include "output.h"
 #include "ui_manager.h"
 #include "unicode.h"
@@ -363,6 +364,12 @@ void string_editor_window::cursor_updown( const int diff )
 
 std::pair<bool, std::string> string_editor_window::query_string()
 {
+    // Mobile UI: a full-screen card with a field of many lines
+    if( mobile_diary::wanted() ) {
+        std::pair<bool, std::string> result = mobile_diary::edit_text( _utext.str() );
+        _utext = utf8_wrapper( result.second );
+        return result;
+    }
     if( !ctxt ) {
         create_context();
     }

@@ -11,6 +11,7 @@
 #include "cursesdef.h"
 #include "diary.h"
 #include "input_context.h"
+#include "mobile_list.h"
 #include "output.h"
 #include "point.h"
 #include "scores_ui.h"
@@ -174,6 +175,11 @@ static std::pair<point, point> diary_window_position()
 
 void diary::show_diary_ui( diary *c_diary )
 {
+    // Mobile UI: a list screen with one row per page
+    if( mobile_list::wanted() ) {
+        mobile_show( c_diary );
+        return;
+    }
     catacurses::window w_diary;
     catacurses::window w_pages;
     catacurses::window w_text;

@@ -24,6 +24,7 @@
 #include "kill_tracker.h"
 #include "magic.h"
 #include "mission.h"
+#include "mobile_diary.h"
 #include "mtype.h"
 #include "mutation.h"
 #include "output.h"
@@ -515,6 +516,8 @@ void diary::death_entry()
 {
     bool lasttime = query_yn( _( "Open diary for the last time?" ) );
     if( lasttime ) {
+        // Mobile UI: the diary opens on the text of a new page
+        mobile_diary::write_first();
         show_diary_ui( this );
     }
     export_to_txt( true );

@@ -15,6 +15,11 @@ namespace mobile_death
 // what killed the avatar, where and when, while that is still known.
 void note_death();
 
+// A page of text on the way to the death screen, in its look: a small label
+// (e.g. "EPILOGUE"), a title, the text, and a Continue button.  Stands in for
+// upstream's scrollable_text for the epilogues of followers and factions.
+void show_page( const std::string &label, const std::string &title, const std::string &text );
+
 // Shows the screen and waits for a choice.  Sends the avatar's death, with the
 // last words, to the event bus, as the tombstone screen does.
 void show();
