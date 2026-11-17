@@ -489,7 +489,12 @@ void page_window::draw_controls()
 
 void show_page( const std::string &label, const std::string &title, const std::string &text )
 {
-    page_window window( label, remove_color_tags( title ), remove_color_tags( text ) );
+    // upstream's texts are indented for its text window
+    std::string body = remove_color_tags( text );
+    const size_t from = body.find_first_not_of( " \n" );
+    const size_t to = body.find_last_not_of( " \n" );
+    body = from == std::string::npos ? std::string() : body.substr( from, to - from + 1 );
+    page_window window( label, remove_color_tags( title ), body );
     input_context ctxt( "default" );
     const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );

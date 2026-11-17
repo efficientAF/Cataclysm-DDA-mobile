@@ -620,7 +620,8 @@ std::vector<tab> actions_tabs()
         } ),
     };
     // on "You", after the diary, which is the only other way to it
-    tabs[4].blocks.front().actions.emplace_back( action_scores, _( "Scores" ) );
+    tabs[4].blocks.front().actions.emplace_back( action_scores,
+            _( "View achievements, scores, and kills" ) );
     return tabs;
 }
 
