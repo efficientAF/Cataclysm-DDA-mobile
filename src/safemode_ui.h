@@ -114,6 +114,8 @@ class safemode
 
         void show();
         void show( const std::string &custom_name_in, bool is_safemode_in );
+        // Mobile UI: the manager as a list screen, defined in mobile_rules.cpp
+        void mobile_show( const std::string &custom_name_in, bool is_safemode_in );
 
         bool save_character();
         bool save_global();

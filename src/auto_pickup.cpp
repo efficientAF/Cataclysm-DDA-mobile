@@ -33,6 +33,8 @@
 #include "map.h"
 #include "map_selector.h"
 #include "material.h"
+#include "mobile_list.h"
+#include "mobile_rules.h"
 #include "options.h"
 #include "output.h"
 #include "path_info.h"
@@ -308,6 +310,11 @@ drop_locations auto_pickup::select_items(
 void user_interface::show()
 {
     if( tabs.empty() ) {
+        return;
+    }
+    // Mobile UI: the rules as a list screen, which also asks to save
+    if( mobile_list::wanted() ) {
+        mobile_rules::pickup_rules( *this );
         return;
     }
 
@@ -608,6 +615,15 @@ void rule::test_pattern() const
         }
 
         vMatchingItems.push_back( sItemName );
+    }
+
+    // Mobile UI: the matches as a list screen
+    if( mobile_list::wanted() ) {
+        const int found = static_cast<int>( vMatchingItems.size() );
+        mobile_rules::show_matches( string_format( n_gettext( "%1$d item matches: %2$s",
+                                    "%1$d items match: %2$s", found ), found, sRule ),
+                                    vMatchingItems, _( "Won't display content or suffix matches" ) );
+        return;
     }
 
     int iStartPos = 0;
