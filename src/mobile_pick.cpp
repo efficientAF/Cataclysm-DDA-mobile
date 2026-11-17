@@ -17,11 +17,14 @@
 #include "game.h"
 #include "imgui/imgui.h"
 #include "input_context.h"
+#include "item.h"
 #include "map.h"
+#include "map_selector.h"
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "output.h"
 #include "point.h"
+#include "string_formatter.h"
 #include "translations.h"
 #include "ui_manager.h"
 #endif
@@ -255,6 +258,101 @@ void ring_window::draw_controls()
 }
 } // namespace
 
+// --- Look-around ---
+
+class look_banner::impl : public cataimgui::window
+{
+    public:
+        impl() : cataimgui::window( "MOBILE_LOOK_BANNER",
+                                        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                                        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground |
+                                        ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_NoFocusOnAppearing ) {}
+        std::string title;
+        std::vector<std::string> lines;
+    protected:
+        cataimgui::bounds get_bounds() override {
+            const ImVec2 size = ImGui::GetMainViewport()->Size;
+            const float u = mobile_ui::unit();
+            const ImVec4 safe = mobile_ui::safe_insets();
+            const float w = std::min( size.x - safe.x - safe.z - 24.0f * u, 420.0f * u );
+            return { safe.x + ( size.x - safe.x - safe.z - w ) * 0.5f, safe.y + 10.0f * u, w,
+                     ( 30.0f + 18.0f * static_cast<float>( std::max<size_t>( lines.size(), 1 ) ) ) *u + 14.0f * u };
+        }
+        void draw_controls() override {
+            const float u = mobile_ui::unit();
+            ImDrawList *const draw = ImGui::GetWindowDrawList();
+            const ImVec2 min = ImGui::GetWindowPos();
+            const ImVec2 size = ImGui::GetWindowSize();
+            const ImVec2 max( min.x + size.x, min.y + size.y );
+            draw->PushClipRectFullScreen();
+            mobile_ui::box( draw, min, max, IM_COL32( 22, 27, 20, 235 ), mobile_ui::col_line, 14.0f );
+            const float wrap = size.x - 28.0f * u;
+            draw->PushClipRect( min, max, true );
+            mobile_ui::text( draw, face::bold, 15.0f, ImVec2( min.x + 14.0f * u, min.y + 9.0f * u ),
+                             mobile_ui::col_fg, title );
+            float y = min.y + 32.0f * u;
+            for( const std::string &line : lines ) {
+                mobile_ui::text( draw, face::body, 12.5f, ImVec2( min.x + 14.0f * u, y ),
+                                 mobile_ui::col_muted, line );
+                y += 18.0f * u;
+            }
+            static_cast<void>( wrap );
+            draw->PopClipRect();
+            draw->PopClipRect();
+        }
+};
+
+look_banner::look_banner() : window( std::make_unique<impl>() ) {}
+look_banner::~look_banner() = default;
+
+void look_banner::show( const tripoint_bub_ms &pos )
+{
+    map &here = get_map();
+    const avatar &you = get_avatar();
+    std::string title;
+    std::vector<std::string> lines;
+    if( !here.inbounds( pos ) || !you.sees( here, pos ) ) {
+        title = _( "Out of sight" );
+        lines.emplace_back( _( "Tap a tile to look at it.  Tap it again, or OK, to choose it." ) );
+    } else {
+        const std::string ground = here.has_furn( pos ) ?
+                                   string_format( _( "%1$s on %2$s" ), here.furnname( pos ), here.tername( pos ) ) :
+                                   here.tername( pos );
+        const Creature *const critter = get_creature_tracker().creature_at( pos );
+        if( pos == you.pos_bub() ) {
+            title = _( "You" );
+            lines.push_back( ground );
+        } else if( critter != nullptr && you.sees( here, *critter ) ) {
+            const Creature::Attitude attitude = critter->attitude_to( you );
+            title = string_format( "%s · %s", remove_color_tags( critter->get_name() ),
+                                   attitude == Creature::Attitude::HOSTILE ? _( "hostile" ) :
+                                   attitude == Creature::Attitude::FRIENDLY ? _( "friendly" ) : _( "neutral" ) );
+            lines.push_back( ground );
+        } else {
+            title = ground;
+        }
+        if( here.sees_some_items( pos, you ) ) {
+            const map_stack items = here.i_at( pos );
+            const size_t count = items.size();
+            if( count > 0 ) {
+                const std::string first = remove_color_tags( items.begin()->tname() );
+                lines.push_back( count == 1 ? string_format( _( "Item: %s" ), first ) :
+                                 string_format( _( "Items: %1$s and %2$d more" ), first,
+                                                static_cast<int>( count ) - 1 ) );
+            }
+        }
+        if( lines.empty() ) {
+            lines.emplace_back( _( "Tap a tile to look at it.  Tap it again, or OK, to choose it." ) );
+        }
+    }
+    if( title != window->title || lines != window->lines ) {
+        window->title = title;
+        window->lines = lines;
+        window->mark_resized();
+    }
+}
+
 std::optional<tripoint_rel_ms> direction( const std::string &message, const bool allow_vertical,
         const int timeout )
 {
@@ -305,6 +403,13 @@ std::optional<tripoint_rel_ms> direction( const std::string &message, const bool
 
 candidates::candidates( const tripoint_bub_ms &, const std::vector<tripoint_bub_ms> & ) {}
 candidates::~candidates() = default;
+
+class look_banner::impl
+{
+};
+look_banner::look_banner() = default;
+look_banner::~look_banner() = default;
+void look_banner::show( const tripoint_bub_ms & ) {}
 
 std::optional<tripoint_rel_ms> direction( const std::string &, bool, int )
 {

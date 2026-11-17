@@ -157,6 +157,10 @@ class picker_window : public cataimgui::window
             title = remove_color_tags( selector.mobile_title() );
             // upstream's hints for ticking are about keys; the checkboxes need none
             hint = multi != nullptr ? std::string() : remove_color_tags( selector.mobile_hint() );
+            if( hint.find( "ESC" ) != std::string::npos || hint.find( "RETURN" ) != std::string::npos ) {
+                // a line of key names
+                hint.clear();
+            }
             if( title == _( "Multidrop" ) ) {
                 title = _( "Drop" );
             }
@@ -173,6 +177,8 @@ class picker_window : public cataimgui::window
         int chosen = -1;
         // pick-many: the row whose count is to be typed in, or -1
         int ask_count = -1;
+        // the row whose item card is to be shown, or -1
+        int ask_details = -1;
         std::vector<row> rows;
         inventory_multiselector *multi_selector() const {
             return multi;
@@ -478,8 +484,13 @@ void picker_window::draw_controls()
         const bool ready = chosen >= 0 && static_cast<size_t>( chosen ) < rows.size();
         const std::string label = ready ? string_format( _( "Choose %s" ),
                                   rows[static_cast<size_t>( chosen )].name ) : _( "Tap an item" );
-        if( button( draw, "##picker_choose", button_pos, ImVec2( buttons_w, 48.0f * u ), label, true,
-                    ready ) ) {
+        const float details_w = 96.0f * u;
+        if( button( draw, "##picker_details", button_pos, ImVec2( details_w, 48.0f * u ), _( "Details" ),
+                    false, ready ) ) {
+            ask_details = chosen;
+        }
+        if( button( draw, "##picker_choose", ImVec2( button_pos.x + details_w + 8.0f * u, button_pos.y ),
+                    ImVec2( buttons_w - details_w - 8.0f * u, 48.0f * u ), label, true, ready ) ) {
             result = outcome::confirm;
         }
     }
@@ -498,6 +509,14 @@ outcome run( picker_window &window )
         ui_manager::redraw();
         if( ctxt.handle_input() == "QUIT" ) {
             return outcome::back;
+        }
+        if( window.ask_details >= 0 ) {
+            const row &r = window.rows[static_cast<size_t>( window.ask_details )];
+            window.ask_details = -1;
+            const item_location &loc = r.entry->any_item();
+            if( loc ) {
+                show_details( r.name, r.category, loc->info( true ) );
+            }
         }
         if( window.ask_count >= 0 && window.multi_selector() != nullptr ) {
             // a count typed in with the keypad
@@ -521,13 +540,121 @@ outcome run( picker_window &window )
 
 } // namespace
 
-item_location pick_one( inventory_pick_selector &selector )
+namespace
+{
+class details_window : public cataimgui::window
+{
+    public:
+        details_window( const std::string &name, const std::string &kind, const std::string &text ) :
+            cataimgui::window( "MOBILE_ITEM_CARD",
+                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                               ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground ),
+            name( name ), kind( kind ) {
+            // one paragraph per line of upstream's text; "--" lines are its dividers
+            std::string line;
+            const std::string plain = remove_color_tags( text );
+            for( size_t i = 0; i <= plain.size(); ++i ) {
+                if( i == plain.size() || plain[i] == '\n' ) {
+                    lines.push_back( line );
+                    line.clear();
+                } else {
+                    line += plain[i];
+                }
+            }
+        }
+        bool done = false;
+    protected:
+        cataimgui::bounds get_bounds() override {
+            return { 0.0f, 0.0f, 1.0f, 1.0f };
+        }
+        void draw_controls() override {
+            const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+            const ImVec2 origin = viewport->Pos;
+            const ImVec2 size = viewport->Size;
+            const float u = mobile_ui::unit();
+            const ImVec4 safe = mobile_ui::safe_insets();
+            ImDrawList *const back = ImGui::GetWindowDrawList();
+            back->PushClipRectFullScreen();
+            back->AddRectFilled( origin, ImVec2( origin.x + size.x, origin.y + size.y ),
+                                 mobile_ui::col_screen );
+            back->PopClipRect();
+            const float avail = size.x - safe.x - safe.z;
+            const float width = std::min( avail, 620.0f * u );
+            const float left = origin.x + safe.x + ( avail - width ) * 0.5f;
+            float bar_h = 0.0f;
+            if( mobile_ui::app_bar( name, ImVec2( left, origin.y + safe.y ), width, &bar_h ) ) {
+                done = true;
+            }
+            const float top = origin.y + safe.y + bar_h;
+            ImGui::SetCursorScreenPos( ImVec2( left, top ) );
+            ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+            ImGui::BeginChild( "##item_card", ImVec2( width, origin.y + size.y - safe.w - top ),
+                               ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+            ImDrawList *const draw = ImGui::GetWindowDrawList();
+            const ImVec2 base = ImGui::GetCursorScreenPos();
+            const float wrap = width - 32.0f * u;
+            const float x = base.x + 16.0f * u;
+            float y = base.y + 12.0f * u;
+            if( !kind.empty() ) {
+                mobile_ui::text( draw, face::mono, 10.5f, ImVec2( x, y ), mobile_ui::col_muted,
+                                 to_upper_case( kind ) );
+                y += 20.0f * u;
+            }
+            for( const std::string &line : lines ) {
+                if( line.empty() ) {
+                    y += 6.0f * u;
+                    continue;
+                }
+                if( line.find_first_not_of( "- " ) == std::string::npos ) {
+                    y += 6.0f * u;
+                    draw->AddLine( ImVec2( x, y ), ImVec2( x + wrap, y ), mobile_ui::col_line,
+                                   std::max( 1.0f, u ) );
+                    y += 8.0f * u;
+                    continue;
+                }
+                mobile_ui::text( draw, face::body, 14.0f, ImVec2( x, y ), mobile_ui::col_text_soft, line,
+                                 wrap );
+                y += mobile_ui::text_size( face::body, 14.0f, line, wrap ).y + 3.0f * u;
+            }
+            ImGui::SetCursorScreenPos( base );
+            ImGui::Dummy( ImVec2( 1.0f, y - base.y + 24.0f * u ) );
+            ImGui::EndChild();
+            ImGui::PopStyleVar();
+        }
+    private:
+        std::string name;
+        std::string kind;
+        std::vector<std::string> lines;
+};
+} // namespace
+
+void show_details( const std::string &name, const std::string &kind, const std::string &text )
+{
+    details_window window( remove_color_tags( name ), remove_color_tags( kind ), text );
+    input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
+    ctxt.register_action( "QUIT" );
+    ctxt.register_action( "ANY_INPUT" );
+    while( !window.done ) {
+        ui_manager::redraw();
+        if( ctxt.handle_input() == "QUIT" ) {
+            break;
+        }
+    }
+}
+
+item_location pick_one( inventory_selector &selector, inventory_entry **const entry_out )
 {
     picker_window window( selector, nullptr );
     if( run( window ) != outcome::confirm || window.chosen < 0 ) {
         return item_location();
     }
-    return window.rows[static_cast<size_t>( window.chosen )].entry->any_item();
+    inventory_entry *const entry = window.rows[static_cast<size_t>( window.chosen )].entry;
+    if( entry_out != nullptr ) {
+        *entry_out = entry;
+    }
+    return entry->any_item();
 }
 
 bool pick_many( inventory_multiselector &selector )
@@ -538,7 +665,7 @@ bool pick_many( inventory_multiselector &selector )
 
 #else // !TILES
 
-item_location pick_one( inventory_pick_selector & )
+item_location pick_one( inventory_selector &, inventory_entry ** )
 {
     return item_location();
 }
@@ -547,6 +674,8 @@ bool pick_many( inventory_multiselector & )
 {
     return false;
 }
+
+void show_details( const std::string &, const std::string &, const std::string & ) {}
 
 #endif // TILES
 

@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_MOBILE_PICK_H
 #define CATA_SRC_MOBILE_PICK_H
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -30,6 +31,24 @@ class candidates
         ~candidates();
         candidates( const candidates & ) = delete;
         candidates &operator=( const candidates & ) = delete;
+};
+
+// Look-around on the phone: upstream's loop keeps running (game::look_around),
+// with a banner at the top that says what is on the tile under the cursor in
+// place of its text window.  A tap on the map moves the cursor there; a tap on
+// the cursor's own tile confirms.  The banner takes no taps itself.
+class look_banner
+{
+    public:
+        look_banner();
+        ~look_banner();
+        look_banner( const look_banner & ) = delete;
+        look_banner &operator=( const look_banner & ) = delete;
+        // The tile the cursor is on now.
+        void show( const tripoint_bub_ms &pos );
+    private:
+        class impl;
+        std::unique_ptr<impl> window;
 };
 
 // Asks for a direction.  Returns the step from the player (zero for the

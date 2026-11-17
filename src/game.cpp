@@ -158,6 +158,7 @@
 #include "mission.h"
 #include "mobile_death.h"
 #include "mobile_menu.h"
+#include "mobile_pick.h"
 #include "mod_manager.h"
 #include "monexamine.h"
 #include "mongroup.h"
@@ -6117,8 +6118,16 @@ look_around_result game::look_around(
 
     shared_ptr_fast<draw_callback_t> ter_indicator_cb;
 
+    // Mobile UI: a banner says what is under the cursor, in place of the text window
+    std::optional<mobile_pick::look_banner> mobile_look;
+    if( show_window && mobile_pick::wanted() ) {
+        mobile_look.emplace();
+    }
     if( show_window && ui ) {
         ui->on_redraw( [&]( const ui_adaptor & ) {
+            if( mobile_look ) {
+                return;
+            }
             werase( w_info );
             draw_border( w_info );
 
@@ -6211,6 +6220,9 @@ look_around_result game::look_around(
         // Mark cata_tiles draw caches as dirty
         tilecontext->set_draw_cache_dirty();
 #endif
+        if( mobile_look ) {
+            mobile_look->show( lp );
+        }
         invalidate_main_ui_adaptor();
         ui_manager::redraw();
 
@@ -6228,6 +6240,14 @@ look_around_result game::look_around(
             action = ctxt.handle_input( scroll_timeout );
         } else {
             action = ctxt.handle_input();
+        }
+        // Mobile UI: a tap moves the cursor to the tile; a tap on the cursor's tile chooses it
+        if( mobile_look && action == "SELECT" ) {
+            const std::optional<tripoint_bub_ms> tapped = ctxt.get_coordinates( w_terrain,
+                    ter_view_p.raw().xy(), true );
+            if( tapped && tapped->xy() != lp.xy() ) {
+                action = "MOUSE_MOVE";
+            }
         }
         if( ( action == "LEVEL_UP" || action == "LEVEL_DOWN" || action == "MOUSE_MOVE" ||
               ctxt.get_direction_rel_ms( action ) ) && ( ( select_zone && has_first_point ) ||

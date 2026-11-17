@@ -87,7 +87,8 @@ void uilist::draw_controls( uilist &parent )
                 row.detail = ( column_name.empty() ? column_value : column_name + ": " + column_value ) +
                              ( row.detail.empty() ? "" : "\n" ) + row.detail;
             }
-            if( parent.desc_enabled && parent.footer_text.empty() && !entry.desc.empty() ) {
+            // what an option does goes under it, also where upstream keeps it for a pane
+            if( parent.footer_text.empty() && !entry.desc.empty() ) {
                 row.detail += ( row.detail.empty() ? "" : "\n" ) + remove_color_tags( entry.desc );
             }
             while( !row.detail.empty() && row.detail.back() == '\n' ) {

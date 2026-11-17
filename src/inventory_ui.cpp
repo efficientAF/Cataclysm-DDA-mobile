@@ -4279,6 +4279,16 @@ void ammo_inventory_selector::mod_chosen_count( inventory_entry &entry, int valu
 
 drop_location ammo_inventory_selector::execute()
 {
+    // Mobile UI: the item picker; each entry already carries how much would be loaded
+    if( mobile_picker::wanted() ) {
+        inventory_entry *entry = nullptr;
+        const item_location chosen_loc = mobile_picker::pick_one( *this, &entry );
+        last_player_adjusted = false;
+        if( !chosen_loc || entry == nullptr ) {
+            return drop_location();
+        }
+        return { chosen_loc, static_cast<int>( entry->chosen_count ) };
+    }
     shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
     debug_print_timer( tp_start );
     while( true ) {
@@ -5346,6 +5356,17 @@ std::string unload_selector::hint_string()
 
 std::pair<item_location, bool> unload_selector::execute()
 {
+    // Mobile UI: the item picker
+    if( mobile_picker::wanted() ) {
+        const item_location chosen_loc = mobile_picker::pick_one( *this );
+        if( chosen_loc ) {
+            item to_unload = *chosen_loc;
+            if( !avatar_action::check_stealing( get_player_character(), to_unload ) ) {
+                return { item_location(), uistate.unload_auto_contain };
+            }
+        }
+        return { chosen_loc, uistate.unload_auto_contain };
+    }
     shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
     item_location startDragItem;
     bool dragActive = false;

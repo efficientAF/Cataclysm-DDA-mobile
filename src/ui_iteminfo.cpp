@@ -6,6 +6,8 @@
 
 #include "color.h"
 #include "input_enums.h"
+#include "mobile_picker.h"
+#include "output.h"
 #include "translations.h"
 #include "ui_manager.h"
 
@@ -65,6 +67,14 @@ void iteminfo_window::execute()
 {
     if( data.without_getch ) {
         ui_manager::redraw();
+        return;
+    }
+    // Mobile UI: the item card instead of this window, which hides meanwhile
+    if( mobile_picker::wanted() ) {
+        hide_ui = true;
+        mobile_picker::show_details( data.get_item_name(), data.get_type_name(),
+                                     format_item_info( data.get_item_display(), data.get_item_compare() ) );
+        hide_ui = false;
         return;
     }
 
