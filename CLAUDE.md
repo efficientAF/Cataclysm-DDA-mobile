@@ -118,6 +118,8 @@ Test tips: `tools/mobile_ui/drive.sh tap` parks the real mouse on the spot first
 
 **The UI is not finished.** `tools/mobile_ui/AUDIT.md` (17 Nov 2026, from reading the code) lists every desktop screen a touch player can still reach, with file and line, a priority and a suggested order, and what a Steam Deck build (desktop Linux, touch plus controller) needs. The owner wants a full replacement and plans to try a Steam Deck. Start there. In short: the item action menu behind the inventory's "More…", the surroundings list and look-around's Describe are still desktop screens met in ordinary play; the mobile options are off by default off Android; and the mobile screens cannot be worked with a controller (no focus model).
 
+The UI canvas was brought up to date on 17 Nov 2026 (the quick actions' Order list and extra buttons, Quit game on the title screen, Save and quit game on the pause sheet); the round 3 and 4 screens have no mockups in it, only their patterns in the remaining screens plan.
+
 Also done in the fifth session: "Quit game" on the home screen (its small buttons are four to a row) and "Save and quit game" at the end of the pause sheet (`mobile_menu::request_quit_after_save`, consumed at the top of `main_menu::opening_screen`); both seen working on the desktop build, the home screen in landscape only.
 
 Open, most important first:
@@ -129,7 +131,6 @@ Open, most important first:
    - Pocket settings: "Move an item", the whitelist and blacklist choices, presets.
    - Trade: the bank account row; a trade that the NPC refuses.
    - Zones: Edit (opens upstream's "What do you want to change" sheet, seen) beyond its first menu; personal zones.
-1. **The canvas is behind the game in one place:** the quick actions' Order list and the eight extra buttons exist in the game but not in the UI canvas (its `QA` list, the `quick` case of the piece renderer and the `quick` rows of `renderProps`). Add them there: `items` in the layout JSON, a sortable list under "Buttons".
 1. **Known rough edges:**
    - A popup that follows a list screen (e.g. the vehicle screen's "too dark" message) shows over the map, not over the list: the list's window is closed by then.
    - Compare ends in upstream's two-column text window; Describe (look-around) opens upstream's text screen. Both are readable in landscape only.
