@@ -15,6 +15,7 @@
 #include "imgui/imgui.h"
 #include "mobile_hud_edit.h"
 #include "mobile_ui.h"
+#include "sdltiles.h"
 #include "translations.h"
 #include "units.h"
 #endif
@@ -442,6 +443,7 @@ action_id pause_sheet()
         { { "gear", _( "Settings" ), "" }, ACTION_OPTIONS },
         { { "joy", _( "Edit HUD" ), "" }, NUM_ACTIONS },
         { { "menu", _( "All actions" ), "" }, ACTION_ACTIONMENU },
+        { { "keyboard", _( "Keyboard" ), "" }, NUM_ACTIONS },
         { { "save", _( "Save game" ), "" }, ACTION_QUICKSAVE },
         { { "exit", _( "Save and quit to menu" ), "" }, ACTION_SAVE },
     };
@@ -450,7 +452,11 @@ action_id pause_sheet()
     }
     const int tapped = mobile_ui::show_sheet( spec );
     if( tapped >= 0 && rows[tapped].second == NUM_ACTIONS ) {
-        mobile_hud_edit::run();
+        if( rows[tapped].first.icon == "keyboard" ) {
+            toggle_soft_keyboard();
+        } else {
+            mobile_hud_edit::run();
+        }
         return ACTION_NULL;
     }
     return tapped >= 0 ? rows[tapped].second : ACTION_NULL;

@@ -78,6 +78,8 @@ bool clear_sdl_window();
 // Returns the main game window. Needed by text input wrappers and other
 // SDL APIs that require an explicit window parameter.
 SDL_Window *get_sdl_window();
+// Mobile UI: shows the on-screen keyboard, or hides it if it is showing.
+void toggle_soft_keyboard();
 // Dimensions of the terminal-sized display_buffer (logical game pixels),
 // queried from the SDL texture. Differs from window output under SCALING_FACTOR
 // or android letterboxing. Zero before the buffer exists.

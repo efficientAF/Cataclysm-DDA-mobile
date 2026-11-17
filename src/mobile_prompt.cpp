@@ -16,6 +16,7 @@
 #include "input.h"
 #include "input_enums.h"
 #include "mobile_ui.h"
+#include "sdltiles.h"
 #include "translations.h"
 #endif
 
@@ -232,6 +233,8 @@ namespace
 enum class button_kind : int {
     action,
     more,
+    // shows or hides the on-screen keyboard
+    keyboard,
 };
 
 struct bar_button {
@@ -444,6 +447,13 @@ static std::vector<bar_button> collect_buttons( const input_context &ctxt,
         } );
         ( forward != buttons.begin() + hint_count ? *forward : buttons.front() ).primary = true;
     }
+    // Upstream's screens may want a key that has no button: the keyboard is one tap away.
+    if( !on_map && !own ) {
+        bar_button keyboard;
+        keyboard.kind = button_kind::keyboard;
+        keyboard.action = "mobile keyboard";
+        buttons.insert( buttons.begin(), keyboard );
+    }
     return buttons;
 }
 
@@ -453,6 +463,9 @@ static constexpr float gap = 8.0f;
 
 static float button_width( const bar_button &button, const float u )
 {
+    if( button.kind == button_kind::keyboard ) {
+        return 52.0f * u;
+    }
     return std::max( 64.0f * u,
                      mobile_ui::text_size( face::bold, 15.0f, button.label ).x + 28.0f * u );
 }
@@ -466,6 +479,11 @@ static void draw_button( ImDrawList *const draw, bar_button &button, const ImVec
                        ( held ? mobile_ui::col_button_down : col_button_fill );
     mobile_ui::box( draw, button.min, button.max, fill,
                     button.primary ? mobile_ui::col_accent : mobile_ui::col_line, 12.0f );
+    if( button.kind == button_kind::keyboard ) {
+        mobile_ui::icon( draw, "keyboard", ImVec2( pos.x + ( size.x - 24.0f * u ) * 0.5f,
+                         pos.y + ( size.y - 24.0f * u ) * 0.5f ), 24.0f, mobile_ui::col_fg );
+        return;
+    }
     // long names are cut off at the edge of the button
     const ImVec2 label = mobile_ui::text_size( face::bold, 15.0f, button.label );
     const float inner_w = size.x - 16.0f * u;
@@ -663,6 +681,10 @@ bool finger_up( const float x, const float y, input_event &out )
     if( button.kind == button_kind::more ) {
         expanded = !expanded;
         scroll = 0.0f;
+        return false;
+    }
+    if( button.kind == button_kind::keyboard ) {
+        toggle_soft_keyboard();
         return false;
     }
     expanded = false;

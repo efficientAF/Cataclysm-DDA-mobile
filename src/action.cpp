@@ -30,6 +30,7 @@
 #include "mapdata.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_pick.h"
 #include "options.h"
 #include "output.h"
 #include "path_info.h"
@@ -1148,6 +1149,16 @@ std::optional<tripoint_rel_ms> choose_direction( const std::string &message,
         const std::function<std::pair<bool, std::optional<tripoint_rel_ms>>(
             const input_context &ctxt, const std::string &action )> &action_cb )
 {
+    // Mobile UI: a ring of buttons over the map instead of the popup below
+    if( !action_cb && mobile_pick::wanted() ) {
+        temp_hide_advanced_inv();
+        const std::optional<tripoint_rel_ms> picked = mobile_pick::direction( message, allow_vertical,
+                timeout );
+        if( !picked ) {
+            add_msg( _( "Never mind." ) );
+        }
+        return picked;
+    }
     input_context ctxt( "DEFAULTMODE", keyboard_mode::keycode );
     if( timeout >= 0 ) {
         ctxt.set_timeout( timeout );
@@ -1225,6 +1236,12 @@ std::optional<tripoint_bub_ms> choose_adjacent( const tripoint_bub_ms &pos,
         const std::function<std::pair<bool, std::optional<tripoint_bub_ms>>(
             const input_context &ctxt, const std::string &action )> &action_cb )
 {
+    // Mobile UI: the ring of buttons; it needs no mouse handling
+    if( !action_cb && mobile_pick::wanted() ) {
+        const std::optional<tripoint_rel_ms> picked = choose_direction( message, allow_vertical, false,
+                timeout );
+        return picked ? std::optional<tripoint_bub_ms>( pos + *picked ) : std::nullopt;
+    }
     const std::optional<tripoint_rel_ms> dir = choose_direction(
                 message, allow_vertical, /*allow_mouse=*/true, timeout,
     [&]( const input_context & ctxt, const std::string & action ) {
@@ -1292,7 +1309,10 @@ std::optional<tripoint_bub_ms> choose_adjacent_highlight( map &here, const tripo
         }
     }
 
-    const bool auto_select = allow_autoselect && get_option<bool>( "AUTOSELECT_SINGLE_VALID_TARGET" );
+    // Mobile UI: one possible tile is no question, and the ring shows which tiles qualify
+    const bool auto_select = allow_autoselect && ( ( allowed && mobile_pick::wanted() ) ||
+                             get_option<bool>( "AUTOSELECT_SINGLE_VALID_TARGET" ) );
+    const mobile_pick::candidates mobile_candidates( pos, valid );
     if( valid.empty() && auto_select ) {
         add_msg( failure_message );
         return std::nullopt;

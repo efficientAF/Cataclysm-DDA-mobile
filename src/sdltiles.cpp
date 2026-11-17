@@ -5906,6 +5906,17 @@ static void focus_aware_stop_text_input()
 #endif
 }
 
+// Mobile UI: the keyboard button of the prompt bar and the pause sheet
+void toggle_soft_keyboard()
+{
+    if( IsTextInputActive( ::window.get() ) ) {
+        focus_aware_stop_text_input();
+    } else {
+        focus_aware_start_text_input();
+    }
+    needupdate = true;
+}
+
 //Check for any window messages (keypress, paint, mousemove, etc)
 static void CheckMessages()
 {
@@ -6428,6 +6439,22 @@ static void CheckMessages()
                                 // focused. Defocus it so ImGui releases text input
                                 // and the keyboard dismisses.
                                 cataimgui::client::clear_text_focus();
+                            } else if( touch_input::hide_shortcut_bar() ) {
+                                // Mobile UI: back means back.  It closes the
+                                // keyboard if that is up, and otherwise leaves the
+                                // screen; the keyboard has a button of its own.
+                                SDL_Rect frame;
+                                bool has_frame = false;
+                                bool visible = false;
+                                visible_frame_inbox.read_frame( frame, has_frame, visible );
+                                const bool keyboard_up = IsTextInputActive( ::window.get() ) &&
+                                                         has_frame && visible && frame.h > 0;
+                                if( IsTextInputActive( ::window.get() ) ) {
+                                    focus_aware_stop_text_input();
+                                }
+                                if( !keyboard_up ) {
+                                    last_input = input_event( KEY_ESCAPE, input_event_t::keyboard_char );
+                                }
                             } else if( IsTextInputActive( ::window.get() ) ) {
                                 focus_aware_stop_text_input();
                             } else {
