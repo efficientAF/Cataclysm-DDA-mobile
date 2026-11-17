@@ -6,7 +6,7 @@ This is a fork of CleverRaven/Cataclysm-DDA. Its goal is a mobile-first Android 
 
 - **Plan:** https://claude.ai/artifact/CyDCMzQSw8Qt858pM8Tb8T. Goals, analysis of the upstream code, touch model, roadmap and ground rules.
 - **UI canvas:** https://claude.ai/artifact/CdnbCxX152E752rzbASjnB. An interactive mockup and the source of truth for UI changes. It covers the main menu, new game, character creation, the play screen with HUD presets (portrait and landscape), inventory, crafting, map, pause and wait sheets, settings and the death screen. The inspector panel shows design notes for each screen.
-- **Remaining screens plan:** https://claude.ai/artifact/2CGCTUKcXfwfVB9NDZF7Y7. Inventory of every screen that still falls back to upstream's desktop UI, the eight patterns (A item picker, B map pick mode, C tabbed list with detail, D conversation and trade, E vehicle and construction, F entry and choice sheets, G settings lists, H move items) that should replace them, and the build order. The owner approved it (17 Nov 2026: "go with what makes the most sense"; own keypad for numbers; ring plus tappable tiles; hide keybindings). Round 1 is built: A (`mobile_picker`, with the item card), B in part (`mobile_pick`: direction ring and look-around), F (`mobile_entry`, sheet descriptions). The owner also asked for, and got, an Actions drawer and a Nearby drawer. Round 3 is built in part: bionics, mutations, missions, fighting styles, spells and construction (pattern C, `mobile_list`). Round 2 is built except trade and the menus with a real side pane: conversation (`mobile_talk`), the aiming banner, Skills and Traits tabs in the Info drawer; see Status below.
+- **Remaining screens plan:** https://claude.ai/artifact/2CGCTUKcXfwfVB9NDZF7Y7. Inventory of every screen that still falls back to upstream's desktop UI, the eight patterns (A item picker, B map pick mode, C tabbed list with detail, D conversation and trade, E vehicle and construction, F entry and choice sheets, G settings lists, H move items) that should replace them, and the build order. The owner approved it (17 Nov 2026: "go with what makes the most sense"; own keypad for numbers; ring plus tappable tiles; hide keybindings). Rounds 1 to 3 are built and were seen on the desktop build (17 Nov 2026, fourth session); what was not seen is listed under Status below. Round 4 (full options list, rule editors, world creation and mods, help, scores) is not started. The owner also asked for, and got, an Actions drawer and a Nearby drawer.
 - How to read them: use the `Artifact` tool with `action: "read"` and the URL. Do not use WebFetch.
 - **Saved HUD presets:** the canvas stores user-saved layouts in its database, collection `presets`. Read them with `ArtifactData` `list`, using the canvas URL. "View layout JSON" in the canvas shows the layout format the game should load:
   - Each piece has an anchor (`tl`, `tc`, `tr`, `bl`, `bc`, `br`) and `x`/`y` pixel offsets from that edge, plus options such as `rows`, `size`, `dir` and `mode`.
@@ -80,38 +80,54 @@ Everything is behind options registered at the end of `add_options_android()` in
     - Vehicles: `src/mobile_vehicle.cpp` defines extra members of `veh_interact` (`mobile_main_loop`, `mobile_install`, `mobile_overview`...), called from `do_main_loop` and `overview`. Tabs "Parts here" (Repair/Replace, Remove) and "Whole vehicle" (refill, siphon, unload, mend, rename, label, crew, shape); buttons "Install a part" (categories as tabs) and "Other tile" (look-around). It sets `sel_cmd` and friends; upstream's `assign_activity` does the work.
   - Trade (pattern D): a sheet in `trade_ui::perform_trade` (what you give, what you get, settle from bank, offer) over `mobile_picker::pick_many`.
   - `mobile_move` (pattern H): move items. Replaces the advanced inventory (`ACTION_ADVANCEDINV` in `handle_action.cpp`): pick a place, tick items, pick where they go.
-  - Compare: `inventory_compare_selector::execute` asks for two items with `mobile_picker::pick_one`, one after the other.
+  - Compare: `inventory_compare_selector::execute` asks for two items with `mobile_picker::pick_one`, one after the other. The comparison itself is upstream's two-column window.
+  - Pocket settings: `pocket_favorite_callback::mobile_show` in `item_contents.cpp` (called from `pocket_management_menu`): one row per pocket with upstream's side-pane text, "Settings" (a sheet of upstream's actions, run through the callback's own `key()`), and "Move an item" (upstream's two steps). Reached from Inventory, an item's "More…", pocket settings.
+  - Bionics that hold a weapon: "Install weapon" / "Uninstall weapon" on the bionics screen (`mobile_screens.cpp`), upstream's code from `bionics_ui.cpp`.
+  - Notes (`static_popup` and other popups without buttons) get a window only as large as their card (`mobile_dialog::note_rect`, used by `query_popup_impl::get_bounds`). A full-screen window there stops everything under it, the map included, from being redrawn. Notes at the top move below the look-around banner (`mobile_pick::banner_bottom`).
+  - Look-around: `TRAVEL_TO`, `EXTENDED_DESCRIPTION` and `LIST_ITEMS` come first in the prompt bar as "Travel here", "Describe", "Items nearby" (`mobile_prompt.cpp`); the banner also names the vehicle part under the cursor. The aiming banner has a "Steadiness" line.
   - `mobile_talk` (pattern D): conversation. `dialogue_imgui_impl::draw_controls` hands its history and replies to `mobile_talk::draw` and takes the tapped reply. The other dialogue actions stay in the prompt bar.
   - `mobile_entry` (pattern F): number keypad sheet and text card. Hooked into `string_input_popup::query_string` (standalone popups only) and the ImGui `input_popup` classes, which hide while it shows.
   - Keyboard: `toggle_soft_keyboard()` in `sdltiles.cpp`, a button at the start of the prompt bar and a row on the pause sheet. Android's back key closes the keyboard if it is up and otherwise sends Escape.
 - Tests: `tests/touch_input_test.cpp` (`[touch_input]`), `tests/mobile_prompt_test.cpp`.
 - `tools/mobile_ui/`: the desktop test kit (`run.sh`, `drive.sh`, `build.sh`), an NDK syntax check, and `BRIEF.md`, the brief used for workers building one screen each.
 
-### Status and open work (16 Nov 2026, third session)
+### Status and open work (17 Nov 2026, fourth session)
 
-`mobile-ui` holds all of the above. The session branches `ccr-df1babd3-3p6es0`, `ccr-eb648aad-5peoju` and `ccr-b8adc6d9-u8s16x` are merged into it and can be deleted.
+`mobile-ui` holds all of the above. The session branches `ccr-df1babd3-3p6es0`, `ccr-eb648aad-5peoju`, `ccr-b8adc6d9-u8s16x`, `ccr-97367a66-rv15hd` and `ccr-8824ee27-jlf80r` are merged into it and can be deleted.
 
-The owner runs the APKs on a phone and reports back; this side only tests with scripted touches on the desktop build, so the Android-only gesture code in `sdltiles.cpp` is only known to compile here.
+The owner runs the APKs on a phone and reports back; this side only tests with scripted touches on the desktop build, so the Android-only gesture code in `sdltiles.cpp` is only known to compile here. Nothing below has been run on a real phone by this side.
+
+Seen working on the desktop build in the fourth session: zones (list, add, name, pick both corners, turn off, remove), move items, compare, conversation and trade with an NPC, the vehicle screen (parts and requirements, Remove, Install a part, Other tile, siphon, refill's message, rename), pocket settings (list, Settings sheet, priority), haul through the picker, the look-around buttons, the steadiness line while aiming.
+
+Test tips: `tools/mobile_ui/drive.sh tap` parks the real mouse on the spot first, and in look-around that already moves the cursor, so one scripted tap there confirms where a phone needs two. The debug menu has no key by default; bind one in the test folder's `config/keybindings.json` (`debug`, `DEFAULTMODE`). "Debug Hammerspace" (debug menu, Player, Mutate) lifts the requirements for installing and removing vehicle parts, but not for repairing.
 
 Open, most important first:
 
-0. **Left of rounds 1 and 2 of the remaining screens plan, then round 3:**
-   - Trade (`trade_ui`, its own selector classes), compare and haul.
-   - `uilist` menus whose callback draws a pane (spells, pocket settings, the advanced inventory's destination menu, body status) keep upstream's window. Callbacks without a pane say so with `mobile_sheet_ok()` and get the sheet (`pointmenu_cb`, `actmenu_cb`, `veh_menu_cb`); not seen on screen yet.
-   - Look-around has no buttons of its own for "Travel here" or "Items here"; aiming's banner does not show the aim steadiness.
-   - Left of round 3: vehicles (`veh_interact`), factions and camps, move items (advanced inventory), zones. The bionics screen does not offer installing a weapon into a bionic. Only the mutations, styles, missions and construction screens were seen on screen; bionics and spells need a character that has them.
+0. **Written but not seen on screen:**
+   - Factions: the screen opens with its three tabs, all empty. Rows for a camp, a follower (Talk, radio, recall) and a faction were not seen; the follower the debug menu spawns is not on the game's follower list.
+   - Bionics: no character with bionics was tried, so the bionics screen and its new Install / Uninstall weapon buttons are unseen. Spells likewise.
+   - Vehicle screen: the Repair / Replace button (needs real tools and materials), an install or removal running to the end (it was too dark in the test), unload, mend, label, crew, shape.
+   - Pocket settings: "Move an item", the whitelist and blacklist choices, presets.
+   - Trade: the bank account row; a trade that the NPC refuses.
+   - Zones: Edit (opens upstream's "What do you want to change" sheet, seen) beyond its first menu; personal zones.
+1. **Known rough edges from this session:**
+   - A popup with buttons over the map or over a list screen has a black background: its window covers the screen, so what is under it is not redrawn. Over the conversation screen it shows dimmed, as intended.
+   - Compare ends in upstream's two-column text window; Describe (look-around) opens upstream's text screen. Both are readable in landscape only.
+   - The conversation's reply list is short in landscape: the history and the prompt bar ("Back", "Keys") take most of the height.
+   - `string_input_popup` (e.g. "Zone name:") still draws upstream's small field under the entry card.
+   - The direction ring labels vehicle tiles "floor".
+2. **Still upstream's:** `uilist` menus whose callback draws a pane (the advanced inventory's destination menu is gone with move items; body status and others remain), appliances, the smart engine controller, armor layering, morale, the full character sheet, camps' mission screens, follower rules, and all of round 4.
 
-1. **Try on a phone:** the zoom and pan dials, the fixed pad and the floating joystick (upstream's code path, which the desktop stand-in does not exercise), pinch with the setting off (must do nothing on the play screen) and on, the Tiles/ASCII switch in Settings.
-2. **ASCII map (`USE_TILES` off)** works with the HUD, taps, pan and the pad. Known gaps: no zoom at all (the dial hides); the letters are the size of the map font, small on a phone, and only the text size setting changes that; the start zoom of `touch_input::default_zoom` does not apply. Without `fetch_tilesets.sh` the only tileset is letters drawn as tiles.
-3. **Old screens** still upstream's: keybindings, full options list, `uilist` menus with tabs, callbacks or fixed positions, NPC dialogue, bionics, mutations, vehicles, construction, look-around. They get the prompt buttons, but no mockups exist yet. Add the mockups to the canvas first, then build to them (`tools/mobile_ui/BRIEF.md`).
-4. **Not verified:** the safe-mode "Go back / Move anyway" prompt in a live game, dragging a drawer handle in the editor, drawers on the bottom edge, the pan dial with an isometric tileset (it scrolls in map directions, not screen directions).
-5. Text entry prompts (e.g. "Damage for how much?") are upstream's field with no buttons; the soft keyboard has to do.
-6. Sheets cannot be dragged down. A plan: give `touch_input::set_raw_drag_rect` a frame stamp so it expires, and pull the sheet by its head. The pause sheet's scroll position also differs from one opening to the next.
-7. Pinch still jumps a whole zoom level at a time; the zoom dial moves in quarter levels (`dial_zoom`), and pinch could use the same.
-8. The death camera shows no HUD; the prompt button floats over the bare map.
-9. Menus padded into columns with `|` are split by `mobile_dialog::split_column`; `Character::dispose_item` ("Stop wielding") has a hook that says why Store and Wear are greyed out. Other upstream menus that grey options out give no reason.
-10. The tileset chooser lists upstream's whole `TILES` list, overmap tilesets included. Isometric tilesets are untested with touch.
-11. `tools/format/json_formatter` rejects `data/json/ui/mobile_hud/presets.json` (it takes `"rows"` for an array), so the file is formatted by hand.
+3. **Try on a phone:** the zoom and pan dials, the fixed pad and the floating joystick (upstream's code path, which the desktop stand-in does not exercise), pinch with the setting off (must do nothing on the play screen) and on, the Tiles/ASCII switch in Settings.
+4. **ASCII map (`USE_TILES` off)** works with the HUD, taps, pan and the pad. Known gaps: no zoom at all (the dial hides); the letters are the size of the map font, small on a phone, and only the text size setting changes that; the start zoom of `touch_input::default_zoom` does not apply. Without `fetch_tilesets.sh` the only tileset is letters drawn as tiles.
+5. **Old screens** still upstream's (see 2 above) get the prompt buttons. The remaining screens plan has mockups for the patterns, not for each screen; add a screen to the canvas before building it where its look is in doubt (`tools/mobile_ui/BRIEF.md`).
+6. **Not verified:** the safe-mode "Go back / Move anyway" prompt in a live game, dragging a drawer handle in the editor, drawers on the bottom edge, the pan dial with an isometric tileset (it scrolls in map directions, not screen directions).
+7. Sheets cannot be dragged down. A plan: give `touch_input::set_raw_drag_rect` a frame stamp so it expires, and pull the sheet by its head. The pause sheet's scroll position also differs from one opening to the next.
+8. Pinch still jumps a whole zoom level at a time; the zoom dial moves in quarter levels (`dial_zoom`), and pinch could use the same.
+9. The death camera shows no HUD; the prompt button floats over the bare map.
+10. Menus padded into columns with `|` are split by `mobile_dialog::split_column`; `Character::dispose_item` ("Stop wielding") has a hook that says why Store and Wear are greyed out. Other upstream menus that grey options out give no reason.
+11. The tileset chooser lists upstream's whole `TILES` list, overmap tilesets included. Isometric tilesets are untested with touch.
+12. `tools/format/json_formatter` rejects `data/json/ui/mobile_hud/presets.json` (it takes `"rows"` for an array), so the file is formatted by hand.
 
 ## Suggested order of work (roadmap phases 0–3)
 
