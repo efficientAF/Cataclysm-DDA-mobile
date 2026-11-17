@@ -20,6 +20,8 @@
 #include "input_context.h"
 #include "kill_tracker.h"
 #include "localized_comparator.h"
+#include "mobile_list.h"
+#include "mobile_rules.h"
 #include "mtype.h"
 #include "past_games_info.h"
 #include "stats_tracker.h"
@@ -64,6 +66,18 @@ class scores_ui_impl : public cataimgui::window
         explicit scores_ui_impl() : cataimgui::window( _( "Your scores" ),
                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav ) {}
         void init_data();
+        // Mobile UI: what init_data collected as a list screen; this window stays shut
+        void mobile_show() {
+            is_open = false;
+            mobile_rules::score_lists lists;
+            lists.achievements_enabled = g->achievements().is_enabled();
+            lists.achievements = achievements_text;
+            lists.conducts = conducts_text;
+            lists.scores = scores_text;
+            lists.monster_kills = monster_kills_data;
+            lists.npc_kills = npc_kills_data;
+            mobile_rules::scores( lists );
+        }
 
     private:
         void draw_achievements_text( bool use_conducts = false ) const;
@@ -101,6 +115,11 @@ void scores_ui::draw_scores_ui()
     scores_ui_impl p_impl;
 
     p_impl.init_data();
+    // Mobile UI: the list screen
+    if( mobile_list::wanted() ) {
+        p_impl.mobile_show();
+        return;
+    }
 
     ctxt.register_navigate_ui_list();
     ctxt.register_leftright();

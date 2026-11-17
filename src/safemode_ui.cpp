@@ -22,6 +22,8 @@
 #include "input_context.h"
 #include "json.h"
 #include "json_loader.h"
+#include "mobile_list.h"
+#include "mobile_rules.h"
 #include "monstergenerator.h"
 #include "mtype.h"
 #include "options.h"
@@ -55,6 +57,11 @@ std::string safemode::npc_type_name()
 
 void safemode::show( const std::string &custom_name_in, bool is_safemode_in )
 {
+    // Mobile UI: the rules as a list screen
+    if( mobile_list::wanted() ) {
+        mobile_show( custom_name_in, is_safemode_in );
+        return;
+    }
     auto global_rules_old = global_rules;
     auto character_rules_old = character_rules;
 
@@ -514,6 +521,15 @@ void safemode::test_pattern( const int tab_in, const int row_in )
         if( wildcard_match( creature_name, temp_rules[row_in].rule ) ) {
             creature_list.push_back( creature_name );
         }
+    }
+
+    // Mobile UI: the matches as a list screen
+    if( mobile_list::wanted() ) {
+        const int found = static_cast<int>( creature_list.size() );
+        mobile_rules::show_matches( string_format( n_gettext( "%1$d monster matches: %2$s",
+                                    "%1$d monsters match: %2$s", found ), found, temp_rules[row_in].rule ),
+                                    creature_list, _( "Lists monsters regardless of their attitude." ) );
+        return;
     }
 
     int start_pos = 0;
