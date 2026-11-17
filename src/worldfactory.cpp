@@ -24,6 +24,7 @@
 #include "input_popup.h"
 #include "json.h"
 #include "json_loader.h"
+#include "mobile_world.h"
 #include "mod_manager.h"
 #include "output.h"
 #include "path_info.h"
@@ -232,6 +233,10 @@ static std::optional<std::string> prompt_world_name( const std::string &title,
 
 int worldfactory::show_worldgen_advanced( WORLD *world )
 {
+    // Mobile UI: a copied world is edited on the same screen as a new one
+    if( mobile_world::wanted() ) {
+        return show_worldgen_basic( world );
+    }
     // set up window
     catacurses::window wf_win;
     ui_adaptor ui;
@@ -915,6 +920,11 @@ std::map<int, inclusive_rectangle<point>> worldfactory::draw_mod_list( const cat
 
 void worldfactory::show_active_world_mods( const std::vector<mod_id> &world_mods )
 {
+    // Mobile UI: the phone's mod list, see mobile_world.h
+    if( mobile_world::wanted() ) {
+        mobile_world::show_mods( world_mods, *mman_ui );
+        return;
+    }
     ui_adaptor ui;
     catacurses::window w_border;
     catacurses::window w_mods;
@@ -998,6 +1008,12 @@ int worldfactory::show_worldgen_tab_modselection( const catacurses::window &win,
         for( auto &elem : tmp_mod_order ) {
             mman_ui->try_add( elem, active_mod_order );
         }
+    }
+
+    // Mobile UI: the phone's mod selection, see mobile_world.h
+    if( mobile_world::wanted() ) {
+        mobile_world::edit_mods( active_mod_order, *mman_ui );
+        return -999;
     }
 
     input_context ctxt( "MODMANAGER_DIALOG" );
@@ -1526,6 +1542,24 @@ static bool ensure_recommended_mods_or_warn( const WORLD *world )
 
 int worldfactory::show_worldgen_basic( WORLD *world )
 {
+    // Mobile UI: the phone's new world screen, see mobile_world.h
+    if( mobile_world::wanted() ) {
+        mobile_world::hooks upstream;
+        upstream.random_name = [this]() {
+            return pick_random_name();
+        };
+        upstream.mods_ok = [world]() {
+            return ensure_recommended_mods_or_warn( world );
+        };
+        upstream.edit_mods = [this, world]() {
+            show_worldgen_tab_modselection( catacurses::window(), world, false );
+        };
+        upstream.edit_options = [this, world]() {
+            show_worldgen_tab_options( catacurses::window(), world, false );
+        };
+        upstream.max_name_length = max_worldname_len;
+        return mobile_world::new_world( *world, upstream );
+    }
     catacurses::window w_confirmation;
 
     ui_adaptor ui;
