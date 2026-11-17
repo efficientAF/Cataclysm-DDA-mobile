@@ -30,6 +30,8 @@
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
+#include "mobile_body.h"
+#include "mobile_list.h"
 #include "output.h"
 #include "point.h"
 #include "string_formatter.h"
@@ -593,6 +595,11 @@ bool outfit::items_cover_opposite_bp( const Character &who, const bodypart_id &c
 
 void outfit::sort_armor( Character &guy )
 {
+    // Mobile UI: sort armor as a list screen
+    if( mobile_list::wanted() ) {
+        mobile_body::sort_armor( guy );
+        return;
+    }
     // FIXME: get_all_body_parts() doesn't return a sorted list
     //        and bodypart_id is not compatible with std::sort()
     //        so let's use a dirty hack

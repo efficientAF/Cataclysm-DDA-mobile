@@ -56,6 +56,8 @@
 #include "math_parser_diag_value.h"
 #include "messages.h"
 #include "mission.h"
+#include "mobile_body.h"
+#include "mobile_list.h"
 #include "monster.h"
 #include "morale.h"
 #include "move_mode.h"
@@ -420,6 +422,16 @@ void Character::conduct_blood_analysis()
         }
         effect_descriptions.emplace_back( elem.first->get_blood_analysis_description() );
         colors.emplace_back( elem.first->get_rating() == m_good ? c_green : c_red );
+    }
+
+    // Mobile UI: the results as a list screen
+    if( mobile_list::wanted() ) {
+        std::vector<bool> good;
+        for( const nc_color &color : colors ) {
+            good.push_back( color == c_green );
+        }
+        mobile_body::blood_test( effect_descriptions, good );
+        return;
     }
 
     const int win_w = 46;
