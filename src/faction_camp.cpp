@@ -71,6 +71,8 @@
 #include "messages.h"
 #include "mission.h"
 #include "mission_companion.h"
+#include "mobile_camp.h"
+#include "mobile_list.h"
 #include "mongroup.h"
 #include "npc.h"
 #include "npctalk.h"
@@ -2080,6 +2082,11 @@ void basecamp::scan_pseudo_items()
 
 void basecamp::worker_assignment_ui()
 {
+    // Mobile UI: the followers as a list screen (mobile_camp.h)
+    if( mobile_list::wanted() ) {
+        mobile_camp::assign_workers( *this );
+        return;
+    }
     int entries_per_page = 0;
     catacurses::window w_followers;
 
@@ -2164,6 +2171,11 @@ void basecamp::worker_assignment_ui()
 
 void basecamp::job_assignment_ui()
 {
+    // Mobile UI: the workers and their job priorities as list screens (mobile_camp.h)
+    if( mobile_list::wanted() ) {
+        mobile_camp::assign_jobs( *this );
+        return;
+    }
     int entries_per_page = 0;
     catacurses::window w_jobs;
 

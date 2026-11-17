@@ -21,6 +21,7 @@
 #include "cached_options.h"
 #include "cata_imgui.h"
 #include "cata_tiles.h"
+#include "clzones.h"
 #include "color.h"
 #include "cursesport.h"
 #include "game.h"
@@ -48,9 +49,9 @@ namespace mobile_overmap
 bool wanted( const overmap_ui::overmap_draw_data_t &data )
 {
 #if defined(TILES)
-    return mobile_menu::enabled() && !data.debug_editor && !data.debug_scent &&
-           data.message.empty() && data.distance == INT_MAX && data.display_path.empty() &&
-           data.iZoneIndex == -1;
+    // "Pick a spot" prompts, a zone and an NPC's path get the same chrome; see
+    // pick_mode() below for what changes.
+    return mobile_menu::enabled() && !data.debug_editor && !data.debug_scent;
 #else
     static_cast<void>( data );
     return false;
@@ -92,6 +93,7 @@ enum class sheet_event : int {
     none,
     save,
     travel,
+    choose,
     close,
 };
 
@@ -120,6 +122,19 @@ static ImU32 with_alpha( const ImU32 color, const float alpha )
 static ImU32 to_u32( const nc_color &color )
 {
     return ImGui::ColorConvertFloat4ToU32( cataimgui::imvec4_from_color( color ) );
+}
+
+// True while the map was opened to have a place chosen on it
+// (ui::omap::choose_point): the tile sheet then offers the choice, not travel.
+static bool pick_mode()
+{
+    return g && ( !g->overmap_data.message.empty() || g->overmap_data.distance != INT_MAX );
+}
+
+// Upstream's rule for a place that may be chosen, see the end of overmap_ui::display.
+static bool in_pick_range( const tripoint_abs_omt &pos )
+{
+    return overmap_buffer.distance_limit( g->overmap_data.distance, g->overmap_data.origin_pos, pos );
 }
 
 static place place_at( const tripoint_abs_omt &pos )
@@ -309,6 +324,8 @@ class view::impl : public cataimgui::window
     private:
         void draw_chrome( const ImVec2 &area_min, const ImVec2 &area_max, bool interactive );
         void draw_legend( ImDrawList *draw, const ImVec2 &area_min, const ImVec2 &area_max );
+        void draw_marks( ImDrawList *draw, const map_geometry &geo, const ImVec2 &area_min,
+                         const ImVec2 &area_max );
         void draw_sheet( const ImVec2 &origin, const ImVec2 &size );
         void refresh_cache( const tripoint_abs_omt &cursor, const map_geometry &geo );
 
@@ -444,6 +461,53 @@ void view::impl::draw_legend( ImDrawList *const draw, const ImVec2 &area_min,
     }
 }
 
+// What upstream's letter map marks and the tile map does not: the edge of the
+// range a place may be chosen in, and the zone the map was opened to show.
+void view::impl::draw_marks( ImDrawList *const draw, const map_geometry &geo,
+                             const ImVec2 &area_min, const ImVec2 &area_max )
+{
+    if( !geo.valid ) {
+        return;
+    }
+    const overmap_ui::overmap_draw_data_t &data = g->overmap_data;
+    const tripoint_abs_omt cursor = data.cursor_pos;
+    const ImVec2 tile( static_cast<float>( geo.tile.x ), static_cast<float>( geo.tile.y ) );
+    draw->PushClipRect( area_min, area_max, true );
+    if( data.distance != INT_MAX && data.distance >= 0 && cursor.z() == data.origin_pos.z() ) {
+        const point from( std::max( -geo.center.x - 1,
+                                    data.origin_pos.x() - data.distance - cursor.x() ),
+                          std::max( -geo.center.y - 1, data.origin_pos.y() - data.distance - cursor.y() ) );
+        const point to( std::min( geo.center.x + 1, data.origin_pos.x() + data.distance - cursor.x() ),
+                        std::min( geo.center.y + 1, data.origin_pos.y() + data.distance - cursor.y() ) );
+        for( int dy = from.y; dy <= to.y; ++dy ) {
+            for( int dx = from.x; dx <= to.x; ++dx ) {
+                if( !overmap_buffer.distance_limit_line( data.distance, data.origin_pos,
+                        cursor + point( dx, dy ) ) ) {
+                    continue;
+                }
+                const ImVec2 corner = tile_corner( geo, point( dx, dy ) );
+                draw->AddRectFilled( corner, ImVec2( corner.x + tile.x, corner.y + tile.y ),
+                                     IM_COL32( 255, 96, 80, 96 ) );
+            }
+        }
+    }
+    const std::vector<zone_manager::ref_zone_data> zones = zone_manager::get_manager().get_zones();
+    if( data.iZoneIndex >= 0 && static_cast<size_t>( data.iZoneIndex ) < zones.size() ) {
+        const zone_data &zone = zones[data.iZoneIndex].get();
+        const tripoint_abs_omt a = project_to<coords::omt>( zone.get_start_point() );
+        const tripoint_abs_omt b = project_to<coords::omt>( zone.get_end_point() );
+        if( a.z() <= cursor.z() && b.z() >= cursor.z() ) {
+            const ImVec2 min = tile_corner( geo, point( std::min( a.x(), b.x() ) - cursor.x(),
+                                            std::min( a.y(), b.y() ) - cursor.y() ) );
+            const ImVec2 max = tile_corner( geo, point( std::max( a.x(), b.x() ) - cursor.x() + 1,
+                                            std::max( a.y(), b.y() ) - cursor.y() + 1 ) );
+            draw->AddRect( ImVec2( min.x - 2.0f, min.y - 2.0f ), ImVec2( max.x + 2.0f, max.y + 2.0f ),
+                           mobile_ui::col_accent, 0.0f, 0, std::max( 2.0f, mobile_ui::unit() * 1.5f ) );
+        }
+    }
+    draw->PopClipRect();
+}
+
 void view::impl::draw_chrome( const ImVec2 &area_min, const ImVec2 &area_max,
                               const bool interactive )
 {
@@ -451,9 +515,33 @@ void view::impl::draw_chrome( const ImVec2 &area_min, const ImVec2 &area_max,
     const ImVec4 safe = mobile_ui::safe_insets();
     ImDrawList *const draw = ImGui::GetWindowDrawList();
 
+    // what the map was opened to ask, as a banner
+    float banner_bottom = area_min.y;
+    std::string banner = g->overmap_data.message;
+    const std::vector<zone_manager::ref_zone_data> zones = zone_manager::get_manager().get_zones();
+    if( banner.empty() && g->overmap_data.iZoneIndex >= 0 &&
+        static_cast<size_t>( g->overmap_data.iZoneIndex ) < zones.size() ) {
+        //~ %s: the name of a zone that is outlined on the map
+        banner = string_format( _( "Zone: %s" ), zones[g->overmap_data.iZoneIndex].get().get_name() );
+    }
+    if( !banner.empty() ) {
+        if( pick_mode() ) {
+            banner += "\n";
+            banner += _( "Tap a place, then \"Choose this place\"." );
+        }
+        const float wrap = std::min( area_max.x - area_min.x - safe.x - safe.z - 44.0f * u, 560.0f * u );
+        const ImVec2 text_size = mobile_ui::text_size( face::bold, 13.5f, banner, wrap );
+        const ImVec2 pos( area_min.x + safe.x + 10.0f * u, area_min.y + 10.0f * u );
+        const ImVec2 max( pos.x + text_size.x + 24.0f * u, pos.y + text_size.y + 16.0f * u );
+        mobile_ui::box( draw, pos, max, col_pill, mobile_ui::col_accent, 12.0f );
+        mobile_ui::text( draw, face::bold, 13.5f, ImVec2( pos.x + 12.0f * u, pos.y + 8.0f * u ),
+                         mobile_ui::col_fg, banner, wrap );
+        banner_bottom = max.y - 4.0f * u;
+    }
+
     // the place under the center of the map, or the tile the sheet is about
     const ImVec2 pill_size = mobile_ui::text_size( face::bold, 12.0f, pill );
-    const ImVec2 pill_pos( area_min.x + safe.x + 10.0f * u, area_min.y + 10.0f * u );
+    const ImVec2 pill_pos( area_min.x + safe.x + 10.0f * u, banner_bottom + 10.0f * u );
     const ImVec2 pill_max( pill_pos.x + pill_size.x + 20.0f * u, pill_pos.y + pill_size.y + 10.0f * u );
     mobile_ui::box( draw, pill_pos, pill_max, col_pill, mobile_ui::col_line,
                     ( pill_max.y - pill_pos.y ) * 0.5f / u );
@@ -520,7 +608,11 @@ void view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
     const ImVec2 screen_max( origin.x + size.x, origin.y + size.y );
 
     const float sheet_w = landscape ? std::min( 520.0f * u, size.x * 0.76f ) : size.x;
-    const float sheet_h = ( 22.0f + 60.0f + 54.0f + 66.0f + 6.0f ) * u + safe.w;
+    const bool picking = pick_mode();
+    const bool in_range = !picking || in_pick_range( selected );
+    // picking a place: no note field, and a line saying why not if it is too far
+    const float middle_h = picking ? ( in_range ? 0.0f : 30.0f ) : 54.0f;
+    const float sheet_h = ( 22.0f + 60.0f + middle_h + 66.0f + 6.0f ) * u + safe.w;
     const ImVec2 pos( origin.x + ( size.x - sheet_w ) * 0.5f, screen_max.y - sheet_h );
 
     // dim the screen behind; a tap there closes the sheet
@@ -565,6 +657,28 @@ void view::impl::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
                      where );
     draw->PopClipRect();
     y += 56.0f * u;
+
+    if( picking ) {
+        if( !in_range ) {
+            mobile_ui::text( draw, face::bold, 13.0f, ImVec2( pos.x + 16.0f * u, y ),
+                             IM_COL32( 255, 120, 100, 255 ),
+                             //~ %d: the largest distance allowed, in overmap tiles
+                             string_format( n_gettext( "Too far away: it must be within %d map tile of the start.",
+                                            "Too far away: it must be within %d map tiles of the start.",
+                                            g->overmap_data.distance ), g->overmap_data.distance ) );
+            y += 30.0f * u;
+        }
+        const float cell_w = ( sheet_w - 32.0f * u - 8.0f * u ) * 0.5f;
+        if( sheet_button( draw, "##om_choose", ImVec2( pos.x + 16.0f * u, y ),
+                          ImVec2( cell_w, 48.0f * u ), _( "Choose this place" ), 14.0f, true, in_range ) ) {
+            pending_sheet = sheet_event::choose;
+        }
+        if( sheet_button( draw, "##om_close", ImVec2( pos.x + 24.0f * u + cell_w, y ),
+                          ImVec2( cell_w, 48.0f * u ), _( "Close" ), 14.0f, false, true ) ) {
+            pending_sheet = sheet_event::close;
+        }
+        return;
+    }
 
     // the note field and Save
     const std::string save_label = _( "Save" );
@@ -639,7 +753,8 @@ void view::impl::draw_controls()
     const float bar_bottom = origin.y + safe.y + 54.0f * u;
     draw->AddRectFilled( origin, ImVec2( screen_max.x, bar_bottom ), mobile_ui::col_screen );
     ImGui::BeginDisabled( !interactive );
-    if( mobile_ui::app_bar( _( "Map" ), ImVec2( origin.x + safe.x, origin.y + safe.y ),
+    if( mobile_ui::app_bar( pick_mode() ? _( "Choose a place" ) : _( "Map" ), ImVec2( origin.x + safe.x,
+                            origin.y + safe.y ),
                             size.x - safe.x - safe.z, nullptr ) ) {
         pending_action = "QUIT";
     }
@@ -700,6 +815,7 @@ void view::impl::draw_controls()
         touch_input::clear_raw_drag_rect();
     }
 
+    draw_marks( draw, geo, area_min, area_max );
     draw_chrome( area_min, area_max, interactive );
 
     if( sheet_open ) {
@@ -777,6 +893,11 @@ std::string view::handle( const std::string &action, input_context &ctxt,
                 v.close_sheet();
                 v.travel_steps = 2;
                 break;
+            case sheet_event::choose:
+                // upstream returns the tile under the cursor, after its own range check
+                cursor = v.selected;
+                v.close_sheet();
+                return "CONFIRM";
             case sheet_event::close:
                 v.close_sheet();
                 return idle_action;
@@ -807,6 +928,9 @@ std::string view::handle( const std::string &action, input_context &ctxt,
         v.centered = true;
         if( cursor == g->overmap_data.origin_pos ) {
             cursor = centered_cursor;
+        } else if( g->overmap_data.display_path.empty() ) {
+            // opened on some other place, e.g. a zone
+            cursor += point( 0, -v.focus_rows( geo ) );
         }
     }
 

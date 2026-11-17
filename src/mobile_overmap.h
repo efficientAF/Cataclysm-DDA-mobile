@@ -25,7 +25,8 @@ namespace mobile_overmap
 {
 
 // True if the overmap that is about to be shown should get the mobile chrome:
-// the plain map, not the debug editor or a "pick a spot" prompt.
+// every map but the debug editor.  A "pick a spot" prompt (ui::omap::choose_point)
+// gets its message as a banner and "Choose this place" on the tile sheet.
 bool wanted( const overmap_ui::overmap_draw_data_t &data );
 
 // True while "Travel here" on the tile sheet stands in for upstream's "Travel to
