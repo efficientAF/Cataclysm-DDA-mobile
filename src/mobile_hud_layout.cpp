@@ -378,6 +378,34 @@ static const char *mode_name( const pad_mode m )
     return "toggle";
 }
 
+const std::vector<std::string> &quick_item_ids()
+{
+    static const std::vector<std::string> ids = {
+        "examine", "pickup", "wait", "inventory", "craft", "look", "sleep", "fire",
+        "eat", "read", "map", "throw", "smash", "reload", "use", "save"
+    };
+    return ids;
+}
+
+std::vector<std::string> quick_order( const piece &p )
+{
+    const std::vector<std::string> &all = quick_item_ids();
+    std::vector<std::string> order;
+    const auto add = [&]( const std::string & id ) {
+        if( std::find( all.begin(), all.end(), id ) != all.end() &&
+            std::find( order.begin(), order.end(), id ) == order.end() ) {
+            order.push_back( id );
+        }
+    };
+    for( const std::string &id : p.items ) {
+        add( id );
+    }
+    for( const std::string &id : all ) {
+        add( id );
+    }
+    return order;
+}
+
 static float read_number( const JsonObject &jo, const std::string &name, const float fallback )
 {
     return jo.has_member( name ) ? static_cast<float>( jo.get_float( name ) ) : fallback;
@@ -416,6 +444,9 @@ static void read_piece( const JsonObject &jo, const piece_id id, piece &p )
                  pad_mode::toggle;
     }
     p.opacity = std::clamp( read_number( jo, "op", p.opacity ), 0.2f, 1.0f );
+    if( id == piece_id::quick && jo.has_array( "items" ) ) {
+        p.items = jo.get_string_array( "items" );
+    }
 }
 
 static void read_drawer( const JsonObject &jo, drawer &d )
@@ -497,6 +528,9 @@ static void write_layout( JsonOut &jsout, const layout &l )
             case piece_id::quick:
                 jsout.member( "dir", p.column ? "col" : "row" );
                 jsout.member( "count", p.count );
+                if( !p.items.empty() ) {
+                    jsout.member( "items", p.items );
+                }
                 break;
             case piece_id::zoom:
                 jsout.member( "style", p.slider ? "slider" : "dial" );

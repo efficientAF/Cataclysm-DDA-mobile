@@ -19,6 +19,7 @@
 #include "mobile_dialog.h"
 #include "mobile_menu.h"
 #include "mobile_prompt.h"
+#include "mobile_ui.h"
 #include "output.h"
 #include "sdltiles.h"
 #include "input_popup.h"
@@ -847,7 +848,9 @@ void uilist::setup()
     calc_data();
     // Mobile UI: the bottom sheet draws over the whole screen
     if( mobile_sheet( *this, !categories.empty() ) ) {
-        calculated_bounds = { 0.0f, 0.0f, 1.0f, 1.0f };
+        // one pixel short, so that what is under the sheet keeps being redrawn
+        const ImVec2 screen = ImGui::GetMainViewport()->Size;
+        calculated_bounds = { 0.0f, 0.0f, screen.x, std::max( screen.y - 1.0f, 2.0f ) };
     }
 
     started = true;
@@ -994,6 +997,12 @@ shared_ptr_fast<uilist_impl> uilist::query( bool loop, int timeout, bool allow_u
     }
     shared_ptr_fast<uilist_impl> ui = create_or_get_ui();
     do {
+#if defined(TILES)
+        // Mobile UI: the map under the sheet, dimmed
+        if( mobile_menu::enabled() ) {
+            mobile_ui::keep_map_under();
+        }
+#endif
         ui_manager::redraw();
         query_once( ctxt, timeout, allow_unfiltered_hotkeys );
     } while( loop && ret == UILIST_WAIT_INPUT );

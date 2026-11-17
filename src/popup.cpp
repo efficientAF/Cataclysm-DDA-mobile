@@ -15,6 +15,7 @@
 #include "mobile_menu.h"
 #include "mobile_pick.h"
 #include "mobile_prompt.h"
+#include "mobile_ui.h"
 #include "output.h"
 #include "string_formatter.h"
 #include "ui_manager.h"
@@ -66,7 +67,10 @@ class query_popup_impl : public cataimgui::window
                 return note;
             }
             if( mobile ) {
-                return { 0.0f, 0.0f, 1.0f, 1.0f };
+                // one pixel short of the screen, so that what is under the dialog
+                // keeps being redrawn and shows dimmed (see ui_adaptor::invalidate_ui)
+                const ImVec2 screen = ImGui::GetMainViewport()->Size;
+                return { 0.0f, 0.0f, screen.x, std::max( screen.y - 1.0f, 2.0f ) };
             }
             return { -1.f, parent->ontop ? 0 : -1.f, -1.f, -1.f};
         }
@@ -373,6 +377,12 @@ query_popup::result query_popup::query_once()
     std::shared_ptr<query_popup_impl> impl = create_or_get_impl();
 
     // ImGui doesn't like to show the window on the first drawn frame, so we do this
+#if defined(TILES)
+    // Mobile UI: the map under the dialog, dimmed
+    if( mobile_menu::enabled() ) {
+        mobile_ui::keep_map_under();
+    }
+#endif
     ui_manager::redraw();
 
     input_context ctxt( category, pref_kbd_mode );
@@ -408,6 +418,12 @@ query_popup::result query_popup::query_once()
     // Assign outside construction of `res` to ensure execution order
     res.wait_input = !anykey;
     do {
+#if defined(TILES)
+        // Mobile UI: the map under the dialog, dimmed
+        if( mobile_menu::enabled() ) {
+            mobile_ui::keep_map_under();
+        }
+#endif
         ui_manager::redraw();
         res.action = ctxt.handle_input( 50 );
         res.evt = ctxt.get_raw_input();

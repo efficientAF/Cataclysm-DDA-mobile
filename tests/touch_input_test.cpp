@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <string>
+#include <vector>
+
 #include "cata_catch.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
@@ -257,5 +261,28 @@ TEST_CASE( "mobile_entry_keypad", "[touch_input]" )
     SECTION( "the length limit holds" ) {
         CHECK( keypad_press( "123", '4', false, false, 3 ) == "123" );
         CHECK( keypad_press( "12", '3', false, false, 3 ) == "123" );
+    }
+}
+
+TEST_CASE( "mobile_hud_layout_quick_order", "[touch_input]" )
+{
+    using mobile_hud::piece_id;
+    const mobile_hud::preset &base = mobile_hud::fallback_preset();
+    const std::vector<std::string> &usual = mobile_hud::quick_item_ids();
+
+    SECTION( "a layout without items has the usual order" ) {
+        CHECK( mobile_hud::quick_order( base.portrait[piece_id::quick] ) == usual );
+    }
+    SECTION( "the player's items come first, the rest follow in the usual order" ) {
+        const JsonValue jv = json_loader::from_string(
+                                 R"({ "id": "mine", "portrait": { "quick": { "v": 1, "a": "bc", "x": 0, "y": 34, "count": 4, "items": [ "look", "nonsense", "wait", "look" ] } } })" );
+        const mobile_hud::preset p = mobile_hud::read_preset( jv.get_object(), base );
+        const std::vector<std::string> order = mobile_hud::quick_order( p.portrait[piece_id::quick] );
+        REQUIRE( order.size() == usual.size() );
+        CHECK( order[0] == "look" );
+        CHECK( order[1] == "wait" );
+        CHECK( order[2] == "examine" );
+        CHECK( order[3] == "pickup" );
+        CHECK( std::count( order.begin(), order.end(), "look" ) == 1 );
     }
 }

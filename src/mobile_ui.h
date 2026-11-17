@@ -85,6 +85,12 @@ void box( ImDrawList *draw, const ImVec2 &min, const ImVec2 &max, ImU32 fill, Im
 // back was tapped.  height_out receives the height it took.
 bool app_bar( const std::string &title, const ImVec2 &pos, float width, float *height_out );
 
+// Call before redrawing a sheet, a dialog or a card that leaves the screen
+// around it visible: the map under it is drawn again, so that it shows dimmed
+// and not as a black screen.  Their windows are one pixel short of the screen
+// for the same reason (see ui_adaptor::invalidate_ui).
+void keep_map_under();
+
 // --- Bottom sheet ---
 
 struct sheet_row {

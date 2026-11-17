@@ -125,6 +125,11 @@ std::string tile_label( const tripoint_bub_ms &pos )
     if( here.has_furn( pos ) ) {
         return here.furnname( pos );
     }
+    if( const optional_vpart_position vp = here.veh_at( pos ) ) {
+        if( const std::optional<vpart_reference> top = vp.part_displayed() ) {
+            return top->part().name( false );
+        }
+    }
     return here.tername( pos );
 }
 

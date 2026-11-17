@@ -190,6 +190,8 @@ class editor_window : public cataimgui::window
                                                  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
                                                  ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground ) {}
         bar_action tapped = bar_action::none;
+        // "Order" of the quick actions was tapped
+        bool wants_order = false;
     protected:
         cataimgui::bounds get_bounds() override {
             // One pixel short of the screen, so that ui_manager keeps redrawing
@@ -206,6 +208,8 @@ class editor_window : public cataimgui::window
                       const std::string &shown );
         bool stepper( const std::string &label, int &value, int low, int high );
         bool choice( const std::string &label, int &value, const std::vector<std::string> &names );
+        // a row with one button at the right edge; true when it is tapped
+        bool button_row( const std::string &label, const std::string &button );
 
         ImDrawList *draw = nullptr;
         float row_x = 0.0f;
@@ -305,6 +309,26 @@ bool editor_window::choice( const std::string &label, int &value,
     return changed;
 }
 
+bool editor_window::button_row( const std::string &label, const std::string &button )
+{
+    const float u = mobile_ui::unit();
+    const float h = row_h * u;
+    const std::string id = "##hudopt" + std::to_string( row_index++ );
+    mobile_ui::text( draw, face::body, 14.0f, ImVec2( row_x, row_y + ( h - 17.0f * u ) * 0.5f ),
+                     mobile_ui::col_text_soft, label );
+    const ImVec2 label_px = mobile_ui::text_size( face::bold, 13.0f, button );
+    const ImVec2 size( label_px.x + 28.0f * u, 38.0f * u );
+    const ImVec2 pos( row_x + row_w - size.x, row_y + ( h - size.y ) * 0.5f );
+    bool held = false;
+    const bool tapped_now = mobile_ui::pressable( id, pos, size, &held );
+    mobile_ui::box( draw, pos, ImVec2( pos.x + size.x, pos.y + size.y ),
+                    held ? mobile_ui::col_button_down : mobile_ui::col_fill_soft, mobile_ui::col_line, 11.0f );
+    mobile_ui::text( draw, face::bold, 13.0f, ImVec2( pos.x + 14.0f * u,
+                     pos.y + ( size.y - label_px.y ) * 0.5f ), mobile_ui::col_fg, button );
+    row_y += h;
+    return tapped_now;
+}
+
 // Cancel, Presets, Pieces and Done, with a line of help; in the middle of the
 // screen, where no piece of the HUD lives.
 void editor_window::draw_bar( const ImVec2 &origin, const ImVec2 &size )
@@ -379,6 +403,8 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
                 rows += layout.pieces[index].slider ? 4 : 3;
                 break;
             case piece_id::quick:
+                rows += 3;
+                break;
             case piece_id::body:
             case piece_id::pan:
             case piece_id::joy:
@@ -486,7 +512,11 @@ void editor_window::draw_options( const ImVec2 &origin, const ImVec2 &size )
                     p.column = column == 1;
                     changed = true;
                 }
-                changed |= stepper( _( "Buttons" ), p.count, 3, 9 );
+                changed |= stepper( _( "Buttons" ), p.count, mobile_hud::quick_count_min,
+                                    mobile_hud::quick_count_max );
+                if( button_row( _( "Which buttons, in what order" ), _( "Order" ) ) ) {
+                    wants_order = true;
+                }
                 break;
             case piece_id::zoom: {
                 int style = p.slider ? 1 : 0;
@@ -556,6 +586,168 @@ void editor_window::draw_controls()
     }
     draw->PopClipRect();
     mobile_hud::update_edit( editor.working, editor.selection );
+}
+
+// The buttons of the quick actions bar as a list in the order they appear;
+// a row is dragged by its grip to another place.
+class order_window : public cataimgui::window
+{
+    public:
+        order_window( std::vector<std::string> &order, int &count ) :
+            cataimgui::window( "MOBILE_HUD_ORDER",
+                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                               ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground ),
+            order( order ), count( count ) {}
+        bool back = false;
+        bool changed = false;
+    protected:
+        cataimgui::bounds get_bounds() override {
+            return { 0.0f, 0.0f, 1.0f, 1.0f };
+        }
+        void draw_controls() override;
+    private:
+        std::vector<std::string> &order;
+        int &count;
+        // the row that is being dragged, or -1
+        int dragging = -1;
+};
+
+void order_window::draw_controls()
+{
+    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    const ImVec2 origin = viewport->Pos;
+    const ImVec2 size = viewport->Size;
+    const float u = mobile_ui::unit();
+    const ImVec4 safe = mobile_ui::safe_insets();
+    ImDrawList *const back_draw = ImGui::GetWindowDrawList();
+    back_draw->PushClipRectFullScreen();
+    back_draw->AddRectFilled( origin, ImVec2( origin.x + size.x, origin.y + size.y ),
+                              mobile_ui::col_screen );
+    back_draw->PopClipRect();
+
+    const float avail = size.x - safe.x - safe.z;
+    const float width = std::min( avail, 520.0f * u );
+    const float left = origin.x + safe.x + ( avail - width ) * 0.5f;
+    float bar_h = 0.0f;
+    if( mobile_ui::app_bar( _( "Quick actions" ), ImVec2( origin.x + safe.x, origin.y + safe.y ), avail,
+                            &bar_h ) ) {
+        back = true;
+    }
+    float y = origin.y + safe.y + bar_h + 8.0f * u;
+    const int on_bar = std::clamp( count, mobile_hud::quick_count_min,
+                                   mobile_hud::quick_count_max ) - 1;
+    const std::string help = string_format(
+                                 _( "Drag a row by its grip to move it.  The first %d are on the bar, then Menu.  Change how many with Buttons." ),
+                                 on_bar );
+    mobile_ui::text( back_draw, face::body, 12.5f, ImVec2( left + 14.0f * u, y ), mobile_ui::col_muted,
+                     help, width - 28.0f * u );
+    y += mobile_ui::text_size( face::body, 12.5f, help, width - 28.0f * u ).y + 8.0f * u;
+
+    const float row = 52.0f * u;
+    const float grip_w = 64.0f * u;
+    const float list_h = origin.y + size.y - safe.w - y;
+    // fingers on the grips drag; anywhere else they scroll the list
+    touch_input::set_raw_drag_rect( left + width - grip_w, y, grip_w, list_h,
+                                    touch_input::view_mode::overmap );
+    ImGui::SetCursorScreenPos( ImVec2( left, y ) );
+    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+    ImGui::BeginChild( "##hud_order_rows", ImVec2( width, list_h ), ImGuiChildFlags_None,
+                       ImGuiWindowFlags_NoBackground );
+    {
+        ImDrawList *const list = ImGui::GetWindowDrawList();
+        const ImVec2 base = ImGui::GetCursorScreenPos();
+        const ImVec2 mouse = ImGui::GetMousePos();
+        const int rows = static_cast<int>( order.size() );
+        const int under = std::clamp( static_cast<int>( std::floor( ( mouse.y - base.y ) / row ) ), 0,
+                                      std::max( rows - 1, 0 ) );
+        const bool in_list = mouse.y >= y && mouse.y < y + list_h;
+        if( !ImGui::IsMouseDown( ImGuiMouseButton_Left ) ) {
+            dragging = -1;
+        } else if( dragging < 0 && ImGui::IsMouseClicked( ImGuiMouseButton_Left ) && in_list &&
+                   mouse.x >= left + width - grip_w && mouse.x < left + width ) {
+            dragging = under;
+        } else if( dragging >= 0 && dragging < rows && under != dragging ) {
+            const std::string moved = order[static_cast<size_t>( dragging )];
+            order.erase( order.begin() + dragging );
+            order.insert( order.begin() + under, moved );
+            dragging = under;
+            changed = true;
+        }
+        if( dragging >= 0 ) {
+            // near the ends the list moves along
+            if( mouse.y < y + 36.0f * u ) {
+                ImGui::SetScrollY( std::max( 0.0f, ImGui::GetScrollY() - 10.0f * u ) );
+            } else if( mouse.y > y + list_h - 36.0f * u ) {
+                ImGui::SetScrollY( std::min( ImGui::GetScrollMaxY(), ImGui::GetScrollY() + 10.0f * u ) );
+            }
+        }
+        for( int i = 0; i < rows; ++i ) {
+            const std::string &id = order[static_cast<size_t>( i )];
+            const ImVec2 min( base.x, base.y + static_cast<float>( i ) * row );
+            const ImVec2 max( base.x + width, min.y + row );
+            const bool shown = i < on_bar;
+            if( i == dragging ) {
+                list->AddRectFilled( min, max, mobile_ui::col_accent_soft );
+            }
+            const ImU32 ink = shown ? mobile_ui::col_fg : mobile_ui::col_muted;
+            mobile_ui::icon( list, mobile_hud::quick_item_icon( id ), ImVec2( min.x + 14.0f * u,
+                             min.y + ( row - 22.0f * u ) * 0.5f ), 22.0f, ink );
+            const std::string label = mobile_hud::quick_item_label( id );
+            mobile_ui::text( list, face::bold, 14.5f, ImVec2( min.x + 50.0f * u,
+                             min.y + ( row - mobile_ui::text_size( face::bold, 14.5f, label ).y ) * 0.5f ), ink, label );
+            const std::string state = shown ? string_format( "%d",
+                                      i + 1 ) : std::string( _( "Not on the bar" ) );
+            const ImVec2 state_px = mobile_ui::text_size( face::mono, 11.0f, state );
+            mobile_ui::text( list, face::mono, 11.0f, ImVec2( max.x - grip_w - state_px.x,
+                             min.y + ( row - state_px.y ) * 0.5f ),
+                             shown ? mobile_ui::col_accent : mobile_ui::col_muted, state );
+            mobile_ui::icon( list, "gripH", ImVec2( max.x - grip_w + ( grip_w - 22.0f * u ) * 0.5f,
+                                                    min.y + ( row - 22.0f * u ) * 0.5f ), 22.0f,
+                             i == dragging ? mobile_ui::col_accent : mobile_ui::col_muted );
+            list->AddLine( ImVec2( min.x, max.y ), max, IM_COL32( 255, 255, 255, 13 ), std::max( 1.0f, u ) );
+            if( i + 1 == on_bar ) {
+                // where the bar ends
+                list->AddLine( ImVec2( min.x, max.y ), max, mobile_ui::col_accent, std::max( 1.0f, 2.0f * u ) );
+            }
+        }
+        ImGui::SetCursorScreenPos( base );
+        ImGui::Dummy( ImVec2( 1.0f, static_cast<float>( rows ) * row + 8.0f * u ) );
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+}
+
+// Lets the player sort the buttons of the quick actions bar.
+void order_quick_actions( const bool landscape )
+{
+    mobile_hud::piece &p = working_layout( landscape )[piece_id::quick];
+    std::vector<std::string> order = mobile_hud::quick_order( p );
+    // the HUD is drawn over everything, so it steps aside for the list
+    editor.in_sheet = true;
+    mobile_hud::end_edit();
+    bool changed = false;
+    {
+        order_window window( order, p.count );
+        input_context ctxt( "default" );
+        const mobile_prompt::own_controls own_controls( ctxt );
+        ctxt.register_action( "QUIT" );
+        ctxt.register_action( "ANY_INPUT" );
+        while( !window.back ) {
+            ui_manager::redraw();
+            if( ctxt.handle_input() == "QUIT" ) {
+                break;
+            }
+        }
+        changed = window.changed;
+    }
+    touch_input::clear_raw_drag_rect();
+    mobile_hud::begin_edit( editor.working );
+    editor.in_sheet = false;
+    if( changed ) {
+        p.items = order;
+        editor.changed = true;
+    }
 }
 
 // Lets the player start over from one of the built-in presets.
@@ -636,6 +828,10 @@ void run()
             const std::string action = ctxt.handle_input();
             const bar_action tapped = action == "QUIT" ? bar_action::cancel : window.tapped;
             window.tapped = bar_action::none;
+            if( window.wants_order ) {
+                window.wants_order = false;
+                order_quick_actions( mobile_hud::edit_frame().landscape );
+            }
             switch( tapped ) {
                 case bar_action::cancel:
                     if( editor.selection >= 0 && action == "QUIT" ) {

@@ -91,6 +91,9 @@ struct piece {
     // direction and length then
     bool slider = false;
     float opacity = 1.0f;
+    // quick: the buttons in the player's order, by the names of quick_item_ids();
+    // empty for the usual order.  The first count - 1 show, then Menu.
+    std::vector<std::string> items;
 };
 
 struct drawer {
@@ -155,6 +158,16 @@ const char *json_name( drawer_id id );
 // The name shown to the player.
 std::string display_name( piece_id id );
 std::string display_name( drawer_id id );
+
+// The buttons the quick actions bar can hold, in the usual order.  These names
+// are the ones in "items" of the layout JSON.  Menu is not among them: it is
+// always the last button.
+const std::vector<std::string> &quick_item_ids();
+// The order for a bar: its own items first (names that are unknown or repeated
+// dropped), then the rest in the usual order.
+std::vector<std::string> quick_order( const piece &p );
+constexpr int quick_count_min = 3;
+constexpr int quick_count_max = 9;
 
 // The insets of the canvas's phone, in canvas units.
 insets canvas_insets( bool landscape );

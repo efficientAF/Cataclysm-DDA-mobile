@@ -120,7 +120,10 @@ class entry_window : public cataimgui::window
         void press( char key );
     protected:
         cataimgui::bounds get_bounds() override {
-            return { 0.0f, 0.0f, 1.0f, 1.0f };
+            // one pixel short of the screen: what is under the card keeps being
+            // redrawn and shows dimmed
+            const ImVec2 screen = ImGui::GetMainViewport()->Size;
+            return { 0.0f, 0.0f, screen.x, std::max( screen.y - 1.0f, 2.0f ) };
         }
         void draw_controls() override;
     private:
@@ -375,6 +378,7 @@ std::optional<std::string> query( const spec &what )
         ctxt.set_timeout( 50 );
     }
     while( !window.confirmed && !window.cancelled ) {
+        mobile_ui::keep_map_under();
         ui_manager::redraw();
         const std::string action = ctxt.handle_input();
         if( action == "QUIT" ) {

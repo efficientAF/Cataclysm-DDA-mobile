@@ -6,6 +6,7 @@
 
 #include <array>
 #include <optional>
+#include <string>
 
 #include "mobile_hud_layout.h"
 #include "point.h"
@@ -97,6 +98,10 @@ struct zoom_drag {
 zoom_drag zoom_drag_info();
 
 // --- For the editor (mobile_hud_edit.h) ---
+
+// The name and the icon of a button of the quick actions bar (quick_item_ids).
+std::string quick_item_label( const std::string &id );
+std::string quick_item_icon( const std::string &id );
 
 // While editing, the HUD draws the working layout with a frame and a name tag
 // around every piece, and nothing can be tapped.

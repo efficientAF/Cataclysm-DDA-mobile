@@ -777,28 +777,75 @@ static void draw_button_strip( const piece_id id, const bool column,
     }
 }
 
-// The context actions.  The last one opens the pause menu.
+namespace
+{
+struct quick_entry {
+    const char *id;
+    action_id act;
+    const char *icon;
+    translation label;
+};
+} // namespace
+
+// What the quick actions bar can hold, by the names of quick_item_ids().
+static const std::vector<quick_entry> &quick_entries()
+{
+    static const std::vector<quick_entry> all = {
+        { "examine", ACTION_EXAMINE, "examine", to_translation( "mobile HUD button", "Examine" ) },
+        { "pickup", ACTION_PICKUP, "pickup", to_translation( "mobile HUD button", "Pick up" ) },
+        { "wait", ACTION_WAIT, "wait", to_translation( "mobile HUD button", "Wait" ) },
+        { "inventory", ACTION_INVENTORY, "inventory", to_translation( "mobile HUD button", "Inventory" ) },
+        { "craft", ACTION_CRAFT, "craft", to_translation( "mobile HUD button", "Craft" ) },
+        { "look", ACTION_LOOK, "look", to_translation( "mobile HUD button", "Look" ) },
+        { "sleep", ACTION_SLEEP, "sleep", to_translation( "mobile HUD button", "Sleep" ) },
+        { "fire", ACTION_FIRE, "fire", to_translation( "mobile HUD button", "Fire" ) },
+        { "eat", ACTION_EAT, "hunger", to_translation( "mobile HUD button", "Eat" ) },
+        { "read", ACTION_READ, "book", to_translation( "mobile HUD button", "Read" ) },
+        { "map", ACTION_MAP, "globe", to_translation( "mobile HUD button", "Map" ) },
+        { "throw", ACTION_THROW, "target", to_translation( "mobile HUD button", "Throw" ) },
+        { "smash", ACTION_SMASH, "axe", to_translation( "mobile HUD button", "Smash" ) },
+        { "reload", ACTION_RELOAD_WEAPON, "shuffle", to_translation( "mobile HUD button", "Reload" ) },
+        { "use", ACTION_USE, "gear", to_translation( "mobile HUD button", "Use" ) },
+        { "save", ACTION_QUICKSAVE, "save", to_translation( "mobile HUD button", "Save" ) },
+    };
+    return all;
+}
+
+static const quick_entry *quick_entry_of( const std::string &id )
+{
+    for( const quick_entry &entry : quick_entries() ) {
+        if( id == entry.id ) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+std::string quick_item_label( const std::string &id )
+{
+    const quick_entry *const entry = quick_entry_of( id );
+    return entry ? entry->label.translated() : id;
+}
+
+std::string quick_item_icon( const std::string &id )
+{
+    const quick_entry *const entry = quick_entry_of( id );
+    return entry ? entry->icon : "menu";
+}
+
+// The context actions, in the player's order.  The last one opens the pause menu.
 static void draw_quick_actions( const piece &cfg )
 {
-    struct entry {
-        action_id act;
-        const char *icon;
-        translation label;
-    };
-    static const std::vector<entry> all = {
-        { ACTION_EXAMINE, "examine", to_translation( "mobile HUD button", "Examine" ) },
-        { ACTION_PICKUP, "pickup", to_translation( "mobile HUD button", "Pick up" ) },
-        { ACTION_WAIT, "wait", to_translation( "mobile HUD button", "Wait" ) },
-        { ACTION_INVENTORY, "inventory", to_translation( "mobile HUD button", "Inventory" ) },
-        { ACTION_CRAFT, "craft", to_translation( "mobile HUD button", "Craft" ) },
-        { ACTION_LOOK, "look", to_translation( "mobile HUD button", "Look" ) },
-        { ACTION_SLEEP, "sleep", to_translation( "mobile HUD button", "Sleep" ) },
-        { ACTION_FIRE, "fire", to_translation( "mobile HUD button", "Fire" ) },
-    };
-    const size_t count = static_cast<size_t>( std::clamp( cfg.count, 3, 9 ) );
+    const size_t count = static_cast<size_t>( std::clamp( cfg.count, quick_count_min,
+                         quick_count_max ) );
     std::vector<strip_button> shown;
-    for( size_t i = 0; i + 1 < count && i < all.size(); ++i ) {
-        shown.push_back( { all[i].act, all[i].icon, all[i].label.translated() } );
+    for( const std::string &id : quick_order( cfg ) ) {
+        if( shown.size() + 1 >= count ) {
+            break;
+        }
+        if( const quick_entry *const entry = quick_entry_of( id ) ) {
+            shown.push_back( { entry->act, entry->icon, entry->label.translated() } );
+        }
     }
     shown.push_back( { ACTION_ACTIONMENU, "menu", pgettext( "mobile HUD button", "Menu" ) } );
     draw_button_strip( piece_id::quick, cfg.column, shown, 46.0f * unit );

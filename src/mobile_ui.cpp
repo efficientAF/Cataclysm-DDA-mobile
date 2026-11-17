@@ -10,6 +10,7 @@
 
 #include "cata_imgui.h"
 #include "filesystem.h"
+#include "game.h"
 #include "input_context.h"
 #include "path_info.h"
 #include "sdl_wrappers.h"
@@ -79,6 +80,13 @@ void text( ImDrawList *const draw, const face f, const float size_units, const I
 {
     draw->AddText( font_for( f ), size_units * unit(), pos, color, text.c_str(), nullptr,
                    wrap_width );
+}
+
+void keep_map_under()
+{
+    if( g != nullptr ) {
+        g->invalidate_main_ui_adaptor();
+    }
 }
 
 // --- Icons ---
@@ -303,7 +311,10 @@ class sheet_window : public cataimgui::window
         int result = sheet_nothing;
     protected:
         cataimgui::bounds get_bounds() override {
-            return { 0.0f, 0.0f, 1.0f, 1.0f };
+            // one pixel short of the screen: what is under the sheet keeps being
+            // redrawn and shows dimmed
+            const ImVec2 screen = ImGui::GetMainViewport()->Size;
+            return { 0.0f, 0.0f, screen.x, std::max( screen.y - 1.0f, 2.0f ) };
         }
         void draw_controls() override {
             const ImGuiViewport *const viewport = ImGui::GetMainViewport();
@@ -325,6 +336,7 @@ int show_sheet( const sheet_spec &spec )
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "ANY_INPUT" );
     while( window.result == sheet_nothing ) {
+        keep_map_under();
         ui_manager::redraw();
         const std::string action = ctxt.handle_input();
         if( action == "QUIT" ) {

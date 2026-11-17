@@ -42,7 +42,9 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
                          mobile_ui::col_screen );
 
     const float avail = size.x - safe.x - safe.z;
-    const float width = std::min( avail, 640.0f * u );
+    // side by side when the screen is wide: what was said left, the replies right
+    const bool wide = size.x > size.y;
+    const float width = std::min( avail, ( wide ? 900.0f : 640.0f ) * u );
     const float left = origin.x + safe.x + ( avail - width ) * 0.5f;
     const float pad = 14.0f * u;
     float y = origin.y + safe.y + 12.0f * u;
@@ -68,7 +70,9 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
     // the prompt bar sits under everything
     const float bottom = origin.y + size.y - safe.w - 68.0f * u;
     // the replies take what they need, up to a little over half of the room
-    const float reply_wrap = width - 2.0f * pad - 24.0f * u;
+    const float history_w = wide ? width * 0.5f : width;
+    const float replies_w = wide ? width - history_w : width;
+    const float reply_wrap = replies_w - 2.0f * pad - 24.0f * u;
     float replies_h = 0.0f;
     std::vector<float> heights;
     for( const std::string &reply : replies ) {
@@ -78,19 +82,19 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
         replies_h += h + 6.0f * u;
     }
     const float room = bottom - y;
-    const float replies_view = std::min( replies_h + 6.0f * u, room * 0.58f );
-    const float history_h = room - replies_view;
+    const float replies_view = wide ? room : std::min( replies_h + 6.0f * u, room * 0.58f );
+    const float history_h = wide ? room : room - replies_view;
 
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
 
     // what was said, the newest at the bottom and in view
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
-    ImGui::BeginChild( "##talk_history", ImVec2( width, history_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##talk_history", ImVec2( history_w, history_h ), ImGuiChildFlags_None,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
-        const float wrap = width - 2.0f * pad - 20.0f * u;
+        const float wrap = history_w - 2.0f * pad - 20.0f * u;
         float line_y = base.y + 10.0f * u;
         for( const message &m : history ) {
             const std::string text = remove_color_tags( m.text );
@@ -123,8 +127,8 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
 
     // the replies
     int tapped = -1;
-    ImGui::SetCursorScreenPos( ImVec2( left, y + history_h ) );
-    ImGui::BeginChild( "##talk_replies", ImVec2( width, replies_view ), ImGuiChildFlags_None,
+    ImGui::SetCursorScreenPos( wide ? ImVec2( left + history_w, y ) : ImVec2( left, y + history_h ) );
+    ImGui::BeginChild( "##talk_replies", ImVec2( replies_w, replies_view ), ImGuiChildFlags_None,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -133,7 +137,7 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
         for( size_t i = 0; i < replies.size(); ++i ) {
             const std::string text = remove_color_tags( replies[i] );
             const ImVec2 min( base.x + pad, row_y );
-            const ImVec2 max( base.x + width - pad, row_y + heights[i] );
+            const ImVec2 max( base.x + replies_w - pad, row_y + heights[i] );
             bool held = false;
             if( mobile_ui::pressable( "##talk_reply" + std::to_string( i ), min,
                                       ImVec2( max.x - min.x, heights[i] ), &held ) ) {
