@@ -38,6 +38,8 @@ struct world_info {
     std::string name;
     // for example "2 characters"
     std::string detail;
+    // how many characters live in it
+    int characters = 0;
 };
 
 struct main_menu_model {

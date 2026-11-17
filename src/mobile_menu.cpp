@@ -294,7 +294,19 @@ void main_menu_view::impl::settle_new_game_world()
     if( has( new_game_world ) ) {
         return;
     }
-    if( has( model.last_world ) ) {
+    // a world without characters if there is one, as upstream's "play now"
+    // does; the one played last comes first
+    const auto empty = std::find_if( playable.begin(), playable.end(), [&]( const int i ) {
+        return model.worlds[i].characters == 0;
+    } );
+    const auto last = std::find_if( playable.begin(), playable.end(), [&]( const int i ) {
+        return model.worlds[i].name == model.last_world;
+    } );
+    if( last != playable.end() && model.worlds[*last].characters == 0 ) {
+        new_game_world = model.last_world;
+    } else if( empty != playable.end() ) {
+        new_game_world = model.worlds[*empty].name;
+    } else if( last != playable.end() ) {
         new_game_world = model.last_world;
     } else if( !playable.empty() ) {
         new_game_world = model.worlds[playable.front()].name;

@@ -736,7 +736,7 @@ bool main_menu::opening_screen()
         for( const std::string &name : world_generator->all_worldnames() ) {
             const size_t saves = world_generator->get_world( name )->world_saves.size();
             model.worlds.push_back( { name, string_format( n_gettext( "%d character", "%d characters", saves ),
-                                      static_cast<int>( saves ) )
+                                      static_cast<int>( saves ) ), static_cast<int>( saves )
                                     } );
         }
         model.last_world = world_generator->last_world_name;

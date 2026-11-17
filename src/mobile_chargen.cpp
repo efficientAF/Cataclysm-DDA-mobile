@@ -1276,7 +1276,9 @@ void perform( character_creator_ui &ccui, const command &cmd )
             spec.title = _( "Blood type" );
             spec.grid = true;
             for( int i = 0; i < static_cast<int>( blood_type::blood_acid ); ++i ) {
-                for( const char *const rh : { "-", "+" } ) {
+                for( const char *const rh : {
+                         "-", "+"
+                     } ) {
                     const std::string name = io::enum_to_string( static_cast<blood_type>( i ) ) + rh;
                     spec.rows.push_back( { "", name, "" } );
                 }
