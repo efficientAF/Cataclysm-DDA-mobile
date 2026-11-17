@@ -919,13 +919,13 @@ float chargen_window::draw_summary( const ImVec2 &base )
     // what upstream has on its description tab: a row each, the value on the right
     label( _( "DETAILS" ) );
     {
-        struct detail {
+        struct detail_row {
             std::string name;
             std::string value;
             command_kind kind;
             std::string action;
         };
-        std::vector<detail> details = {
+        std::vector<detail_row> details = {
             { _( "Age" ), you.age_string( get_scenario()->start_of_game() ), command_kind::action, "CHANGE_AGE" },
             { _( "Height" ), you.height_string(), command_kind::action, "CHANGE_HEIGHT" },
             {
@@ -953,7 +953,7 @@ float chargen_window::draw_summary( const ImVec2 &base )
                              static_cast<float>( columns );
         const float cell_h = 48.0f * u;
         for( int i = 0; i < static_cast<int>( details.size() ); ++i ) {
-            const detail &d = details[i];
+            const detail_row &d = details[i];
             const ImVec2 pos( left + static_cast<float>( i % columns ) * ( cell_w + gap ),
                               y + static_cast<float>( i / columns ) * ( cell_h + gap ) );
             bool held = false;
