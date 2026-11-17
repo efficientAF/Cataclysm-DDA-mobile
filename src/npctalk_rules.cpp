@@ -20,6 +20,8 @@
 #include "imgui/imgui_internal.h"
 #include "input_context.h"
 #include "input_enums.h"
+#include "mobile_camp.h"
+#include "mobile_list.h"
 #include "npc.h"
 #include "pimpl.h"
 #include "string_formatter.h"
@@ -61,6 +63,11 @@ static std::map<aim_rule, std::string> aim_rule_map = {
 
 void follower_rules_ui::draw_follower_rules_ui( npc *guy )
 {
+    // Mobile UI: the rules as a list screen (mobile_camp.h)
+    if( guy && mobile_list::wanted() ) {
+        mobile_camp::follower_rules( *guy, engagement_rules, aim_rule_map, recharge_map, reserve_map );
+        return;
+    }
     input_context ctxt;
     follower_rules_ui_impl p_impl;
     p_impl.set_npc_pointer_to( guy );

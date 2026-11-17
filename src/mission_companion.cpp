@@ -51,6 +51,8 @@
 #include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_camp.h"
+#include "mobile_list.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
@@ -831,6 +833,13 @@ bool talk_function::display_and_choose_opts(
     if( cur_key_list.empty() ) {
         popup( _( "There are no missions at this colony.  Press Spacebar…" ) );
         return false;
+    }
+
+    // Mobile UI: the missions as a list screen (mobile_camp.h); it leaves its
+    // answer in mission_key.cur_key, as the loop below does.
+    if( mobile_list::wanted() ) {
+        mobile_camp::choose_mission( mission_key, omt_pos, role_id, title );
+        return true;
     }
 
     size_t part_y = 0;
