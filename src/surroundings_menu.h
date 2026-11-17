@@ -189,6 +189,13 @@ class surroundings_menu : public cataimgui::window
         void draw_hotkey_buttons( const tab_data *tab );
         float get_hotkey_buttons_height( const tab_data *tab );
 
+        // Mobile UI: the list as a mobile screen (mobile_around.cpp).  Stands in for
+        // "redraw and read a key" and hands back one of upstream's action names.
+        std::string mobile_action();
+        int mobile_tab = -1;
+        int mobile_selected = -1;
+        std::map<const void *, std::string> mobile_descriptions;
+
         void update_path_end();
         void handle_list_input( const std::string &action );
         std::optional<tripoint_rel_ms> get_selected_pos();
