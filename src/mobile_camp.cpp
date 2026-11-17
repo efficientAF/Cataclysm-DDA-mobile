@@ -391,12 +391,11 @@ void follower_rules( npc &guy, const std::map<combat_engagement, std::string> &e
             const bool on = guy.rules.has_flag( rule.second.rule );
             mobile_list::row r;
             r.name = parsed( on ? rule.second.rule_true_text : rule.second.rule_false_text, guy );
-            r.right = on ? _( "On" ) : _( "Off" );
-            r.current = on;
-            r.description = string_format( _( "On: %1$s\n\nOff: %2$s" ),
-                                           parsed( rule.second.rule_true_text, guy ),
-                                           parsed( rule.second.rule_false_text, guy ) );
-            r.action = on ? _( "Turn off" ) : _( "Turn on" );
+            // the two sides of a rule are two ways to behave, not on and off
+            r.description = string_format( _( "Now: %1$s\n\nOr: %2$s" ), r.name,
+                                           parsed( on ? rule.second.rule_false_text :
+                                                   rule.second.rule_true_text, guy ) );
+            r.action = _( "Change" );
             r.more_actions = { std::string( _( "Default" ) ) };
             what.rows.push_back( r );
             flags.push_back( rule.second.rule );

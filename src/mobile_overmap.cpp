@@ -753,7 +753,8 @@ void view::impl::draw_controls()
     const float bar_bottom = origin.y + safe.y + 54.0f * u;
     draw->AddRectFilled( origin, ImVec2( screen_max.x, bar_bottom ), mobile_ui::col_screen );
     ImGui::BeginDisabled( !interactive );
-    if( mobile_ui::app_bar( pick_mode() ? _( "Choose a place" ) : _( "Map" ), ImVec2( origin.x + safe.x, origin.y + safe.y ),
+    if( mobile_ui::app_bar( pick_mode() ? _( "Choose a place" ) : _( "Map" ), ImVec2( origin.x + safe.x,
+                            origin.y + safe.y ),
                             size.x - safe.x - safe.z, nullptr ) ) {
         pending_action = "QUIT";
     }
