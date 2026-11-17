@@ -21,6 +21,11 @@ class JsonObject;
 class JsonOut;
 class cata_path;
 
+namespace mobile_options
+{
+struct access;
+} // namespace mobile_options
+
 class options_manager
 {
     public:
@@ -57,6 +62,8 @@ class options_manager
         std::map<std::string, std::string> post_json_verify; // NOLINT(cata-serialize)
 
         friend options_manager &get_options();
+        // Mobile UI: the phone's options screen reads the pages and groups
+        friend struct mobile_options::access;
         options_manager();
 
         void addOptionToPage( const std::string &name, const std::string &page );

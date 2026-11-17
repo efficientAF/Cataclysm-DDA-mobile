@@ -25,6 +25,8 @@
 #include "lang_stats.h"
 #include "line.h"
 #include "mapsharing.h"
+#include "mobile_menu.h"
+#include "mobile_options.h"
 #include "output.h"
 #include "path_info.h"
 #include "point.h"
@@ -3750,6 +3752,10 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
     ui.on_screen_resize( init_windows );
     init_windows( ui );
     ui.on_redraw( [&]( const ui_adaptor & ) {
+        // Mobile UI: the phone screen below draws itself
+        if( mobile_menu::enabled() ) {
+            return;
+        }
         werase( w_options_header );
         werase( w_options_border );
         werase( w_options_tooltip );
@@ -3945,6 +3951,15 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
     } );
 
     while( true ) {
+        // Mobile UI: the phone screen stands in for this loop; comparing, saving
+        // and the side effects after it stay as they are
+        if( mobile_menu::enabled() ) {
+            const std::string left_by = mobile_options::show( *this, ingame, world_options_only, with_tabs );
+            if( world_options_only ) {
+                return left_by;
+            }
+            break;
+        }
         ui_manager::redraw();
 
         recalc_startpos = false;
