@@ -2164,7 +2164,7 @@ int game::inventory_item_menu( item_location locThisItem,
                 // that apply, and no letters
                 const bool mobile_sheet = mobile_menu::enabled();
                 if( mobile_sheet ) {
-                    action_menu.text = oThisItem.display_name();
+                    action_menu.text = uppercase_first_letter( oThisItem.tname( 1, false ) );
                     action_menu.addentry( '?', true, 0, _( "Details" ) );
                 }
                 const auto addentry = [&]( const char key, const std::string & text, const hint_rating hint ) {

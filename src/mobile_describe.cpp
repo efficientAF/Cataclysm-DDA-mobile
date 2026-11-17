@@ -75,6 +75,8 @@ void extended_description_window::mobile_show()
     if( pages.empty() ) {
         pages.push_back( { _( "Terrain" ), { _( "You can't see the terrain here." ) } } );
     }
+    // upstream's window is not drawn meanwhile
+    is_open = false;
     mobile_describe::show( _( "Description" ), pages, first );
 }
 

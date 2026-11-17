@@ -71,6 +71,11 @@ std::string surroundings_menu::mobile_action()
         std::string &description = mobile_descriptions[thing];
         if( description.empty() ) {
             description = thing->info( true );
+            // its dividers are lines of their own
+            for( size_t at = description.find( "\n--\n" ); at != std::string::npos;
+                 at = description.find( "\n--\n", at ) ) {
+                description.replace( at, 4, "\n" );
+            }
         }
         r.description = description;
         r.action = _( "Details" );
@@ -188,7 +193,17 @@ std::string surroundings_menu::mobile_action()
         if( did.button == 0 ) {
             return selected_tab == surroundings_menu_tab_enum::monsters ? "FILTER_MONSTERS" : "FILTER";
         }
-        return did.button == 1 ? "SORT" : "RESET_FILTER";
+        if( did.button == 1 ) {
+            return "SORT";
+        }
+        // the filter may be on another tab than the one that is open
+        for( tab_data *const data : std::vector<tab_data *> { &item_data, &monster_data, &terfurn_data } ) {
+            if( data->has_filter() ) {
+                data->reset_filter();
+                data->apply_filter();
+            }
+        }
+        return "RESET_FILTER";
     }
     if( did.row < 0 || did.row >= static_cast<int>( row_actions.size() ) ) {
         return "QUIT";
@@ -208,7 +223,7 @@ std::string surroundings_menu::mobile_action()
     update_path_end();
     const std::vector<std::string> &actions = row_actions[static_cast<size_t>( did.row )];
     const std::string action = actions[static_cast<size_t>( std::clamp( did.action, 0,
-                                                static_cast<int>( actions.size() ) - 1 ) )];
+                                                            static_cast<int>( actions.size() ) - 1 ) )];
     if( action == "look" ) {
         // upstream's look-around starts where the view is
         if( const std::optional<tripoint_rel_ms> pos = get_selected_pos() ) {
