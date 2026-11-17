@@ -142,6 +142,11 @@ void list_window::draw_controls()
             const std::string label = what.tabs[i] + "  " + std::to_string( count );
             const float w = mobile_ui::text_size( face::bold, 13.0f, label ).x + 26.0f * u;
             const bool on = tab == static_cast<int>( i );
+            if( x + w > left + width - 12.0f * u && x > left + 12.0f * u ) {
+                // many tabs wrap onto further rows
+                x = left + 12.0f * u;
+                y += 42.0f * u;
+            }
             if( mobile_ui::pressable( "##list_tab" + std::to_string( i ), ImVec2( x, y ),
                                       ImVec2( w, 36.0f * u ) ) && !on ) {
                 tab = static_cast<int>( i );

@@ -45,6 +45,7 @@
 #include "item_location.h"
 #include "iteminfo_query.h"
 #include "iuse.h"
+#include "mobile_list.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
@@ -534,6 +535,89 @@ construction_id construction_menu( const bool blueprint )
 
     if( available.empty() ) {
         popup( _( "You can not construct anything here." ) );
+        return construction_id( -1 );
+    }
+
+    // Mobile UI: a list screen (mobile_list.h) with the categories as tabs; the
+    // button builds through the same steps as CONFIRM below.
+    if( !blueprint && mobile_list::wanted() ) {
+        avatar &you = get_avatar();
+        const temp_crafting_inventory &total_inv = you.crafting_inventory();
+        const std::vector<construction_category> &categories = construction_categories::get_all();
+        mobile_list::spec what;
+        what.title = _( "Construction" );
+        what.empty_text = _( "Nothing in this category can be built." );
+        std::vector<construction_group_str_id> shown;
+        for( const construction_category &category : categories ) {
+            const auto found = cat_available.find( category.id );
+            if( found == cat_available.end() || found->second.empty() ) {
+                continue;
+            }
+            const int tab = static_cast<int>( what.tabs.size() );
+            what.tabs.push_back( category.name() );
+            // what can be built now first
+            std::vector<construction_group_str_id> ordered = found->second;
+            std::stable_partition( ordered.begin(), ordered.end(),
+            [&]( const construction_group_str_id & group ) {
+                return player_can_build( you, total_inv, group );
+            } );
+            for( const construction_group_str_id &group : ordered ) {
+                mobile_list::row r;
+                r.name = group->name();
+                r.tab = tab;
+                r.enabled = player_can_build( you, total_inv, group );
+                r.right = r.enabled ? _( "Ready" ) : std::string();
+                r.action = r.enabled ? _( "Build" ) : std::string();
+                int stage = 0;
+                const std::vector<const construction *> options = constructions_by_group( group );
+                for( const construction *const con : options ) {
+                    ++stage;
+                    con->requirements->can_make_with_inventory( &you, total_inv, is_crafting_component, 1,
+                            craft_flags::none, false );
+                    if( options.size() > 1 ) {
+                        r.description += string_format( _( "Stage/Variant #%d: " ), stage );
+                        if( !con->post_terrain.empty() ) {
+                            r.description += con->post_is_furniture ? furn_str_id( con->post_terrain ).obj().name() :
+                                             ter_str_id( con->post_terrain ).obj().name();
+                        }
+                        r.description += "\n";
+                    }
+                    r.description += string_format( _( "Time: %s" ),
+                                                    to_string( time_duration::from_moves( con->adjusted_time() ) ) ) + "\n";
+                    for( const std::pair<const skill_id, int> &skill : con->required_skills ) {
+                        r.description += string_format( _( "Skill: %1$s %2$d (you have %3$d)" ),
+                                                        skill.first->name(), skill.second,
+                                                        static_cast<int>( you.get_skill_level( skill.first ) ) ) + "\n";
+                    }
+                    for( const std::string &line : con->requirements->get_folded_tools_list( &you, 200, c_white,
+                            total_inv ) ) {
+                        r.description += line + "\n";
+                    }
+                    for( const std::string &line : con->requirements->get_folded_components_list( &you, 200,
+                            c_white, total_inv, is_crafting_component ) ) {
+                        r.description += line + "\n";
+                    }
+                    r.description += "\n";
+                }
+                what.rows.push_back( r );
+                shown.push_back( group );
+            }
+        }
+        int tab = 0;
+        int row = -1;
+        const int chosen = mobile_list::show( what, tab, row );
+        if( chosen < 0 || static_cast<size_t>( chosen ) >= shown.size() ) {
+            return construction_id( -1 );
+        }
+        const construction_group_str_id &group = shown[static_cast<size_t>( chosen )];
+        if( group != construction_group_deconstruct_simple_furniture &&
+            !player_can_see_to_build( you, group ) ) {
+            add_msg( m_info, _( "It is too dark to construct right now." ) );
+        } else if( g->warn_player_maybe_anger_local_faction( true ) ) {
+            cache_scope.reset();
+            place_construction( { group } );
+            uistate.last_construction = group;
+        }
         return construction_id( -1 );
     }
 
