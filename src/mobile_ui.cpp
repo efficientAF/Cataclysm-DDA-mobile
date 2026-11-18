@@ -307,6 +307,13 @@ bool app_bar( const std::string &title, const ImVec2 &pos, const float width,
 
 static bool sheet_scroll_reset = false;
 
+// A tap above the sheet or, where the sheet is narrower than the screen, beside it.
+static bool outside_sheet( const ImVec2 &pos, const float sheet_w )
+{
+    const ImVec2 at = ImGui::GetIO().MousePos;
+    return at.y < pos.y || at.x < pos.x || at.x > pos.x + sheet_w;
+}
+
 int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size )
 {
     const float u = unit();
@@ -413,7 +420,7 @@ int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size
     ImGui::EndChild();
     ImGui::PopStyleVar();
 
-    if( outside && result == sheet_nothing && ImGui::GetIO().MousePos.y < pos.y ) {
+    if( outside && result == sheet_nothing && outside_sheet( pos, sheet_w ) ) {
         result = sheet_dismissed;
     }
     return result;

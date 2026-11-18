@@ -225,6 +225,13 @@ int draw_popup( const popup_spec &spec )
     return result;
 }
 
+// A tap above the sheet or, where the sheet is narrower than the screen, beside it.
+static bool outside_sheet( const ImVec2 &pos, const float sheet_w )
+{
+    const ImVec2 at = ImGui::GetIO().MousePos;
+    return at.y < pos.y || at.x < pos.x || at.x > pos.x + sheet_w;
+}
+
 int draw_list( const list_spec &spec )
 {
     // as in draw_popup: the keys are upstream's
@@ -359,7 +366,7 @@ int draw_list( const list_spec &spec )
     ImGui::EndChild();
     ImGui::PopStyleVar();
 
-    if( outside && result == tap_nothing && ImGui::GetIO().MousePos.y < pos.y ) {
+    if( outside && result == tap_nothing && outside_sheet( pos, sheet_w ) ) {
         result = tap_outside;
     }
     ImGui::PopItemFlag();
