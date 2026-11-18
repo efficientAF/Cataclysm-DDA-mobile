@@ -22,16 +22,14 @@ CLAUDE.md's Status section. By item number below:
 
 ## Round 6 (18 Nov 2026, seventh session)
 
-The workers were cut off by the usage limit; CLAUDE.md's Status section says what was seen.
-By item number below:
+CLAUDE.md's Status section says what was seen. By item number below:
 
-- **Built:** 22 (search, note list, level up/down, a More sheet with the toggles and
-  missions; danger marks only through the note list), 24, 25, 27, 31 (auto notes and
-  distractions as lists; sidebar panels and the colour manager taken off the mobile menus),
-  34, 35 (taken off the menus), 36, and 28 (the Info drawer for NPCs and during activities).
-- **Half done, in WIP commits, unseen:** 23 (exosuit), 26 (study zone), zones' "Show on
-  map", "Select door to toggle".
-- **Still open:** 30, 32, 33 (hidden on purpose), and checking all of the above on screen.
+- **Built and seen:** 22 (search, note list with danger marks, level up/down, a More sheet
+  with the toggles and missions), 23, 24, 25, 26 (seen only with made-up followers), 27, 31
+  (auto notes and distractions as lists; sidebar panels and the colour manager taken off the
+  mobile menus), 34, 35 (taken off the menus), 36, 28 (the Info drawer for NPCs and a tap
+  during activities), and zones' "Show on map".
+- **Still open:** 30 (minigames), 32 (debug tools), 33 (hidden on purpose).
 
 ## Two rules that decide most of it
 
