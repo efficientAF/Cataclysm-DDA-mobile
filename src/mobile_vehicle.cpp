@@ -61,7 +61,10 @@ void veh_interact::mobile_overview( map &here, const overview_enable_t &enable,
             continue;
         }
         std::string desc;
-        if( opt.part->is_broken() ) {
+        if( opt.part->is_seat() && opt.part->crew() != nullptr ) {
+            // who has the seat, as upstream's overview says beside it
+            desc = string_format( _( "Seat of %s" ), opt.part->crew()->get_name() );
+        } else if( opt.part->is_broken() ) {
             desc = _( "Broken" );
         } else if( opt.part->ammo_remaining() > 0 && !opt.part->ammo_current().is_null() ) {
             desc = string_format( "%s × %d", item::nname( opt.part->ammo_current() ),

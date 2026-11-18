@@ -85,6 +85,7 @@
 #include "martialarts.h"
 #include "memory_fast.h"
 #include "messages.h"
+#include "mobile_list.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -1801,7 +1802,49 @@ class exosuit_interact
             return current_ui;
         }
 
+        // Mobile UI: the pockets as a list (mobile_list.h); the row's button runs
+        // the same step as CONFIRM below, whose menus are bottom sheets.
+        void mobile_loop() {
+            int tab = 0;
+            int selected = -1;
+            while( true ) {
+                mobile_list::spec what;
+                what.title = remove_color_tags( suit->tname() );
+                what.header = _( "Modules" );
+                what.empty_text = _( "This has no room for modules." );
+                const std::vector<item_pocket *> pockets = suit->get_container_pockets();
+                int index = 0;
+                for( item_pocket *pkt : pockets ) {
+                    mobile_list::row r;
+                    r.name = get_pocket_name( pkt );
+                    r.detail = pkt->empty() ? _( "Empty" ) :
+                               remove_color_tags( pkt->all_items_top().front()->tname() );
+                    r.action = pkt->empty() ? _( "Attach a module" ) : _( "Change" );
+                    std::vector<iteminfo> dummy;
+                    std::vector<iteminfo> suitinfo;
+                    pkt->general_info( suitinfo, index, true );
+                    pkt->contents_info( suitinfo, index, true );
+                    r.description = format_item_info( suitinfo, dummy );
+                    what.rows.push_back( r );
+                    index++;
+                }
+                const int picked = mobile_list::show( what, tab, selected );
+                if( picked < 0 || static_cast<size_t>( picked ) >= pockets.size() ) {
+                    return;
+                }
+                const int nmoves = insert_replace_activate_mod( pockets[picked], suit );
+                moves = std::max( moves, nmoves );
+                if( !get_player_character().activity.is_null() ) {
+                    return;
+                }
+            }
+        }
+
         void interact_loop() {
+            if( mobile_list::wanted() ) {
+                mobile_loop();
+                return;
+            }
             bool done = false;
             shared_ptr_fast<ui_adaptor> current_ui = create_or_get_ui_adaptor();
             while( !done ) {
