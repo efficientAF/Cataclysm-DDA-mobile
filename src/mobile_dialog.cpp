@@ -105,7 +105,7 @@ int draw_popup( const popup_spec &spec )
 
     if( modal ) {
         draw->PushClipRectFullScreen();
-        draw->AddRectFilled( origin, screen_max, mobile_ui::col_dim );
+        mobile_ui::dim_screen( draw, origin, screen_max );
         draw->PopClipRect();
     }
 
@@ -230,7 +230,7 @@ int draw_list( const list_spec &spec )
     int result = tap_nothing;
 
     draw->PushClipRectFullScreen();
-    draw->AddRectFilled( origin, screen_max, mobile_ui::col_dim );
+    mobile_ui::dim_screen( draw, origin, screen_max );
     draw->PopClipRect();
     const bool outside = mobile_ui::pressable( "##list_outside", origin, size );
 

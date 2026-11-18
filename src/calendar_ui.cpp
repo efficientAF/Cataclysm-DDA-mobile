@@ -8,6 +8,7 @@
 
 #include "color.h"
 #include "input_context.h"
+#include "mobile_menu.h"
 #include "input_popup.h"
 #include "string_formatter.h"
 #include "translation.h"
@@ -55,15 +56,18 @@ time_point calendar_ui::select_time_point( time_point initial_value, std::string
             { "RIGHT", to_translation( "Increase value" ) },
             { "RESET", to_translation( "Reset value" ) }
         };
-        smenu.footer_text += string_format( _( "Press <color_light_green>%s</color> to decrease value.\n" ),
-                                            input_context( smenu.input_category ).get_desc( "LEFT" ) );
-        smenu.footer_text += string_format( _( "Press <color_light_green>%s</color> to increase value.\n" ),
-                                            input_context( smenu.input_category ).get_desc( "RIGHT" ) );
-        smenu.footer_text += string_format( _( "Press <color_light_green>%s</color> to reset value.\n" ),
-                                            input_context( smenu.input_category ).get_desc( "RESET" ) );
-        smenu.footer_text += string_format(
-                                 _( "Press <color_light_green>%s</color> when done selecting time point." ),
-                                 input_context( smenu.input_category ).get_desc( "UILIST.QUIT" ) );
+        // Mobile UI: a row is tapped and its number entered; no key help in the heading
+        if( !mobile_menu::enabled() ) {
+            smenu.footer_text += string_format( _( "Press <color_light_green>%s</color> to decrease value.\n" ),
+                                                input_context( smenu.input_category ).get_desc( "LEFT" ) );
+            smenu.footer_text += string_format( _( "Press <color_light_green>%s</color> to increase value.\n" ),
+                                                input_context( smenu.input_category ).get_desc( "RIGHT" ) );
+            smenu.footer_text += string_format( _( "Press <color_light_green>%s</color> to reset value.\n" ),
+                                                input_context( smenu.input_category ).get_desc( "RESET" ) );
+            smenu.footer_text += string_format(
+                                     _( "Press <color_light_green>%s</color> when done selecting time point." ),
+                                     input_context( smenu.input_category ).get_desc( "UILIST.QUIT" ) );
+        }
 
         smenu.addentry( static_cast<int>( calendar_ui::granularity::year ), true,
                         'y', "%s: %d", _( "year" ), years( return_value ) + 1 );

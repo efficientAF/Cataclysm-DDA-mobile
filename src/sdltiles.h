@@ -85,6 +85,13 @@ void toggle_soft_keyboard();
 // or android letterboxing. Zero before the buffer exists.
 void get_display_buffer_dims( int *w, int *h );
 
+// Mobile UI: copies the frame on screen into a texture of the same size and
+// returns it, or nullptr.  The texture belongs to sdltiles.cpp and is
+// overwritten by the next call.  mobile_backdrop_texture() returns the last
+// copy while it can still be drawn.
+SDL_Texture *mobile_copy_display_buffer();
+SDL_Texture *mobile_backdrop_texture();
+
 // Map window coordinates to display_buffer (terminal) pixel coordinates.
 // Returns the input unchanged when either dimension source is unavailable.
 SDL_Point window_to_display_buffer_coords( SDL_Point window_pt );

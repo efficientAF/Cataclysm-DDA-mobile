@@ -46,6 +46,10 @@ class view
         // action upstream's loop should handle in place of the given one.
         std::string handle( const std::string &action, input_context &ctxt,
                             tripoint_abs_omt &cursor );
+        // True while something see-through (the tile sheet's dimming, a toast)
+        // is over the map: the map must then be drawn again every frame, or the
+        // dimming adds up frame by frame.
+        bool covers_map() const;
     private:
         class impl;
         std::unique_ptr<impl> pimpl;

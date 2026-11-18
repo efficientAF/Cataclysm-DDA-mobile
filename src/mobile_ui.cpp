@@ -89,6 +89,39 @@ void keep_map_under()
     }
 }
 
+// --- Backdrop ---
+
+static bool backdrop_set = false;
+static bool backdrop_used = false;
+
+void snapshot_backdrop()
+{
+    backdrop_set = mobile_copy_display_buffer() != nullptr;
+    // counts as used until the next frame has been drawn
+    backdrop_used = true;
+}
+
+void dim_screen( ImDrawList *const draw, const ImVec2 &min, const ImVec2 &max )
+{
+    SDL_Texture *const texture = backdrop_set ? mobile_backdrop_texture() : nullptr;
+    if( texture != nullptr ) {
+        const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+        draw->AddImage( ImTextureRef( static_cast<ImTextureID>( reinterpret_cast<intptr_t>( texture ) ) ),
+                        viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x,
+                                               viewport->Pos.y + viewport->Size.y ) );
+        backdrop_used = true;
+    }
+    draw->AddRectFilled( min, max, col_dim );
+}
+
+void end_frame()
+{
+    if( backdrop_set && !backdrop_used ) {
+        backdrop_set = false;
+    }
+    backdrop_used = false;
+}
+
 // --- Icons ---
 
 namespace
@@ -206,7 +239,7 @@ int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size
     int result = sheet_nothing;
 
     // dim the screen behind; a tap there closes the sheet
-    draw->AddRectFilled( origin, screen_max, col_dim );
+    dim_screen( draw, origin, screen_max );
     const bool outside = pressable( "##sheet_outside", origin, size );
 
     const float sheet_w = landscape ? std::min( 520.0f * u, size.x * 0.76f ) : size.x;

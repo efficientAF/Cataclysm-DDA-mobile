@@ -2446,7 +2446,9 @@ static tripoint_abs_omt display()
         }
         map_dirty = map_redraw_needed( action, drawn,
                                        map_view_state{ curs, uistate.overmap_show_overlays },
-                                       overmap_tiles_animated() );
+                                       overmap_tiles_animated() ) ||
+                    // Mobile UI: the dimming behind the tile sheet would add up
+                    ( mobile_view && mobile_view->covers_map() );
     } while( action != "QUIT" && action != "CONFIRM" );
     if( !keep_overmap_ui ) {
         ui::omap::force_quit();

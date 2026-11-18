@@ -341,6 +341,10 @@ outcome show_all( const spec &what, int &tab, int &selected )
     }
     tab = window.tab;
     selected = window.selected;
+    if( !window.back ) {
+        // a sheet or a question that follows shows over this screen, not over the map
+        mobile_ui::snapshot_backdrop();
+    }
     outcome result;
     if( window.acted ) {
         result.row = window.selected;

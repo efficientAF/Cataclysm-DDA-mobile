@@ -1302,6 +1302,62 @@ void get_display_buffer_dims( int *w, int *h )
     }
 }
 
+// Mobile UI: a copy of the frame that is on screen, see mobile_ui::snapshot_backdrop.
+// Owned here; the next call replaces it.
+static SDL_Texture_Ptr mobile_backdrop_copy;
+static uint64_t mobile_backdrop_generation = 0;
+static point mobile_backdrop_dims;
+
+SDL_Texture *mobile_copy_display_buffer()
+{
+    if( test_mode || !display_buffer || !renderer || renderer_should_abort_frame() ||
+        renderer_boundary_recovery_pending() ) {
+        return nullptr;
+    }
+    point dims;
+    get_display_buffer_dims( &dims.x, &dims.y );
+    if( dims.x <= 0 || dims.y <= 0 ) {
+        return nullptr;
+    }
+    const uint64_t generation = renderer_resource_generation();
+    if( mobile_backdrop_copy && generation != mobile_backdrop_generation ) {
+        // the renderer was rebuilt and took the old copy with it
+        // NOLINTNEXTLINE(bugprone-unused-return-value)
+        static_cast<void>( mobile_backdrop_copy.release() );
+    }
+    if( !mobile_backdrop_copy || dims != mobile_backdrop_dims ) {
+        mobile_backdrop_copy = CreateTexture( renderer, SDL_PIXELFORMAT_ARGB8888,
+                                              SDL_TEXTUREACCESS_TARGET, dims.x, dims.y );
+        if( !mobile_backdrop_copy ) {
+            return nullptr;
+        }
+        // drawn as it is, whatever alpha the frame was left with
+        SetTextureBlendMode( mobile_backdrop_copy, SDL_BLENDMODE_NONE );
+        mobile_backdrop_generation = generation;
+        mobile_backdrop_dims = dims;
+    }
+    SDL_BlendMode before = SDL_BLENDMODE_NONE;
+    SDL_GetTextureBlendMode( display_buffer.get(), &before );
+    SetTextureBlendMode( display_buffer, SDL_BLENDMODE_NONE );
+    bool copied = false;
+    {
+        scoped_render_target scope( renderer, mobile_backdrop_copy.get(),
+                                    get_shared_variant_pass() );
+        if( scope.is_valid() ) {
+            RenderCopy( renderer, display_buffer, nullptr, nullptr );
+            copied = true;
+        }
+    }
+    SetTextureBlendMode( display_buffer, before );
+    return copied ? mobile_backdrop_copy.get() : nullptr;
+}
+
+SDL_Texture *mobile_backdrop_texture()
+{
+    return mobile_backdrop_copy && mobile_backdrop_generation == renderer_resource_generation() ?
+           mobile_backdrop_copy.get() : nullptr;
+}
+
 SDL_Point window_to_display_buffer_coords( SDL_Point window_pt )
 {
     if( !window ) {

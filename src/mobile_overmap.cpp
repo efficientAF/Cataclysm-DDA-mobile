@@ -856,6 +856,11 @@ view::~view()
 // for the map to be drawn again.
 static const std::string idle_action = "TIMEOUT";
 
+bool view::covers_map() const
+{
+    return pimpl->sheet_open || ( !pimpl->toast.empty() && clock::now() < pimpl->toast_until );
+}
+
 std::string view::handle( const std::string &action, input_context &ctxt,
                           tripoint_abs_omt &cursor )
 {
@@ -994,6 +999,11 @@ view::~view() = default;
 std::string view::handle( const std::string &action, input_context &, tripoint_abs_omt & )
 {
     return action;
+}
+
+bool view::covers_map() const
+{
+    return false;
 }
 
 bool travel_confirmed()

@@ -130,7 +130,8 @@ class entry_window : public cataimgui::window
         // a button with a label; returns true when tapped
         bool button( ImDrawList *draw, const std::string &id, const ImVec2 &pos, const ImVec2 &size,
                      const std::string &label, bool primary, float text_size = 15.0f );
-        float draw_head( ImDrawList *draw, const ImVec2 &pos, float width );
+        float draw_head( ImDrawList *draw, const ImVec2 &pos, float width,
+                         bool with_description = true );
         float draw_recent( ImDrawList *draw, const ImVec2 &pos, float width );
         void draw_number( const ImVec2 &origin, const ImVec2 &size );
         void draw_text( const ImVec2 &origin, const ImVec2 &size );
@@ -165,7 +166,8 @@ bool entry_window::button( ImDrawList *const draw, const std::string &id, const 
 
 // The question and what upstream says about it.  Returns the height used;
 // without a draw list it only measures.
-float entry_window::draw_head( ImDrawList *const draw, const ImVec2 &pos, const float width )
+float entry_window::draw_head( ImDrawList *const draw, const ImVec2 &pos, const float width,
+                               const bool with_description )
 {
     const float u = mobile_ui::unit();
     float y = pos.y;
@@ -176,7 +178,7 @@ float entry_window::draw_head( ImDrawList *const draw, const ImVec2 &pos, const 
         }
         y += mobile_ui::text_size( face::display, 20.0f, what.title, width ).y + 4.0f * u;
     }
-    if( !what.description.empty() ) {
+    if( with_description && !what.description.empty() ) {
         if( draw != nullptr ) {
             mobile_ui::text( draw, face::body, 13.0f, ImVec2( pos.x, y ), mobile_ui::col_muted,
                              what.description, width );
@@ -288,15 +290,25 @@ void entry_window::draw_text( const ImVec2 &origin, const ImVec2 &size )
     const float pad = 16.0f * u;
     const float w = std::min( size.x - safe.x - safe.z - 24.0f * u, 460.0f * u );
     const float inner = w - 2.0f * pad;
-    const float head_h = draw_head( nullptr, ImVec2( 0.0f, 0.0f ), inner );
+    // a long explanation (upstream's filter help) goes under the buttons, cut
+    // off at the screen's edge: the field stays at the top, clear of the keyboard
+    const float desc_h = what.description.empty() ? 0.0f :
+                         mobile_ui::text_size( face::body, 13.0f, what.description, inner ).y;
+    const bool desc_below = desc_h > 52.0f * u;
+    const float head_h = draw_head( nullptr, ImVec2( 0.0f, 0.0f ), inner, !desc_below );
     const float recent_h = recent.empty() ? 0.0f : 44.0f * u;
-    const float h = pad + head_h + 48.0f * u + 10.0f * u + recent_h + 46.0f * u + pad;
-    const ImVec2 min( origin.x + ( size.x - w ) * 0.5f, origin.y + safe.y + 12.0f * u );
+    const float top = origin.y + safe.y + 12.0f * u;
+    const float fixed_h = pad + head_h + 48.0f * u + 10.0f * u + recent_h + 46.0f * u + pad;
+    const float below_h = !desc_below ? 0.0f :
+                          std::max( 0.0f, std::min( desc_h + 10.0f * u,
+                                    origin.y + size.y - safe.w - 12.0f * u - top - fixed_h ) );
+    const float h = fixed_h + below_h;
+    const ImVec2 min( origin.x + ( size.x - w ) * 0.5f, top );
     const ImVec2 max( min.x + w, min.y + h );
     mobile_ui::box( draw, min, max, mobile_ui::col_sheet, mobile_ui::col_line, 18.0f );
     const float x = min.x + pad;
     float y = min.y + pad;
-    y += draw_head( draw, ImVec2( x, y ), inner );
+    y += draw_head( draw, ImVec2( x, y ), inner, !desc_below );
 
     ImGui::PushFont( body_font(), 16.0f * u );
     ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( 12.0f * u,
@@ -345,6 +357,13 @@ void entry_window::draw_text( const ImVec2 &origin, const ImVec2 &size )
                 _( "OK" ), true ) ) {
         confirmed = true;
     }
+    if( below_h > 14.0f * u ) {
+        y += 46.0f * u + 10.0f * u;
+        draw->PushClipRect( ImVec2( min.x, y ), ImVec2( max.x, max.y - pad * 0.5f ), true );
+        mobile_ui::text( draw, face::body, 13.0f, ImVec2( x, y ), mobile_ui::col_muted,
+                         what.description, inner );
+        draw->PopClipRect();
+    }
 }
 
 void entry_window::draw_controls()
@@ -352,8 +371,8 @@ void entry_window::draw_controls()
     const ImGuiViewport *const viewport = ImGui::GetMainViewport();
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     draw->PushClipRectFullScreen();
-    draw->AddRectFilled( viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x,
-                         viewport->Pos.y + viewport->Size.y ), mobile_ui::col_dim );
+    mobile_ui::dim_screen( draw, viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x,
+                           viewport->Pos.y + viewport->Size.y ) );
     if( what.number ) {
         draw_number( viewport->Pos, viewport->Size );
     } else {
@@ -382,7 +401,13 @@ std::optional<std::string> query( const spec &what )
         ui_manager::redraw();
         const std::string action = ctxt.handle_input();
         if( action == "QUIT" ) {
-            return std::nullopt;
+            // other keys that mean QUIT elsewhere, like the space bar or q, are
+            // text in the field
+            const input_event event = ctxt.get_raw_input();
+            if( clean.number || event.type != input_event_t::keyboard_char ||
+                event.sequence.empty() || event.get_first_input() == KEY_ESCAPE ) {
+                return std::nullopt;
+            }
         }
         if( clean.number && action == "ANY_INPUT" ) {
             // a hardware keyboard works the keypad too

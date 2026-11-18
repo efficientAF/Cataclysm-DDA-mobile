@@ -1548,6 +1548,10 @@ static request ask()
             state.toast.clear();
         }
     }
+    if( window.pending.kind != request_kind::close ) {
+        // a sheet or a question that follows shows over this screen
+        mobile_ui::snapshot_backdrop();
+    }
     return window.pending;
 }
 

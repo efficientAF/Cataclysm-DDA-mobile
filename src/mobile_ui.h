@@ -91,6 +91,20 @@ bool app_bar( const std::string &title, const ImVec2 &pos, float width, float *h
 // for the same reason (see ui_adaptor::invalidate_ui).
 void keep_map_under();
 
+// --- Backdrop ---
+//
+// A full screen that closes before the sheet or the question that follows it
+// (a list screen whose button opens a menu) would leave that sheet over the
+// map.  Such a screen calls snapshot_backdrop() as it closes; the sheets and
+// dialogs then draw that picture under their dimming.  The picture is dropped
+// by the first frame that does not use it, so it never outlives the sheets
+// that follow directly.
+void snapshot_backdrop();
+// Fills the screen behind a sheet: the backdrop if there is one, then the dimming.
+void dim_screen( ImDrawList *draw, const ImVec2 &min, const ImVec2 &max );
+// Called at the end of every UI frame (ui_manager.cpp).
+void end_frame();
+
 // --- Bottom sheet ---
 
 struct sheet_row {
