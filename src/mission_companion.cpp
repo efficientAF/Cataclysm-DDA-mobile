@@ -2554,6 +2554,12 @@ npc_ptr talk_function::companion_choose( const std::map<skill_id, int> &required
         return nullptr;
     }
     std::vector<uilist_entry> npc_menu;
+    // Mobile UI: the sheet shows what follows a " |" as a second line; padding
+    // to a column only makes sense in a fixed-width font
+    const bool as_sheet = mobile_list::wanted();
+    const auto column = [as_sheet]( const std::string & text ) {
+        return as_sheet ? text + " |" : left_justify( text, 51 );
+    };
     available = companion_sort( available, required_skills );
     std::vector<comp_rank> rankings = companion_rank( available );
 
@@ -2561,9 +2567,9 @@ npc_ptr talk_function::companion_choose( const std::map<skill_id, int> &required
     std::string menu_header;
 
     if( silent_failure ) {
-        menu_header = left_justify( _( "Do you want to send someone else?" ), 51 );
+        menu_header = column( _( "Do you want to send someone else?" ) );
     } else {
-        menu_header = left_justify( _( "Who do you want to send?" ), 51 );
+        menu_header = column( _( "Who do you want to send?" ) );
     }
 
     if( required_skills.empty() ) {
@@ -2583,10 +2589,10 @@ npc_ptr talk_function::companion_choose( const std::map<skill_id, int> &required
         }
         if( required_skills.empty() ) {
             npc_desc = string_format( pgettext( "companion ranking", "%s [ %4d : %4d : %4d ]" ),
-                                      left_justify( npc_desc, 51 ), rankings[x].combat,
+                                      column( npc_desc ), rankings[x].combat,
                                       rankings[x].survival, rankings[x].industry );
         } else {
-            npc_desc = left_justify( npc_desc, 51 );
+            npc_desc = column( npc_desc );
             bool first = true;
             for( const std::pair<const skill_id, int> &skill_tested : required_skills ) {
                 if( first ) {

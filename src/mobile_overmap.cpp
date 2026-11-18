@@ -568,13 +568,30 @@ void view::impl::draw_marks( ImDrawList *const draw, const map_geometry &geo,
                         std::min( geo.center.y + 1, data.origin_pos.y() + data.distance - cursor.y() ) );
         for( int dy = from.y; dy <= to.y; ++dy ) {
             for( int dx = from.x; dx <= to.x; ++dx ) {
-                if( !overmap_buffer.distance_limit_line( data.distance, data.origin_pos,
-                        cursor + point( dx, dy ) ) ) {
+                // an outline, not a fill: at a range of one the edge is every
+                // place that can be chosen, and a fill hides what is there
+                const auto inside = [&]( const point & d ) {
+                    return overmap_buffer.distance_limit( data.distance, data.origin_pos, cursor + d );
+                };
+                if( !inside( point( dx, dy ) ) ) {
                     continue;
                 }
                 const ImVec2 corner = tile_corner( geo, point( dx, dy ) );
-                draw->AddRectFilled( corner, ImVec2( corner.x + tile.x, corner.y + tile.y ),
-                                     IM_COL32( 255, 96, 80, 96 ) );
+                const ImVec2 far( corner.x + tile.x, corner.y + tile.y );
+                const ImU32 edge = IM_COL32( 255, 96, 80, 255 );
+                const float thick = std::max( 2.0f, mobile_ui::unit() * 1.5f );
+                if( !inside( point( dx, dy - 1 ) ) ) {
+                    draw->AddLine( corner, ImVec2( far.x, corner.y ), edge, thick );
+                }
+                if( !inside( point( dx, dy + 1 ) ) ) {
+                    draw->AddLine( ImVec2( corner.x, far.y ), far, edge, thick );
+                }
+                if( !inside( point( dx - 1, dy ) ) ) {
+                    draw->AddLine( corner, ImVec2( corner.x, far.y ), edge, thick );
+                }
+                if( !inside( point( dx + 1, dy ) ) ) {
+                    draw->AddLine( ImVec2( far.x, corner.y ), far, edge, thick );
+                }
             }
         }
     }
