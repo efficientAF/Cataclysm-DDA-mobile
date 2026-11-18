@@ -17,6 +17,8 @@
 #include "input_context.h"
 #include "localized_comparator.h"
 #include "memory_fast.h"
+#include "mobile_list.h"
+#include "mobile_study.h"
 #include "npc.h"
 #include "overmapbuffer.h"
 #include "skill.h"
@@ -304,6 +306,10 @@ class study_zone_window : public cataimgui::window
 study_zone_ui_result query_study_zone_skills( std::map<std::string, std::set<skill_id>>
         &npc_skill_preferences )
 {
+    // Mobile UI: a list with a tab per follower, see mobile_study.h
+    if( mobile_list::wanted() ) {
+        return mobile_study::query( npc_skill_preferences );
+    }
     study_zone_window window( npc_skill_preferences );
     return window.execute();
 }

@@ -609,7 +609,10 @@ void view::impl::draw_chrome( const ImVec2 &area_min, const ImVec2 &area_max,
     if( banner.empty() && g->overmap_data.iZoneIndex >= 0 &&
         static_cast<size_t>( g->overmap_data.iZoneIndex ) < zones.size() ) {
         //~ %s: the name of a zone that is outlined on the map
-        banner = string_format( _( "Zone: %s" ), zones[g->overmap_data.iZoneIndex].get().get_name() );
+        const zone_data &zone = zones[g->overmap_data.iZoneIndex].get();
+        // as in the zone list: a zone without a name goes by its type
+        banner = string_format( _( "Zone: %s" ), zone.get_name().empty() ?
+                                zone_manager::get_manager().get_name_from_type( zone.get_type() ) : zone.get_name() );
     }
     if( !banner.empty() ) {
         if( pick_mode() ) {
