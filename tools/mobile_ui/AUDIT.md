@@ -155,6 +155,16 @@ marked "seen" was seen on the desktop build under Xvfb with keys standing in for
     screen opens with nothing focused until a direction is pressed; ImGui reads the pad once
     per drawn frame, and frames are only drawn on input, so a very short press could be
     missed.
+- **Package (18 Nov 2026):** `tools/mobile_ui/deck_package.sh` builds an optimised Linux
+  binary (no sound, no translations) and zips it with `data/`, `gfx/` and the three SDL3
+  libraries in `lib/`; `tools/mobile_ui/deck_deploy.sh` (in the zip as `deploy.sh`) unpacks
+  the newest zip from `~/Downloads` into `game/`, keeps the last build in `game.old/` and
+  the saves in `userdata/`, and writes `play.sh` (`--mobile-ui --userdir`), the file to add
+  to Steam. Tried here under Xvfb at 1280x800: deploy, start, the mobile main menu, and a
+  fresh `options.json` with `MOBILE_HUD`, `MOBILE_MENUS` and `TOUCH_TAP_TO_ACT` true. The
+  window came up 640x384 although `FULLSCREEN` defaults to borderless; probably Xvfb having
+  no window manager, to be checked on the Deck. Built on Ubuntu 24.04: the binary needs
+  glibc 2.38 and the other libraries (freetype, harfbuzz, png, zlib...) from the system.
 - **The controller works where upstream's bindings do** (`sdl_gamepad.cpp`; 314 gamepad
   bindings): the play screen, the radial menus, upstream's own menus, `uilist` sheets.
 - **Android-only pieces the Deck lacks:** the manual-key prompt buttons (uilist hotkeys),
