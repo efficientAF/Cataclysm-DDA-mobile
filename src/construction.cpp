@@ -539,13 +539,14 @@ construction_id construction_menu( const bool blueprint )
     }
 
     // Mobile UI: a list screen (mobile_list.h) with the categories as tabs; the
-    // button builds through the same steps as CONFIRM below.
-    if( !blueprint && mobile_list::wanted() ) {
+    // button builds through the same steps as CONFIRM below.  For a blueprint
+    // zone every row can be chosen and nothing is built.
+    if( mobile_list::wanted() ) {
         avatar &you = get_avatar();
         const temp_crafting_inventory &total_inv = you.crafting_inventory();
         const std::vector<construction_category> &categories = construction_categories::get_all();
         mobile_list::spec what;
-        what.title = _( "Construction" );
+        what.title = blueprint ? _( "Blueprint: what to build" ) : _( "Construction" );
         what.empty_text = _( "Nothing in this category can be built." );
         std::vector<construction_group_str_id> shown;
         for( const construction_category &category : categories ) {
@@ -567,7 +568,7 @@ construction_id construction_menu( const bool blueprint )
                 r.tab = tab;
                 r.enabled = player_can_build( you, total_inv, group );
                 r.right = r.enabled ? _( "Ready" ) : std::string();
-                r.action = r.enabled ? _( "Build" ) : std::string();
+                r.action = blueprint ? _( "Choose" ) : r.enabled ? _( "Build" ) : std::string();
                 int stage = 0;
                 const std::vector<const construction *> options = constructions_by_group( group );
                 for( const construction *const con : options ) {
@@ -610,6 +611,16 @@ construction_id construction_menu( const bool blueprint )
             return construction_id( -1 );
         }
         const construction_group_str_id &group = shown[static_cast<size_t>( chosen )];
+        if( blueprint ) {
+            // the first construction of the group, as upstream hands back
+            const std::vector<construction> &list_constructions = get_constructions();
+            for( int i = 0; i < static_cast<int>( list_constructions.size() ); ++i ) {
+                if( group == list_constructions[i].group ) {
+                    return construction_id( i );
+                }
+            }
+            return construction_id( -1 );
+        }
         if( group != construction_group_deconstruct_simple_furniture &&
             !player_can_see_to_build( you, group ) ) {
             add_msg( m_info, _( "It is too dark to construct right now." ) );
