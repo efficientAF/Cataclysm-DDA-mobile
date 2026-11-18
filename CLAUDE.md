@@ -117,7 +117,7 @@ Everything is behind options registered at the end of `add_options_android()` in
 
 #### Round 6 (seventh session, 18 Nov 2026): read this first
 
-Everything is on `mobile-ui` (the session branch `ccr-b20216f4-3gkwje` is pushed to it after each step). Desktop (TILES) builds, the two unit-test tags pass, and the curses build (`make TILES=0`) compiled and linked once mid-session (the conversation hook in `dialogue_imgui.cpp` needed a TILES guard); it was not rebuilt after the later merges. Nothing was run on a phone, a Steam Deck or with a controller. Nothing new is a type or namespace named `detail` (a local variable of that name is harmless).
+Everything is on `mobile-ui` (the session branch `ccr-b20216f4-3gkwje` is pushed to it after each step). Desktop (TILES) builds, the two unit-test tags pass, and the curses build (`make TILES=0`) compiled and linked once mid-session (the conversation hook in `dialogue_imgui.cpp` needed a TILES guard); it was not rebuilt after the later merges. The Android APK (Gradle, arm64 debug) built from `b3d2295` and was given to the owner; nothing was run on a phone, a Steam Deck or with a controller by this side. Nothing new is a type or namespace named `detail` (a local variable of that name is harmless).
 
 "Seen" below means looked at in a screenshot of the desktop build, by the main session or by the worker who built it (workers' screenshots are in `/home/user/tk-*/shots/` and go with the session). L = landscape, P = portrait.
 
