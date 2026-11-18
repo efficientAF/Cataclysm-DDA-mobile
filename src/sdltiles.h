@@ -92,6 +92,14 @@ void get_display_buffer_dims( int *w, int *h );
 SDL_Texture *mobile_copy_display_buffer();
 SDL_Texture *mobile_backdrop_texture();
 
+#if !defined(__ANDROID__)
+// Mobile UI: a point in the window's real pixels to display buffer pixels, and
+// the window's size in real pixels.  Fingers and the HUD use real pixels; the
+// logical window size is smaller on a scaled desktop.
+SDL_Point mobile_drawable_to_display_buffer_coords( SDL_Point pixel_pt );
+point mobile_drawable_size();
+#endif
+
 // Map window coordinates to display_buffer (terminal) pixel coordinates.
 // Returns the input unchanged when either dimension source is unavailable.
 SDL_Point window_to_display_buffer_coords( SDL_Point window_pt );

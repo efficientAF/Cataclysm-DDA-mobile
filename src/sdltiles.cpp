@@ -60,6 +60,7 @@
 #include "map_extras.h"
 #include "mapbuffer.h"
 #include "mission.h"
+#include "mobile_default.h"
 #include "mobile_hud.h"
 #include "npc.h"
 #include "options.h"
@@ -823,6 +824,24 @@ static void WinCreate()
 
     imclient = std::make_unique<cataimgui::client>( renderer, window, geometry );
 
+    // Mobile UI: what the touch and HUD code has to work with, for reports from
+    // devices this was never run on
+    {
+        int lw = 0;
+        int lh = 0;
+        SDL_GetWindowSize( ::window.get(), &lw, &lh );
+        const char *const driver = SDL_GetCurrentVideoDriver();
+        DebugLog( D_INFO, DC_ALL ) << "Mobile UI window: logical " << lw << "x" << lh
+                                   << ", pixels " << DrawableWidth << "x" << DrawableHeight
+                                   << ", pixel density " << SDL_GetWindowPixelDensity( ::window.get() )
+                                   << ", display scale " << SDL_GetWindowDisplayScale( ::window.get() )
+                                   << ", terminal " << TERMINAL_WIDTH << "x" << TERMINAL_HEIGHT
+                                   << ", cell " << fontwidth << "x" << fontheight
+                                   << ", scaling factor " << scaling_factor
+                                   << ", video driver " << ( driver ? driver : "?" )
+                                   << ", mobile defaults " << ( mobile_default::on() ? "on" : "off" );
+    }
+
     renderer_coordinator.seed_renderer_policy( renderer_name );
 
     // Register before the cold-start tileset upload so a reset or mobile
@@ -1273,8 +1292,13 @@ void refresh_display()
 #endif
     // Mobile UI overlay, at native resolution like the quick shortcuts above
     if( font ) {
+#if defined(__ANDROID__)
         mobile_hud::draw( renderer, *font, dstrect, WindowWidth, WindowHeight,
                           mobile_in_default_mode() );
+#else
+        mobile_hud::draw( renderer, *font, dstrect, DrawableWidth, DrawableHeight,
+                          mobile_in_default_mode() );
+#endif
     }
     draw_gamepad_radial_menu();
     RenderPresent( renderer );
@@ -1427,6 +1451,32 @@ SDL_Point window_to_display_buffer_coords( SDL_Point window_pt )
     return window_pt;
 #endif
 }
+
+#if !defined(__ANDROID__)
+// Mobile UI: a point in the window's real pixels (where fingers and the HUD
+// live) to display buffer pixels.  Unlike window_to_display_buffer_coords this
+// does not go through the logical window size, which is smaller than the real
+// one on a scaled desktop (a Steam Deck).
+SDL_Point mobile_drawable_to_display_buffer_coords( const SDL_Point pixel_pt )
+{
+    int buf_w = 0;
+    int buf_h = 0;
+    get_display_buffer_dims( &buf_w, &buf_h );
+    const SDL_Rect dst = get_display_buffer_render_rect();
+    if( buf_w <= 0 || buf_h <= 0 || dst.w <= 0 || dst.h <= 0 ) {
+        return pixel_pt;
+    }
+    return SDL_Point{
+        static_cast<int>( static_cast<int64_t>( pixel_pt.x - dst.x ) * buf_w / dst.w ),
+        static_cast<int>( static_cast<int64_t>( pixel_pt.y - dst.y ) * buf_h / dst.h )
+    };
+}
+
+point mobile_drawable_size()
+{
+    return point( DrawableWidth, DrawableHeight );
+}
+#endif
 
 void convert_event_to_display_buffer_coords( SDL_Event *event )
 {
@@ -7033,7 +7083,8 @@ static void CheckMessages()
                 case CATA_FINGERUP:
                 case CATA_FINGERCANCELED:
                     // Mobile UI on desktop, for testing; see touch_input.h
-                    if( touch_input::desktop_finger_event( ev, WindowWidth, WindowHeight,
+                    // in real pixels, like the HUD; the logical window can be smaller
+                    if( touch_input::desktop_finger_event( ev, DrawableWidth, DrawableHeight,
                                                            mobile_in_default_mode(),
                                                            mobile_context_takes_select(), last_input ) ) {
                         needupdate = true;

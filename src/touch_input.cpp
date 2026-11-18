@@ -476,15 +476,26 @@ static point window_size()
     int w = 0;
     int h = 0;
     if( SDL_Window *const win = get_sdl_window() ) {
-        SDL_GetWindowSize( win, &w, &h );
+        // real pixels: the space fingers are placed in
+        SDL_GetWindowSizeInPixels( win, &w, &h );
     }
     return point( w, h );
 }
 
 static point to_buffer( const float x, const float y )
 {
-    const SDL_Point p = window_to_display_buffer_coords( SDL_Point{ static_cast<int>( x ),
+#if defined(__ANDROID__)
+    const SDL_Point p = window_to_display_buffer_coords( SDL_Point { static_cast<int>( x ),
+                        static_cast<int>( y )
+                                                                   } );
+#else
+    // fingers come in real pixels; the logical window can be smaller.  Callers
+    // expect the scaling factor still applied, as upstream's conversion leaves it.
+    const SDL_Point q = mobile_drawable_to_display_buffer_coords( SDL_Point { static_cast<int>( x ),
                         static_cast<int>( y ) } );
+    const int factor = std::max( get_scaling_factor(), 1 );
+    const SDL_Point p{ q.x * factor, q.y * factor };
+#endif
     return point( p.x, p.y );
 }
 

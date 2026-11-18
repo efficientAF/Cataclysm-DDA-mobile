@@ -6,7 +6,9 @@
 #   game/       the current build (replaced on every deploy)
 #   game.old/   the build before it
 #   userdata/   saves, settings, HUD layout (never touched)
-#   play.sh     what to run, and what to add to Steam as a non-Steam game
+#   play.sh     what to run
+# It also adds a "CDDA Mobile" entry to the application menu, which is what
+# Steam's "Add a Non-Steam Game" list shows.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,5 +50,23 @@ exec ./cataclysm-tiles --mobile-ui --userdir "$HERE/userdata/" "$@"
 PLAY
 chmod +x "$HERE/play.sh"
 
-echo "Done. Run $HERE/play.sh (add that file to Steam as a non-Steam game)."
+# Steam's "Add a Non-Steam Game" lists installed applications, not scripts:
+# a desktop entry makes the game one of them ("CDDA Mobile").
+APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+mkdir -p "$APPS"
+cat > "$APPS/cdda-mobile.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=CDDA Mobile
+Comment=Cataclysm: Dark Days Ahead, touch UI
+Exec="$HERE/play.sh"
+Path=$HERE
+Terminal=false
+Categories=Game;
+DESKTOP
+chmod +x "$APPS/cdda-mobile.desktop"
+update-desktop-database "$APPS" 2>/dev/null || true
+
+echo "Done. Run $HERE/play.sh, or start \"CDDA Mobile\" from the application menu."
+echo "In Steam: Add a Non-Steam Game, tick \"CDDA Mobile\" in the list."
 echo "The previous build is in game.old; your saves are in userdata."
