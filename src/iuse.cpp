@@ -1809,7 +1809,7 @@ class exosuit_interact
             int selected = -1;
             while( true ) {
                 mobile_list::spec what;
-                what.title = remove_color_tags( suit->tname() );
+                what.title = suit->type_name();
                 what.header = _( "Modules" );
                 what.empty_text = _( "This has no room for modules." );
                 const std::vector<item_pocket *> pockets = suit->get_container_pockets();
@@ -1818,7 +1818,7 @@ class exosuit_interact
                     mobile_list::row r;
                     r.name = get_pocket_name( pkt );
                     r.detail = pkt->empty() ? _( "Empty" ) :
-                               remove_color_tags( pkt->all_items_top().front()->tname() );
+                               remove_color_tags( pkt->all_items_top().front()->tname( 1, false ) );
                     r.action = pkt->empty() ? _( "Attach a module" ) : _( "Change" );
                     std::vector<iteminfo> dummy;
                     std::vector<iteminfo> suitinfo;
