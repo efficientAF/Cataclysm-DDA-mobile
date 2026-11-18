@@ -1,5 +1,6 @@
 #include "mobile_camp.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <unordered_map>
@@ -191,15 +192,21 @@ static void job_priorities( npc &guy )
                 guy.job.set_all_priorities( priority );
             }
         } else if( did.row >= 0 && static_cast<size_t>( did.row ) < jobs.size() ) {
-            const activity_id &job = jobs[static_cast<size_t>( did.row )];
+            const activity_id job = jobs[static_cast<size_t>( did.row )];
             if( did.action == 1 ) {
                 guy.job.set_task_priority( job, 0 );
-                continue;
+            } else {
+                int priority = 0;
+                if( query_int( priority, false, _( "Priority for %s " ),
+                               player_activity( job ).get_verb() ) ) {
+                    guy.job.set_task_priority( job, priority );
+                }
             }
-            int priority = 0;
-            if( query_int( priority, false, _( "Priority for %s " ),
-                           player_activity( job ).get_verb() ) ) {
-                guy.job.set_task_priority( job, priority );
+            // the list is in order of priority: stay on the job that was changed
+            const std::vector<activity_id> now = guy.job.get_prioritised_vector();
+            const auto where = std::find( now.begin(), now.end(), job );
+            if( where != now.end() ) {
+                selected = static_cast<int>( std::distance( now.begin(), where ) );
             }
         }
     }
