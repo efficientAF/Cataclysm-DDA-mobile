@@ -416,7 +416,9 @@ void zone_manager_ui::display_zone_manager()
     };
 
     ui.on_redraw( [&]( const ui_adaptor & ) {
-        if( !show ) {
+        // Mobile UI: the list screen stands in for this pane, which would
+        // otherwise show beside "Save changes?"
+        if( !show || mobile_list::wanted() ) {
             return;
         }
         zones_manager_draw_borders( w_zones_border, w_zones_info_border, zone_ui_height, zone_ui_width );
@@ -510,7 +512,10 @@ void zone_manager_ui::display_zone_manager()
             mobile_list::spec what;
             what.title = _( "Zones" );
             what.empty_text = _( "No zones yet.  A zone tells you and your followers what a place is for." );
-            what.buttons = { std::string( _( "Add zone" ) ), std::string( _( "Add personal zone" ) ) };
+            what.buttons = { std::string( _( "Add zone" ) ), std::string( _( "Add personal zone" ) ),
+                             std::string( show_all_zones ? _( "Nearby only" ) : _( "Show distant" ) )
+                           };
+            what.header = show_all_zones ? _( "All your zones" ) : _( "The zones near you" );
             for( const zone_manager::ref_zone_data &ref : zones ) {
                 const zone_data &zone = ref.get();
                 mobile_list::row r;
@@ -526,6 +531,7 @@ void zone_manager_ui::display_zone_manager()
                                 _( "Edit changes its name, type, options or place." );
                 r.action = _( "Edit" );
                 r.more_actions.emplace_back( zone.get_enabled() ? _( "Turn off" ) : _( "Turn on" ) );
+                r.more_actions.emplace_back( _( "Map" ) );
                 r.more_actions.emplace_back( _( "Remove" ) );
                 what.rows.push_back( r );
             }
@@ -536,9 +542,12 @@ void zone_manager_ui::display_zone_manager()
                 action = "ADD_ZONE";
             } else if( done.button == 1 ) {
                 action = "ADD_PERSONAL_ZONE";
+            } else if( done.button == 2 ) {
+                action = "SHOW_ALL_ZONES";
             } else if( done.row >= 0 && done.row < zone_cnt ) {
                 active_index = done.row;
-                action = done.action == 0 ? "CONFIRM" : done.action == 2 ? "REMOVE_ZONE" :
+                action = done.action == 0 ? "CONFIRM" : done.action == 2 ? "SHOW_ZONE_ON_MAP" :
+                         done.action == 3 ? "REMOVE_ZONE" :
                          zones[active_index].get().get_enabled() ? "DISABLE_ZONE" : "ENABLE_ZONE";
             } else {
                 action = "QUIT";
@@ -822,7 +831,17 @@ void zone_manager_ui::display_zone_manager()
                 tripoint_abs_omt zone_overmap =
                     project_to<coords::omt>( zones[active_index].get().get_center_point() );
 
-                ui::omap::display_zones( player_overmap_position, zone_overmap, active_index );
+                // Mobile UI: the map looks the zone up among all zones, and the list
+                // here leaves out the distant and the hidden ones
+                int map_index = active_index;
+                const std::vector<zone_manager::ref_zone_data> all_zones = mgr.get_zones();
+                for( size_t i = 0; i < all_zones.size(); ++i ) {
+                    if( &all_zones[i].get() == &zones[active_index].get() ) {
+                        map_index = static_cast<int>( i );
+                        break;
+                    }
+                }
+                ui::omap::display_zones( player_overmap_position, zone_overmap, map_index );
             } else if( action == "ENABLE_ZONE" ) {
                 zones[active_index].get().set_enabled( true );
 
