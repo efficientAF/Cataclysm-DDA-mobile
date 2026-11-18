@@ -4399,7 +4399,12 @@ bool basecamp::survey_field_return( const mission_id &miss_id )
     tripoint_abs_omt where( get_player_character().pos_abs_omt() );
 
     while( true ) {
-        where = ui::omap::choose_point( string_format(
+        // Mobile UI: with the range passed, the map draws its edge and refuses a
+        // place beyond it, instead of the popup below after the map has closed
+        where = mobile_list::wanted() ?
+                ui::omap::choose_point( string_format( _( "Select a tile up to %d tiles away." ), 1 ),
+                                        omt_pos, false, 1 ) :
+                ui::omap::choose_point( string_format(
                                             _( "Select a tile up to %d tiles away." ), 1 ) );
         if( where.is_invalid() ) {
             return false;
@@ -4481,7 +4486,12 @@ bool basecamp::survey_return( const mission_id &miss_id )
     tripoint_abs_omt where( get_player_character().pos_abs_omt() );
 
     while( true ) {
-        where = ui::omap::choose_point( string_format(
+        // Mobile UI: with the range passed, the map draws its edge and refuses a
+        // place beyond it, instead of the popup below after the map has closed
+        where = mobile_list::wanted() ?
+                ui::omap::choose_point( string_format( _( "Select a tile up to %d tiles away." ), 1 ),
+                                        omt_pos, false, 1 ) :
+                ui::omap::choose_point( string_format(
                                             _( "Select a tile up to %d tiles away." ), 1 ) );
         if( where.is_invalid() ) {
             return false;

@@ -175,6 +175,105 @@ static std::vector<npc *> get_known_faction_radio_representative( const faction 
     return applicable_repres;
 }
 
+// Mobile UI: the rest of upstream's follower panel (your_follower_display) as
+// text for the list screen.
+static std::string mobile_follower_text( npc &guy )
+{
+    std::string text;
+    basecamp *camp = nullptr;
+    if( guy.assigned_camp ) {
+        const std::optional<basecamp *> bcp = overmap_buffer.find_camp( guy.assigned_camp->xy() );
+        if( bcp ) {
+            camp = *bcp;
+        }
+    }
+    text += camp ? string_format( _( "Location: %s, at camp: %s" ), guy.pos_abs_omt().to_string(),
+                                  camp->camp_name() ) :
+            string_format( _( "Location: %s" ), guy.pos_abs_omt().to_string() );
+    text += "\n" + colorize( string_format( _( "Status: %s" ), guy.get_current_status() ),
+                             guy.current_target() != nullptr ? c_light_red : c_white );
+    if( camp ) {
+        text += "\n" + std::string( guy.has_job() ? _( "Working at camp" ) : _( "Idling at camp" ) );
+    }
+    const auto &[hp_desc, hp_color] = guy.hp_description();
+    text += "\n" + colorize( string_format( _( "%s: %s" ), _( "Condition" ), hp_desc ), hp_color );
+    const auto &[hunger, hunger_color] = display::hunger_text_color( guy );
+    const auto &[thirst, thirst_color] = display::thirst_text_color( guy );
+    const auto &[sleepiness, sleepiness_color] = display::sleepiness_text_color( guy );
+    const std::string nominal = pgettext( "needs", "Nominal" );
+    text += "\n" + colorize( string_format( "%s: %s", _( "Hunger" ),
+                                            hunger.empty() ? nominal : hunger ),
+                             hunger_color );
+    text += "\n" + colorize( string_format( "%s: %s", _( "Thirst" ),
+                                            thirst.empty() ? nominal : thirst ),
+                             thirst_color );
+    text += "\n" + colorize( string_format( _( "%s: %s" ), _( "Sleepiness" ),
+                                            sleepiness.empty() ? nominal : sleepiness ), sleepiness_color );
+    text += "\n" + string_format( _( "Wielding: %s" ), guy.weapname_simple() );
+    const std::pair<skill_id, int> combat = guy.best_combat_skill( combat_skills::NO_GENERAL );
+    text += "\n" + string_format( "%s: %s: %d", _( "Best combat skill" ), combat.first.obj().name(),
+                                  combat.second );
+    const auto skills = Skill::get_skills_sorted_by( [&guy]( const Skill & a, const Skill & b ) {
+        const int level_a = guy.get_skill_level( a.ident() );
+        const int level_b = guy.get_skill_level( b.ident() );
+        return localized_compare( std::make_pair( -level_a, a.name() ),
+                                  std::make_pair( -level_b, b.name() ) );
+    } );
+    std::vector<std::string> others;
+    for( size_t i = 0; i < skills.size() && others.size() < 3; i++ ) {
+        if( !skills[i]->is_combat_skill() ) {
+            others.push_back( string_format( "%s: %d", skills[i]->name(),
+                                             static_cast<int>( guy.get_skill_level( skills[i]->ident() ) ) ) );
+        }
+    }
+    text += "\n" + string_format( "%s: %s", _( "Best other skills" ), enumerate_as_string( others ) );
+    return text;
+}
+
+// Mobile UI: upstream's creature panel (creature_display) as text.
+static std::string mobile_creature_text( const mtype &cr )
+{
+    std::string text = string_format( "%s  %s", colorize( cr.sym, cr.color ), cr.nname() );
+    text += "\n" + string_format( "%s: %s", _( "Difficulty" ), cr.get_difficulty_description() );
+    text += "\n" + string_format( "%s: %s", _( "Size" ), cr.get_size_name() );
+    text += "\n" + string_format( "%s: %s", _( "Species" ),
+                                  enumerate_as_string( cr.species_descriptions() ) );
+    std::vector<std::string> senses;
+    if( cr.has_flag( mon_flag_HEARS ) ) {
+        senses.emplace_back( _( "hearing" ) );
+    }
+    if( cr.has_flag( mon_flag_SEES ) ) {
+        senses.emplace_back( _( "sight" ) );
+    }
+    if( cr.has_flag( mon_flag_SMELLS ) ) {
+        senses.emplace_back( _( "smell" ) );
+    }
+    text += "\n" + string_format( "%s: %s", _( "Senses" ), enumerate_as_string( senses ) );
+    if( cr.has_flag( mon_flag_SWIMS ) || cr.move_skills.swim.has_value() ) {
+        text += "\n" + std::string( _( "It can swim." ) );
+    }
+    if( cr.has_flag( mon_flag_FLIES ) ) {
+        text += "\n" + std::string( _( "It can fly." ) );
+    }
+    if( cr.has_flag( mon_flag_DIGS ) || cr.move_skills.dig.has_value() ) {
+        text += "\n" + std::string( _( "It can burrow underground." ) );
+    }
+    if( cr.has_flag( mon_flag_CLIMBS ) || cr.move_skills.climb.has_value() ) {
+        text += "\n" + std::string( _( "It can climb." ) );
+    }
+    if( cr.has_flag( mon_flag_GRABS ) ) {
+        text += "\n" + std::string( _( "It can grab." ) );
+    }
+    if( cr.has_flag( mon_flag_VENOM ) ) {
+        text += "\n" + std::string( _( "It can inflict poison." ) );
+    }
+    if( cr.has_flag( mon_flag_PARALYZEVENOM ) ) {
+        text += "\n" + std::string( _( "It can inflict paralysis." ) );
+    }
+    text += "\n\n" + cr.get_description();
+    return text;
+}
+
 bool faction_ui::execute()
 {
     // Mobile UI: camps, followers and factions as a list screen (mobile_list.h);
@@ -209,16 +308,21 @@ bool faction_ui::execute()
             };
             mobile_list::spec what;
             what.title = _( "Faction" );
-            what.tabs = { _( "Camps" ), _( "Followers" ), _( "Factions" ) };
+            what.tabs = { _( "Camps" ), _( "Followers" ), _( "Factions" ), _( "Creatures" ) };
             what.empty_text = _( "None." );
             for( basecamp *const camp : camps ) {
                 faction *const yours = you.get_faction();
                 mobile_list::row r;
                 r.name = camp->camp_name();
                 r.tab = 0;
+                const auto &[vit_color, vit] = yours->vitamin_stores( vitamin_type::VITAMIN );
+                const auto &[toxin_color, toxin] = yours->vitamin_stores( vitamin_type::TOXIN );
                 r.description = direction_to( camp->camp_omt_pos() ) + "\n" +
-                                string_format( _( "Food Supply: %s (%d kcal)" ), yours->food_supply_text(),
-                                               yours->food_supply().kcal() ) + "\n" +
+                                string_format( _( "Location: %s" ), camp->camp_omt_pos().to_string() ) + "\n" +
+                                colorize( string_format( _( "Food Supply: %s (%d kcal)" ), yours->food_supply_text(),
+                                          yours->food_supply().kcal() ), yours->food_supply_color() ) + "\n" +
+                                colorize( string_format( "%s: %s", _( "Worst vitamin" ), vit ), vit_color ) + "\n" +
+                                colorize( string_format( "%s: %s", _( "Worst toxin" ), toxin ), toxin_color ) + "\n" +
                                 string_format( "%s: %s", _( "Next Upgrade" ),
                                                camp->next_upgrade( base_camps::base_dir, 1 ) );
                 r.action = _( "Rename" );
@@ -247,7 +351,9 @@ bool faction_ui::execute()
                                      radio == radio_contact_result::BETA_NO_RADIO ? _( "Follower does not have a radio" ) :
                                      radio == radio_contact_result::BOTH_NO_RADIO ? _( "Both you and follower need a radio" ) :
                                      _( "Not within radio range" );
+                    r.description += "\n";
                 }
+                r.description += mobile_follower_text( *guy );
                 what.rows.push_back( r );
             }
             for( const faction *const fac : factions ) {
@@ -259,6 +365,23 @@ bool faction_ui::execute()
                 if( !get_known_faction_radio_representative( fac ).empty() && has_radio( you ) ) {
                     r.action = _( "Contact by radio" );
                 }
+                what.rows.push_back( r );
+            }
+            // creatures have no action, so they come last and never come back
+            std::vector<const mtype_id *> creatures;
+            for( const mtype_id &m : you.get_known_monsters() ) {
+                creatures.emplace_back( &m );
+            }
+            std::sort( creatures.begin(), creatures.end(), []( const mtype_id * a, const mtype_id * b ) {
+                return localized_compare( a->obj().nname(), b->obj().nname() );
+            } );
+            for( const mtype_id *const creature : creatures ) {
+                mobile_list::row r;
+                r.name = creature->obj().nname();
+                r.tab = 3;
+                r.detail = string_format( "%s: %s", _( "Difficulty" ),
+                                          remove_color_tags( creature->obj().get_difficulty_description() ) );
+                r.description = mobile_creature_text( creature->obj() );
                 what.rows.push_back( r );
             }
             const int chosen = mobile_list::show( what, tab, row );
