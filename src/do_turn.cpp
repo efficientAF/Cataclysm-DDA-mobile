@@ -244,6 +244,9 @@ void handle_key_blocking_activity()
             || u.activity.moves_left > 0 );
     if( has_unfinished_activity || u.has_destination() ) {
         input_context ctxt = get_default_mode_input_context();
+        // Mobile UI: a copy is not on the stack of input contexts, and the touch
+        // code goes by the top of that stack to tell a tap on the play screen
+        const input_context::scoped_activation on_top( ctxt );
         const std::string action = ctxt.handle_input( 0 );
         bool refresh = true;
         // Mobile UI: no HUD shows while an activity runs, so a tap on the screen
