@@ -433,7 +433,7 @@ void options_window::draw_chips( const ImVec2 &pos, const float width )
     const float row_h = 50.0f * u;
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##options_chips", ImVec2( width, row_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##options_chips", ImVec2( width, row_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_HorizontalScrollbar );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -641,7 +641,7 @@ void options_window::draw_list( const ImVec2 &pos, const ImVec2 &size )
     }
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##options_list", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+    ImGui::BeginChild( "##options_list", size, ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     if( to_top ) {
         ImGui::SetScrollY( 0.0f );
         to_top = false;

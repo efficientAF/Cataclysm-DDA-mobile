@@ -89,7 +89,7 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
 
     // what was said, the newest at the bottom and in view
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
-    ImGui::BeginChild( "##talk_history", ImVec2( history_w, history_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##talk_history", ImVec2( history_w, history_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -128,7 +128,7 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
     // the replies
     int tapped = -1;
     ImGui::SetCursorScreenPos( wide ? ImVec2( left + history_w, y ) : ImVec2( left, y + history_h ) );
-    ImGui::BeginChild( "##talk_replies", ImVec2( replies_w, replies_view ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##talk_replies", ImVec2( replies_w, replies_view ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();

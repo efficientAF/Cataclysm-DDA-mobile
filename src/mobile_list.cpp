@@ -86,7 +86,7 @@ void list_window::draw_panel( const ImVec2 &min, const ImVec2 &max )
     ImGui::SetCursorScreenPos( ImVec2( min.x + pad, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##list_description", ImVec2( width, std::max( text_h, 10.0f * u ) ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const inner = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
@@ -221,7 +221,7 @@ void list_window::draw_controls()
     }
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##list_rows", ImVec2( list_w, list_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##list_rows", ImVec2( list_w, list_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const list = ImGui::GetWindowDrawList();

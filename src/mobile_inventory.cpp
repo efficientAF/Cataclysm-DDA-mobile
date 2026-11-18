@@ -1207,7 +1207,7 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
         content_w += 6.0f * u;
         ImGui::SetCursorScreenPos( ImVec2( pos.x, y ) );
         ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-        ImGui::BeginChild( "##inventory_chips", ImVec2( size.x, chips_h ), ImGuiChildFlags_None,
+        ImGui::BeginChild( "##inventory_chips", ImVec2( size.x, chips_h ), ImGuiChildFlags_NavFlattened,
                            ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                            ImGuiWindowFlags_NoScrollWithMouse );
         chip_scroll = std::clamp( chip_scroll, 0.0f, std::max( 0.0f, ( content_w - size.x ) / u ) );
@@ -1251,7 +1251,7 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
     ImGui::SetCursorScreenPos( ImVec2( pos.x, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( ( "##inventory_list" + std::to_string( static_cast<int>
-                         ( state.current ) ) ).c_str(), ImVec2( size.x, list_h ), ImGuiChildFlags_None,
+                         ( state.current ) ) ).c_str(), ImVec2( size.x, list_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     draw_list( size.x, interactive );
     ImGui::EndChild();
@@ -1409,7 +1409,7 @@ void inventory_window::draw_detail_pane( const ImVec2 &pos, const ImVec2 &size )
     draw->AddLine( pos, ImVec2( pos.x, pos.y + size.y ), mobile_ui::col_line, std::max( 1.0f, u ) );
     ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + 8.0f * u ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##inventory_detail", ImVec2( size.x, size.y - 8.0f * u ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##inventory_detail", ImVec2( size.x, size.y - 8.0f * u ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float height = detail_content( ImGui::GetWindowDrawList(), base, size.x );
@@ -1427,7 +1427,7 @@ void inventory_window::draw_detail_sheet( const ImVec2 &origin, const ImVec2 &si
     // takes its taps.
     ImGui::SetCursorScreenPos( origin );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##inventory_sheet_layer", size, ImGuiChildFlags_None,
+    ImGui::BeginChild( "##inventory_sheet_layer", size, ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                        ImGuiWindowFlags_NoScrollWithMouse );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -1450,7 +1450,7 @@ void inventory_window::draw_detail_sheet( const ImVec2 &origin, const ImVec2 &si
 
     ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + grab_h ) );
     ImGui::BeginChild( "##inventory_sheet_scroll", ImVec2( size.x,
-                       sheet_h - grab_h - safe.w - 6.0f * u ), ImGuiChildFlags_None,
+                       sheet_h - grab_h - safe.w - 6.0f * u ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float height = detail_content( ImGui::GetWindowDrawList(), base, size.x );

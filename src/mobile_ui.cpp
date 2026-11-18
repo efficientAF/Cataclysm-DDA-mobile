@@ -9,6 +9,7 @@
 #include <map>
 
 #include "cata_imgui.h"
+#include "imgui/imgui_internal.h"
 #include "filesystem.h"
 #include "game.h"
 #include "input_context.h"
@@ -229,12 +230,38 @@ void icon( ImDrawList *const draw, const std::string &name, const ImVec2 &pos,
 
 // --- Controls ---
 
+// The frame around the control that the arrow keys or a controller are on.
+// Drawn over everything, but not outside the list the control scrolls in.
+static void focus_ring( const ImVec2 &pos, const ImVec2 &size )
+{
+    const float u = unit();
+    const ImGuiWindow *const window = ImGui::GetCurrentWindow();
+    ImDrawList *const draw = ImGui::GetForegroundDrawList();
+    const float grow = 2.0f * u;
+    const ImVec2 min( pos.x - grow, pos.y - grow );
+    const ImVec2 max( pos.x + size.x + grow, pos.y + size.y + grow );
+    draw->PushClipRect( ImVec2( window->ClipRect.Min.x - 2.0f * grow,
+                                window->ClipRect.Min.y - 2.0f * grow ),
+                        ImVec2( window->ClipRect.Max.x + 2.0f * grow, window->ClipRect.Max.y + 2.0f * grow ) );
+    const float radius = std::min( 14.0f * u, std::min( size.x, size.y ) * 0.5f + grow );
+    draw->AddRect( min, max, IM_COL32( 0, 0, 0, 200 ), radius, 0, 5.0f * u );
+    draw->AddRect( min, max, col_title, radius, 0, 2.5f * u );
+    draw->PopClipRect();
+}
+
 bool pressable( const std::string &id, const ImVec2 &pos, const ImVec2 &size, bool *const held )
 {
     ImGui::SetCursorScreenPos( pos );
-    const bool tapped = ImGui::InvisibleButton( id.c_str(), size );
+    // Reachable with the arrow keys or a controller's d-pad, and pressed with
+    // Enter or A.  ImGui's own focus frame is left out; ours is in the canvas's look.
+    ImGui::PushStyleColor( ImGuiCol_NavCursor, 0 );
+    const bool tapped = ImGui::InvisibleButton( id.c_str(), size, ImGuiButtonFlags_EnableNav );
+    ImGui::PopStyleColor();
     if( held != nullptr ) {
         *held = ImGui::IsItemActive();
+    }
+    if( ImGui::IsItemFocused() && GImGui->NavCursorVisible ) {
+        focus_ring( pos, size );
     }
     return tapped;
 }
@@ -291,7 +318,10 @@ int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size
 
     // dim the screen behind; a tap there closes the sheet
     dim_screen( draw, origin, screen_max );
+    // not a control to move the focus to
+    ImGui::PushItemFlag( ImGuiItemFlags_NoNav, true );
     const bool outside = pressable( "##sheet_outside", origin, size );
+    ImGui::PopItemFlag();
 
     const float sheet_w = landscape ? std::min( 520.0f * u, size.x * 0.76f ) : size.x;
     const float max_h = ( size.y - safe.y ) * ( landscape ? 0.92f : 0.84f );
@@ -323,7 +353,7 @@ int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size
     ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + head_h ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##sheet_scroll", ImVec2( sheet_w, sheet_h - head_h - safe.w - 6.0f * u ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     if( sheet_scroll_reset ) {
         // a sheet that has just opened starts at its top, not where the last one was left
         ImGui::SetScrollY( 0.0f );

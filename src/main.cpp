@@ -50,6 +50,7 @@
 #include "help.h"
 #include "input.h"
 #include "main_menu.h"
+#include "mobile_default.h"
 #include "mapsharing.h"
 #include "memory_fast.h"
 #include "options.h"
@@ -423,6 +424,17 @@ cli_opts parse_commandline( int argc, const char **argv )
                     PATH_INFO::init_user_dir( params[0] );
                     PATH_INFO::set_standard_filenames();
                     return 1;
+                }
+            },
+            {
+                // Mobile UI: see mobile_default.h
+                "--mobile-ui", {},
+                "Turns the touch UI (full-screen map, touch controls, mobile menus) on by default",
+                section_default,
+                0,
+                []( int, const char ** ) -> int {
+                    mobile_default::request();
+                    return 0;
                 }
             },
             {

@@ -652,7 +652,7 @@ void order_window::draw_controls()
                                     touch_input::view_mode::overmap );
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##hud_order_rows", ImVec2( width, list_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##hud_order_rows", ImVec2( width, list_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const list = ImGui::GetWindowDrawList();

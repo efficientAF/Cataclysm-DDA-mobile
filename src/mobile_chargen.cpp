@@ -1164,7 +1164,7 @@ void chargen_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( ( "##chargen_body" + std::to_string( step ) ).c_str(),
-                       ImVec2( width, bottom_y - y ), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImVec2( width, bottom_y - y ), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     if( step != drawn_step ) {
         // every step opens at its top

@@ -170,7 +170,7 @@ void terminal_window::draw_controls()
 
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::SetCursorScreenPos( text_pos );
-    ImGui::BeginChild( "##term_text", text_size, ImGuiChildFlags_None,
+    ImGui::BeginChild( "##term_text", text_size, ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -194,7 +194,7 @@ void terminal_window::draw_controls()
 
     if( !buttons.empty() ) {
         ImGui::SetCursorScreenPos( buttons_pos );
-        ImGui::BeginChild( "##term_buttons", buttons_size, ImGuiChildFlags_None,
+        ImGui::BeginChild( "##term_buttons", buttons_size, ImGuiChildFlags_NavFlattened,
                            ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
         const ImVec2 base = ImGui::GetCursorScreenPos();
         const float height = draw_buttons( base, buttons_w, true );

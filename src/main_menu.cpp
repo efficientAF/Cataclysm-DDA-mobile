@@ -802,6 +802,10 @@ bool main_menu::opening_screen()
                         action = "QUIT";
                         break;
                 }
+            } else if( action != "QUIT" ) {
+                // keys move the focus on the mobile menu (mobile_ui::pressable);
+                // they must not also work upstream's menu underneath
+                continue;
             }
         }
 

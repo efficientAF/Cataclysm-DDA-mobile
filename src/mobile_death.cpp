@@ -248,7 +248,7 @@ void death_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( left, origin.y + safe.y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##death_scroll", ImVec2( width, bar_y - origin.y - safe.y ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float pad = 20.0f * u;
@@ -458,7 +458,7 @@ void page_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( left, origin.y + safe.y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##page_scroll", ImVec2( width, bar_y - origin.y - safe.y ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float pad = 20.0f * u;

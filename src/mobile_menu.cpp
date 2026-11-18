@@ -349,7 +349,7 @@ void main_menu_view::impl::draw_new_game( const ImVec2 &origin, const ImVec2 &si
     const ImVec2 scroll_size( width, size.y - safe.y - safe.w - bar_h );
     ImGui::SetCursorScreenPos( scroll_pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##newgame_scroll", scroll_size, ImGuiChildFlags_None,
+    ImGui::BeginChild( "##newgame_scroll", scroll_size, ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
@@ -546,7 +546,7 @@ void main_menu_view::impl::draw_controls()
         // otherwise be drawn over the sheet
         ImGui::SetCursorScreenPos( origin );
         ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-        ImGui::BeginChild( "##sheet_layer", size, ImGuiChildFlags_None,
+        ImGui::BeginChild( "##sheet_layer", size, ImGuiChildFlags_NavFlattened,
                            ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                            ImGuiWindowFlags_NoScrollWithMouse );
         draw_sheet( origin, size );

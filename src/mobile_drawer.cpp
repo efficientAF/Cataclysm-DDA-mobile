@@ -1165,7 +1165,7 @@ void drawer_window::draw_controls()
     ImGui::SetCursorScreenPos( content_min );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( ( "##drawer_content" + std::to_string( current ) ).c_str(), content_size,
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float used = draw_blocks( tabs[current], ImVec2( base.x + 14.0f * u, base.y + 12.0f * u ),
                                     content_size.x - 28.0f * u );

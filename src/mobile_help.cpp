@@ -123,7 +123,7 @@ void help_screen::draw_list( const ImVec2 &pos, const ImVec2 &size )
     const float u = mobile_ui::unit();
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##help_list", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+    ImGui::BeginChild( "##help_list", size, ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
@@ -174,7 +174,7 @@ void help_screen::draw_page( const ImVec2 &pos, const ImVec2 &size )
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     // a child of its own for each category, so that each opens at its top
     ImGui::BeginChild( ( "##help_page" + std::to_string( option ) ).c_str(), size,
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const draw = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();

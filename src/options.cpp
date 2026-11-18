@@ -25,6 +25,7 @@
 #include "lang_stats.h"
 #include "line.h"
 #include "mapsharing.h"
+#include "mobile_default.h"
 #include "mobile_menu.h"
 #include "mobile_options.h"
 #include "output.h"
@@ -3413,11 +3414,11 @@ void options_manager::add_options_android()
     // Android only; on desktop they sit on the interface page for testing.
 #if defined(__ANDROID__)
     const std::string mobile_page = "android";
-    const bool mobile_default = true;
 #else
     const std::string mobile_page = "interface";
-    const bool mobile_default = false;
 #endif
+    // also on for a handheld such as a Steam Deck, see mobile_default.h
+    const bool mobile_default = mobile_default::on();
     this->add_empty_line( mobile_page );
 
     add( "MOBILE_HUD", mobile_page, to_translation( "Mobile HUD (full-screen map)" ),

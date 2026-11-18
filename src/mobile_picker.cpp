@@ -419,7 +419,7 @@ void picker_window::draw_controls()
     const float list_h = origin.y + size.y - bottom_bar - y;
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##picker_list", ImVec2( width, list_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##picker_list", ImVec2( width, list_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     ImDrawList *const list = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
@@ -590,7 +590,7 @@ class details_window : public cataimgui::window
             ImGui::SetCursorScreenPos( ImVec2( left, top ) );
             ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
             ImGui::BeginChild( "##item_card", ImVec2( width, origin.y + size.y - safe.w - top ),
-                               ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                               ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
             ImDrawList *const draw = ImGui::GetWindowDrawList();
             const ImVec2 base = ImGui::GetCursorScreenPos();
             const float wrap = width - 32.0f * u;

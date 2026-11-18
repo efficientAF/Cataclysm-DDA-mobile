@@ -766,7 +766,7 @@ void crafting_window::draw_chips( const ImVec2 &pos, const float width, const bo
     const float row_h = 50.0f * u;
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##craft_chips", ImVec2( width, row_h ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##craft_chips", ImVec2( width, row_h ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_HorizontalScrollbar );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -843,7 +843,7 @@ void crafting_window::draw_list( const ImVec2 &pos, const ImVec2 &size, const bo
     const float row_h = 56.0f * u;
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##craft_list", size, ImGuiChildFlags_None,
+    ImGui::BeginChild( "##craft_list", size, ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                        ( interactive ? ImGuiWindowFlags_None : ImGuiWindowFlags_NoInputs ) );
     if( list_to_top ) {
@@ -1128,7 +1128,7 @@ void crafting_window::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
     // a layer of its own, so that the sheet covers the list
     ImGui::SetCursorScreenPos( origin );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##craft_sheet_layer", size, ImGuiChildFlags_None,
+    ImGui::BeginChild( "##craft_sheet_layer", size, ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar |
                        ImGuiWindowFlags_NoScrollWithMouse );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
@@ -1153,7 +1153,7 @@ void crafting_window::draw_sheet( const ImVec2 &origin, const ImVec2 &size )
     ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + head_h ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##craft_sheet", ImVec2( size.x, sheet_h - head_h - foot_h ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float height = draw_detail( base, size.x );
     ImGui::SetCursorScreenPos( base );
@@ -1206,7 +1206,7 @@ void crafting_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( pane.x, pane.y + 8.0f * u ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##craft_detail", ImVec2( detail_w, inner_size.y - 8.0f * u - safe.w ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float height = draw_detail( base, detail_w );
     ImGui::SetCursorScreenPos( base );

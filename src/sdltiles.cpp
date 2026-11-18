@@ -678,6 +678,13 @@ static void WinCreate()
     SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" );
     SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
 #endif
+#else
+    // Mobile UI: the same on a desktop with a touchscreen (a Steam Deck) while the
+    // touch controls are on: a finger is a finger, not also a mouse click
+    if( touch_input::imgui_pointer() || touch_input::tap_to_act() ) {
+        SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" );
+        SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
+    }
 #endif
 
     ::window = CreateGameWindow( "", display, WindowWidth, WindowHeight, window_flags );
@@ -1157,6 +1164,31 @@ static bool present_gate()
     }
     return true;
 }
+
+#if !defined(__ANDROID__)
+// Mobile UI: on a real touchscreen (a Steam Deck) SDL can report a finger a
+// second time, as a mouse.  With the touch controls on the finger is handled as
+// a finger (touch_input.h) and this copy is dropped.  The hints set where the
+// window is made stop most of them; this catches the rest, and the options
+// being switched on later.
+static bool mobile_touch_mouse_copy( const SDL_Event &ev )
+{
+    if( !touch_input::imgui_pointer() && !touch_input::tap_to_act() ) {
+        return false;
+    }
+    switch( ev.type ) {
+        case CATA_MOUSEMOTION:
+            return ev.motion.which == SDL_TOUCH_MOUSEID;
+        case CATA_MOUSEBUTTONDOWN:
+        case CATA_MOUSEBUTTONUP:
+            return ev.button.which == SDL_TOUCH_MOUSEID;
+        case CATA_MOUSEWHEEL:
+            return ev.wheel.which == SDL_TOUCH_MOUSEID;
+        default:
+            return false;
+    }
+}
+#endif
 
 // Mobile UI: whether the game is waiting for a command on the main map.
 static bool mobile_in_default_mode()
@@ -6345,6 +6377,12 @@ static void CheckMessages()
     int imgui_buf_h = 0;
     get_display_buffer_dims( &imgui_buf_w, &imgui_buf_h );
     while( SDL_PollEvent( &ev ) ) {
+#if !defined(__ANDROID__)
+        // Mobile UI: a finger that also arrives as a mouse is handled once, as a finger
+        if( mobile_touch_mouse_copy( ev ) ) {
+            continue;
+        }
+#endif
         // Build a display_buffer-coord copy for ImGui and gameplay
         // consumers. The raw `ev` stays in window coordinates so android
         // shortcut and joystick hit-tests see the same domain SDL emitted.

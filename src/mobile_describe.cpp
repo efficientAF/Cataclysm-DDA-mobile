@@ -283,7 +283,7 @@ void describe_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##describe_text", ImVec2( width, origin.y + size.y - safe.w - y ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     if( rewind ) {
         ImGui::SetScrollY( 0.0f );
         rewind = false;

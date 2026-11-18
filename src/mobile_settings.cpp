@@ -356,7 +356,7 @@ void settings_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( bar_left, origin.y + safe.y + bar_h ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##settings_scroll", ImVec2( bar_width, size.y - safe.y - safe.w - bar_h ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     if( restore_scroll ) {
         ImGui::SetScrollY( scroll );
         restore_scroll = false;

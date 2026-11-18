@@ -114,7 +114,7 @@ void compare_window::draw_text( const int which, const ImVec2 &pos, const ImVec2
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( which == 0 ? "##compare_first" : "##compare_second", size,
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     ImDrawList *const draw = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float wrap = size.x - 32.0f * u;

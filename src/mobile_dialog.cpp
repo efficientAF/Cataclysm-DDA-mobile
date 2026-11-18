@@ -82,6 +82,9 @@ void note_rect( const std::string &message, const bool on_top, float &x, float &
 
 int draw_popup( const popup_spec &spec )
 {
+    // upstream's loop moves the choice with the keys and shows it (spec.selected);
+    // ImGui's own focus would be a second one
+    ImGui::PushItemFlag( ImGuiItemFlags_NoNav, true );
     const ImGuiViewport *const viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->Pos;
     const ImVec2 size = viewport->Size;
@@ -218,11 +221,14 @@ int draw_popup( const popup_spec &spec )
             result = tap_outside;
         }
     }
+    ImGui::PopItemFlag();
     return result;
 }
 
 int draw_list( const list_spec &spec )
 {
+    // as in draw_popup: the keys are upstream's
+    ImGui::PushItemFlag( ImGuiItemFlags_NoNav, true );
     const ImGuiViewport *const viewport = ImGui::GetMainViewport();
     const ImVec2 origin = viewport->Pos;
     const ImVec2 size = viewport->Size;
@@ -356,6 +362,7 @@ int draw_list( const list_spec &spec )
     if( outside && result == tap_nothing && ImGui::GetIO().MousePos.y < pos.y ) {
         result = tap_outside;
     }
+    ImGui::PopItemFlag();
     return result;
 }
 

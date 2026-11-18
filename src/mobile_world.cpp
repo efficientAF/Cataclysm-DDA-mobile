@@ -337,7 +337,7 @@ void world_window::draw_controls()
     const float list_top = origin.y + safe.y + bar_h;
     ImGui::SetCursorScreenPos( ImVec2( bar_left, list_top ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##world_scroll", ImVec2( bar_width, foot_y - list_top ), ImGuiChildFlags_None,
+    ImGui::BeginChild( "##world_scroll", ImVec2( bar_width, foot_y - list_top ), ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     if( restore_scroll ) {
         ImGui::SetScrollY( scroll );
@@ -871,7 +871,7 @@ void mods_window::draw_panel( const ImVec2 &min, const ImVec2 &max )
     ImGui::SetCursorScreenPos( ImVec2( min.x + pad, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##mods_description", ImVec2( width, std::max( text_h, 10.0f * u ) ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     {
         ImDrawList *const inner = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
@@ -982,7 +982,7 @@ void mods_window::draw_controls()
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     // a list of its own for each tab, so that each keeps its place
     ImGui::BeginChild( tab == 0 ? "##mods_rows_active" : "##mods_rows_available",
-                       ImVec2( list_w, list_h ), ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImVec2( list_w, list_h ), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     if( tab == 0 ) {
         draw_active( list_w );
     } else {
