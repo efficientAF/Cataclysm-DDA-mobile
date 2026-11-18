@@ -1125,8 +1125,15 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
     piece_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
     handle_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
     dials[0].radius = dials[1].radius = 0.0f;
-    if( !g || ( !default_mode && !editing ) || !renderer || window_w <= 0 || window_h <= 0 ) {
+    // around a sheet that is open over the play screen the pieces stay, dimmed
+    ImVec4 sheet;
+    const bool under_sheet = !default_mode && !editing && mobile_ui::sheet_over_play_screen( sheet );
+    if( !g || ( !default_mode && !editing && !under_sheet ) || !renderer || window_w <= 0 ||
+        window_h <= 0 ) {
         return;
+    }
+    if( default_mode ) {
+        mobile_ui::note_play_screen();
     }
     sdl = renderer.get();
     flush_caches_if_renderer_changed();
@@ -1160,43 +1167,75 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
         }
     }
 
-    if( touch_input::hud_enabled() ) {
-        const auto shown = [&current]( const piece_id id ) {
-            opacity = current[id].opacity;
-            return current[id].visible;
+    // around a sheet: one pass for each strip of screen beside and above it
+    std::vector<SDL_Rect> strips;
+    if( under_sheet ) {
+        const float left = whole.x + sheet.x * whole.w;
+        const float top = whole.y + sheet.y * whole.h;
+        const float right = whole.x + sheet.z * whole.w;
+        const auto strip = [&strips]( const float x, const float y, const float w, const float h ) {
+            if( w >= 1.0f && h >= 1.0f ) {
+                strips.push_back( { static_cast<int>( x ), static_cast<int>( y ), static_cast<int>( w ),
+                                    static_cast<int>( h ) } );
+            }
         };
-        if( shown( piece_id::location ) ) {
-            draw_location( current[piece_id::location] );
+        strip( whole.x, whole.y, whole.w, top - whole.y );
+        strip( whole.x, top, left - whole.x, whole.y + whole.h - top );
+        strip( right, top, whole.x + whole.w - right, whole.y + whole.h - top );
+    }
+    const float dim = under_sheet ? 0.5f : 1.0f;
+    for( size_t pass = 0; pass < ( under_sheet ? strips.size() : 1 ); ++pass ) {
+        if( under_sheet ) {
+            SDL_SetRenderClipRect( sdl, &strips[pass] );
         }
-        if( shown( piece_id::status ) ) {
-            draw_status( current[piece_id::status] );
+        if( touch_input::hud_enabled() ) {
+            const auto shown = [&current, dim]( const piece_id id ) {
+                opacity = current[id].opacity * dim;
+                return current[id].visible;
+            };
+            if( shown( piece_id::location ) ) {
+                draw_location( current[piece_id::location] );
+            }
+            if( shown( piece_id::status ) ) {
+                draw_status( current[piece_id::status] );
+            }
+            if( shown( piece_id::body ) ) {
+                draw_body( current[piece_id::body] );
+            }
+            if( shown( piece_id::wield ) ) {
+                draw_wielded();
+            }
+            if( shown( piece_id::log ) ) {
+                draw_log( current[piece_id::log] );
+            }
+            if( shown( piece_id::quick ) ) {
+                draw_quick_actions( current[piece_id::quick] );
+            }
+            // the map only zooms when it is drawn with tiles
+            if( shown( piece_id::zoom ) && ( use_tiles || editing ) ) {
+                draw_zoom( current[piece_id::zoom] );
+            }
+            if( shown( piece_id::pan ) ) {
+                draw_pan( current[piece_id::pan] );
+            }
+            if( shown( piece_id::joy ) ) {
+                draw_pad( current[piece_id::joy] );
+            }
+            opacity = dim;
+            draw_drawer_handles();
         }
-        if( shown( piece_id::body ) ) {
-            draw_body( current[piece_id::body] );
-        }
-        if( shown( piece_id::wield ) ) {
-            draw_wielded();
-        }
-        if( shown( piece_id::log ) ) {
-            draw_log( current[piece_id::log] );
-        }
-        if( shown( piece_id::quick ) ) {
-            draw_quick_actions( current[piece_id::quick] );
-        }
-        // the map only zooms when it is drawn with tiles
-        if( shown( piece_id::zoom ) && ( use_tiles || editing ) ) {
-            draw_zoom( current[piece_id::zoom] );
-        }
-        if( shown( piece_id::pan ) ) {
-            draw_pan( current[piece_id::pan] );
-        }
-        if( shown( piece_id::joy ) ) {
-            draw_pad( current[piece_id::joy] );
-        }
-        opacity = 1.0f;
-        draw_drawer_handles();
     }
     opacity = 1.0f;
+    if( under_sheet ) {
+        // shown, not touched
+        SDL_SetRenderClipRect( sdl, nullptr );
+        buttons.clear();
+        pad_rect = { 0.0f, 0.0f, 0.0f, 0.0f };
+        dials[0].radius = dials[1].radius = 0.0f;
+        handle_rects.fill( { 0.0f, 0.0f, 0.0f, 0.0f } );
+        SDL_SetRenderDrawBlendMode( sdl, SDL_BLENDMODE_NONE );
+        return;
+    }
     if( ( touch_input::view_is_panned() || editing ) && current[piece_id::recenter].visible ) {
         draw_recenter();
     } else if( touch_input::view_is_panned() ) {

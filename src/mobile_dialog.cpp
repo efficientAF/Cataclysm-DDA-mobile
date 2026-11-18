@@ -148,10 +148,14 @@ int draw_popup( const popup_spec &spec )
     }
     const ImVec2 card_max( pos.x + card_w, pos.y + card_h );
     if( sheet ) {
+        mobile_ui::sheet_area( pos, card_max );
         draw->AddRectFilled( pos, card_max, mobile_ui::col_sheet, 22.0f * u, ImDrawFlags_RoundCornersTop );
         draw->AddRect( pos, ImVec2( card_max.x, card_max.y + 30.0f * u ), mobile_ui::col_line, 22.0f * u,
                        ImDrawFlags_RoundCornersTop, std::max( 1.0f, u ) );
     } else {
+        if( modal ) {
+            mobile_ui::sheet_area( pos, card_max );
+        }
         mobile_ui::box( draw, pos, card_max, mobile_ui::col_sheet, mobile_ui::col_line, 18.0f );
     }
 
@@ -268,6 +272,7 @@ int draw_list( const list_spec &spec )
     const float foot_h = safe.w + 6.0f * u;
     const float sheet_h = std::min( max_h, head_h + rows_h + foot_h );
     const ImVec2 pos( origin.x + ( size.x - sheet_w ) * 0.5f, screen_max.y - sheet_h );
+    mobile_ui::sheet_area( pos, ImVec2( pos.x + sheet_w, screen_max.y ) );
     draw->AddRectFilled( pos, ImVec2( pos.x + sheet_w, screen_max.y ), mobile_ui::col_sheet, 22.0f * u,
                          ImDrawFlags_RoundCornersTop );
     draw->AddRect( pos, ImVec2( pos.x + sheet_w, screen_max.y + 30.0f * u ), mobile_ui::col_line,

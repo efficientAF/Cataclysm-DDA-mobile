@@ -104,6 +104,15 @@ void snapshot_backdrop();
 void dim_screen( ImDrawList *draw, const ImVec2 &min, const ImVec2 &max );
 // Called at the end of every UI frame (ui_manager.cpp).
 void end_frame();
+// A sheet, a dialog or an entry card says where it is, each frame.  While such
+// a one is the only thing over the play screen, the HUD stays on screen around
+// it, dimmed (mobile_hud.h, draw).
+void sheet_area( const ImVec2 &min, const ImVec2 &max );
+// The HUD was just drawn for the play screen: what follows is over the map.
+void note_play_screen();
+// Where the sheet over the play screen is, as fractions of the screen (x, y,
+// right, bottom), if there is one and nothing else is between it and the map.
+bool sheet_over_play_screen( ImVec4 &where );
 
 // --- Bottom sheet ---
 

@@ -232,6 +232,7 @@ void entry_window::draw_number( const ImVec2 &origin, const ImVec2 &size )
                     6.0f * u + 48.0f * u + pad + safe.w;
     const ImVec2 min( origin.x + ( size.x - w ) * 0.5f, origin.y + size.y - h );
     const ImVec2 max( min.x + w, origin.y + size.y );
+    mobile_ui::sheet_area( min, max );
     draw->AddRectFilled( min, max, mobile_ui::col_sheet, 20.0f * u, ImDrawFlags_RoundCornersTop );
     draw->AddRect( min, ImVec2( max.x, max.y + 20.0f * u ), mobile_ui::col_line, 20.0f * u,
                    ImDrawFlags_RoundCornersTop, std::max( 1.0f, u ) );
@@ -305,6 +306,7 @@ void entry_window::draw_text( const ImVec2 &origin, const ImVec2 &size )
     const float h = fixed_h + below_h;
     const ImVec2 min( origin.x + ( size.x - w ) * 0.5f, top );
     const ImVec2 max( min.x + w, min.y + h );
+    mobile_ui::sheet_area( min, max );
     mobile_ui::box( draw, min, max, mobile_ui::col_sheet, mobile_ui::col_line, 18.0f );
     const float x = min.x + pad;
     float y = min.y + pad;

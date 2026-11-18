@@ -114,12 +114,62 @@ void dim_screen( ImDrawList *const draw, const ImVec2 &min, const ImVec2 &max )
     draw->AddRectFilled( min, max, col_dim );
 }
 
+// --- The HUD around a sheet ---
+
+// a sheet said where it is in the frame being drawn
+static bool sheet_marked = false;
+// the same for the frame that was drawn last
+static bool sheet_shown = false;
+static ImVec4 sheet_where;
+// nothing but sheets was drawn since the HUD last showed the play screen
+static bool over_play_screen = false;
+
+void sheet_area( const ImVec2 &min, const ImVec2 &max )
+{
+    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    if( viewport->Size.x <= 0.0f || viewport->Size.y <= 0.0f ) {
+        return;
+    }
+    const ImVec4 where( ( min.x - viewport->Pos.x ) / viewport->Size.x,
+                        ( min.y - viewport->Pos.y ) / viewport->Size.y,
+                        ( max.x - viewport->Pos.x ) / viewport->Size.x,
+                        ( max.y - viewport->Pos.y ) / viewport->Size.y );
+    if( sheet_marked ) {
+        // two in one frame: the box around both
+        sheet_where = ImVec4( std::min( sheet_where.x, where.x ), std::min( sheet_where.y, where.y ),
+                              std::max( sheet_where.z, where.z ), std::max( sheet_where.w, where.w ) );
+    } else {
+        sheet_where = where;
+    }
+    sheet_marked = true;
+}
+
+void note_play_screen()
+{
+    over_play_screen = true;
+}
+
+bool sheet_over_play_screen( ImVec4 &where )
+{
+    if( !sheet_shown || !over_play_screen || backdrop_set ) {
+        return false;
+    }
+    where = sheet_where;
+    return true;
+}
+
 void end_frame()
 {
     if( backdrop_set && !backdrop_used ) {
         backdrop_set = false;
     }
     backdrop_used = false;
+    sheet_shown = sheet_marked;
+    if( !sheet_marked ) {
+        // some other screen: the map is no longer what is under the next sheet
+        over_play_screen = false;
+    }
+    sheet_marked = false;
 }
 
 // --- Icons ---
@@ -229,6 +279,8 @@ bool app_bar( const std::string &title, const ImVec2 &pos, const float width,
 
 // --- Bottom sheet ---
 
+static bool sheet_scroll_reset = false;
+
 int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size )
 {
     const float u = unit();
@@ -257,6 +309,7 @@ int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size
                          row_h * static_cast<float>( count );
     const float sheet_h = std::min( max_h, head_h + desc_h + rows_h + safe.w + 6.0f * u );
     const ImVec2 pos( origin.x + ( size.x - sheet_w ) * 0.5f, screen_max.y - sheet_h );
+    sheet_area( pos, ImVec2( pos.x + sheet_w, screen_max.y ) );
     draw->AddRectFilled( pos, ImVec2( pos.x + sheet_w, screen_max.y ), col_sheet, 22.0f * u,
                          ImDrawFlags_RoundCornersTop );
     draw->AddRect( pos, ImVec2( pos.x + sheet_w, screen_max.y + 30.0f * u ), col_line, 22.0f * u,
@@ -272,6 +325,11 @@ int draw_sheet( const sheet_spec &spec, const ImVec2 &origin, const ImVec2 &size
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##sheet_scroll", ImVec2( sheet_w, sheet_h - head_h - safe.w - 6.0f * u ),
                        ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+    if( sheet_scroll_reset ) {
+        // a sheet that has just opened starts at its top, not where the last one was left
+        ImGui::SetScrollY( 0.0f );
+        sheet_scroll_reset = false;
+    }
     ImDrawList *const inner = ImGui::GetWindowDrawList();
     const ImVec2 base = ImGui::GetCursorScreenPos();
     float y = base.y;
@@ -364,6 +422,7 @@ class sheet_window : public cataimgui::window
 int show_sheet( const sheet_spec &spec )
 {
     sheet_window window( spec );
+    sheet_scroll_reset = true;
     input_context ctxt( "default" );
     const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
