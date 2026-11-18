@@ -15,6 +15,8 @@
 #include "map.h"
 #include "map_scale_constants.h"
 #include "memory_fast.h"
+#include "mobile_menu.h"
+#include "mobile_pick.h"
 #include "options.h"
 #include "player_activity.h"
 #include "point.h"
@@ -61,12 +63,35 @@ player_activity veh_shape::start( const tripoint_bub_ms &pos )
 
     std::string action = "CONFIRM";
 
+    // Mobile UI: a banner names the tile under the cursor; a tap on the vehicle
+    // moves the cursor, a tap on the cursor's own tile chooses it
+    std::optional<mobile_pick::look_banner> mobile_banner;
+    if( mobile_pick::wanted() ) {
+        mobile_banner.emplace();
+    }
+
     while( true ) {
+        if( mobile_banner ) {
+            const std::vector<vpart_reference> parts = parts_under_cursor();
+            const int shown = parts.empty() ? -1 :
+                              veh.part_displayed_at( parts.front().mount_pos() );
+            mobile_banner->set( _( "Change shape" ), {
+                shown >= 0 ? veh.part( shown ).name( false ) : veh.name,
+                _( "Tap a tile of the vehicle.  Tap it again to choose a part there." )
+            } );
+        }
         g->invalidate_main_ui_adaptor();
         ui_manager::redraw();
 
         if( action.empty() ) {
             action = ctxt.handle_input( get_option<int>( "EDGE_SCROLL" ) );
+            if( mobile_banner && action == "SELECT" ) {
+                const std::optional<tripoint_bub_ms> tapped = ctxt.get_coordinates( g->w_terrain,
+                        ( you.pos_bub() + you.view_offset ).raw().xy() );
+                if( tapped && tapped->xy() == get_cursor_pos().xy() ) {
+                    action = "CONFIRM";
+                }
+            }
         }
 
         if( handle_cursor_movement( action ) || ( action == "HELP_KEYBINDINGS" ) ) {
@@ -75,7 +100,9 @@ player_activity veh_shape::start( const tripoint_bub_ms &pos )
         } else if( action == "CONFIRM" ) {
             std::optional<vpart_reference> part;
             do {
+                // Mobile UI: no talk of keys on the sheet
                 part = select_part_at_cursor( _( "Choose part to change shape" ),
+                                              mobile_menu::enabled() ? std::string() :
                                               _( "Confirm to select or quit to select another tile." ),
                 []( const vpart_reference & vp ) {
                     if( vp.info().variants.size() <= 1 ) {
@@ -128,7 +155,10 @@ std::optional<vpart_reference> veh_shape::select_part_at_cursor(
 
     for( const vpart_reference &pt : parts ) {
         ret_val<void> predicate_result = predicate( pt );
-        uilist_entry entry( -1, true, MENU_AUTOASSIGN, pt.part().name(), "", predicate_result.str() );
+        // Mobile UI: the name without the damage and wear symbols ("||", "\\"), which read
+        // as junk on a sheet and are taken for a column divider there
+        uilist_entry entry( -1, true, MENU_AUTOASSIGN, pt.part().name( !mobile_menu::enabled() ), "",
+                            predicate_result.str() );
         entry.desc = extra_description;
         entry.enabled = predicate_result.success();
         entry.retval = predicate_result.success() ? menu.entries.size() : -2;
@@ -156,7 +186,9 @@ void veh_shape::change_part_shape( vpart_reference vpr ) const
         .skip_locked_check()
         .skip_theft_check()
         .location( veh.bub_part_pos( here, part ).raw() )
-        .desc( _( "Confirm to save or exit to revert" ) )
+        // Mobile UI: a tap on the sheet chooses at once, and the sheet has no colors
+        .desc( !mobile_menu::enabled() ? _( "Confirm to save or exit to revert" ) :
+               part.variant == vvid ? _( "The shape it has now" ) : std::string() )
         .symbol( vv.get_symbol_curses( 0_degrees, false ) )
         .symbol_color( vpi.color )
         .on_select( [&part, variant_id = vvid]() {
@@ -216,12 +248,15 @@ bool veh_shape::handle_cursor_movement( const std::string &action )
     } else if( action == "zoom_out" ) {
         g->zoom_out();
     } else if( action == "SELECT" ) {
-        const std::optional<tripoint_bub_ms> mouse_pos = ctxt.get_coordinates( g->w_terrain );
+        // the click counts from the middle of the view, which is on the cursor
+        const avatar &you = get_avatar();
+        const std::optional<tripoint_bub_ms> mouse_pos = ctxt.get_coordinates( g->w_terrain,
+                ( you.pos_bub() + you.view_offset ).raw().xy() );
         if( !mouse_pos ) {
             return false;
         }
-        if( get_cursor_pos() != *mouse_pos ) {
-            set_cursor_pos( *mouse_pos );
+        if( get_cursor_pos().xy() != mouse_pos->xy() ) {
+            set_cursor_pos( tripoint_bub_ms( mouse_pos->xy(), get_cursor_pos().z() ) );
         }
     } else if( action == "LEVEL_UP" ) {
         set_cursor_pos( get_cursor_pos() + tripoint::above );

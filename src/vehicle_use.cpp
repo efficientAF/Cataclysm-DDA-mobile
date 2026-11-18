@@ -39,6 +39,7 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "messages.h"
+#include "mobile_menu.h"
 #include "monster.h"
 #include "mtype.h"
 #include "output.h"
@@ -186,7 +187,8 @@ void vehicle::control_doors( map &here )
         const vehicle_part &vp = part( vp_idx );
         const std::string actname = vp.open ? _( "Close" ) : _( "Open" );
         const bool open = !vp.open;
-        menu.add( string_format( "%s %s", actname, vp.name() ) )
+        // Mobile UI: without the damage symbols, which the sheet takes for a column
+        menu.add( string_format( "%s %s", actname, vp.name( !mobile_menu::enabled() ) ) )
         .hotkey_auto()
         .location( bub_part_pos( here, vp ).raw() )
         .keep_menu_open()
@@ -205,7 +207,8 @@ void vehicle::control_doors( map &here )
         const vehicle_part &vp = part( vp_idx );
         const std::string actname = vp.locked ? _( "Unlock" ) : _( "Lock" );
         const bool lock = !vp.locked;
-        menu.add( string_format( "%s %s", actname, vp.name() ) )
+        // Mobile UI: without the damage symbols, which the sheet takes for a column
+        menu.add( string_format( "%s %s", actname, vp.name( !mobile_menu::enabled() ) ) )
         .hotkey_auto()
         .location( bub_part_pos( here, vp ).raw() )
         .keep_menu_open()

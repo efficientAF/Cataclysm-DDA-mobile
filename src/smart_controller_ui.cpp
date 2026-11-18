@@ -9,6 +9,7 @@
 #include "cata_utility.h"
 #include "color.h"
 #include "cursesdef.h"
+#include "mobile_engine.h"
 #include "output.h"
 #include "point.h"
 #include "string_formatter.h"
@@ -135,6 +136,13 @@ void smart_controller_ui::refresh()
 
 void smart_controller_ui::control()
 {
+    // Mobile UI: a page with a switch and two steppers; the values are the same references
+    if( mobile_engine::wanted() ) {
+        mobile_engine::smart_controller( settings.enabled, settings.battery_lo, settings.battery_hi,
+                                         SNIPPET.random_from_category( "smart_engine_controller_manual" )
+                                         .value_or( translation() ).translated() );
+        return;
+    }
     ui_adaptor ui;
     ui.on_screen_resize( [this]( ui_adaptor & ui ) {
         win = init_window();
