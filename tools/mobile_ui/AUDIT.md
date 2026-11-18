@@ -20,6 +20,19 @@ CLAUDE.md's Status section. By item number below:
   pocket selector at `item_contents.cpp:3111`.
 - The map test now only refuses the debug editor and the scent view.
 
+## Round 6 (18 Nov 2026, seventh session)
+
+The workers were cut off by the usage limit; CLAUDE.md's Status section says what was seen.
+By item number below:
+
+- **Built:** 22 (search, note list, level up/down, a More sheet with the toggles and
+  missions; danger marks only through the note list), 24, 25, 27, 31 (auto notes and
+  distractions as lists; sidebar panels and the colour manager taken off the mobile menus),
+  34, 35 (taken off the menus), 36, and 28 (the Info drawer for NPCs and during activities).
+- **Half done, in WIP commits, unseen:** 23 (exosuit), 26 (study zone), zones' "Show on
+  map", "Select door to toggle".
+- **Still open:** 30, 32, 33 (hidden on purpose), and checking all of the above on screen.
+
 ## Two rules that decide most of it
 
 - **Sheet test** (`src/uilist.cpp:45-49`): a `uilist` becomes a bottom sheet only if it has

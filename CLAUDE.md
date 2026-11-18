@@ -115,6 +115,38 @@ Everything is behind options registered at the end of `add_options_android()` in
 
 ### Status and open work (17 Nov 2026, sixth session)
 
+#### Round 6 (seventh session, 18 Nov 2026): read this first
+
+Everything is on the session branch `ccr-b20216f4-3gkwje` (pushed), **not yet merged into `mobile-ui`**. It builds on desktop (TILES) and the two unit-test tags pass. The three workers (`r6-map`, `r6-veh`, `r6-sys`, merged) were cut off by the usage limit before they reported, so what they saw on screen is **not known**; each branch ends in a commit "WIP when the worker stopped", which compiles but was seen by nobody. Nothing was run on a phone, a Steam Deck or with a controller. No APK or Gradle build was made; nothing new is a type or namespace named `detail` (a local variable of that name is harmless).
+
+Built by the main session and seen on the desktop build (landscape; where it says so, portrait too):
+- **Backdrop** (`mobile_ui::snapshot_backdrop`, `dim_screen`, `mobile_copy_display_buffer` in `sdltiles.cpp`): a list screen (`mobile_list::show_all`) or the inventory copies its last frame as it closes for an action, and the sheet, question or entry card that follows draws that picture under its dimming. The first frame that does not use it drops it. Seen: the item action sheet over the inventory; zones' Edit sheet and the name card over the Zones list (landscape and portrait).
+- **HUD around sheets** (`mobile_ui::sheet_area`, `note_map_drawn`, `sheet_over_play_screen`; `mobile_hud::draw`): while a sheet, dialog, entry card or drawer is open and the game drew the map in that frame, the HUD pieces are drawn at half strength in the strips beside and above it, untouchable. This is what the "black" pause sheet was: the map was there, the HUD was not. Seen: pause sheet (both orientations), Log drawer.
+- Drawers: window one pixel short and `keep_map_under()` each frame; their darkening used to add up to black.
+- Android's back key / Escape on the play screen (`ACTION_MAIN_MENU`) opens the pause sheet (`handle_action.cpp`). Seen.
+- A sheet from `mobile_ui::show_sheet` opens at its top (it kept the last sheet's scroll position).
+- Mobile map: redrawn each frame while its tile sheet or a toast is up (`view::covers_map`); the dimming no longer adds up. Seen (two screenshots six seconds apart are identical).
+- `mobile_entry`: a typed space or `q` stays in the field (seen); a description taller than about three lines goes under the buttons, cut at the screen edge (seen on the nearby list's Filter card).
+- Calendar sheet: no key help in the heading on mobile (`calendar_ui.cpp`). Seen from the creator's "Start of game".
+- "Back on follower rules ends the conversation" is upstream's data (`"topic": "TALK_DONE"` on the reply), not ours.
+- Steam Deck groundwork (see `tools/mobile_ui/AUDIT.md`): `mobile_default` (`--mobile-ui`, `CATA_MOBILE_UI`, `SteamDeck=1`), touch-versus-mouse filter, and controller focus: `mobile_ui::pressable` is an ImGui navigation item with a focus ring, and the mobile screens' `BeginChild` areas are `ImGuiChildFlags_NavFlattened` (**use that flag in new screens**). `mobile_dialog`'s rows are `ImGuiItemFlags_NoNav`: upstream's loops move their own selection. Seen with arrow keys and Enter: main menu, New game page; upstream's selection on a sheet in portrait.
+
+Built by the workers; seen by the main session after the merge only where it says so:
+- Mobile map (`mobile_overmap.cpp`): Search, Notes and More in the app bar, level up/down with the level shown. **Seen:** the buttons, level up (shows +1), the More sheet (missions, toggles, Mark explored). Not seen by the main session: search results list, note list (Go there, Edit, Danger, Delete), the toggles' effect, any of it in pick mode or portrait.
+- Loading screen in the canvas's look (`mobile_system.cpp`, `loading_ui.cpp`). **Seen** while a save loads.
+- Vehicle shape: part rows without the damage symbols (that was the `|\?` junk: `vehicle_part::name`'s prefix), the cursor step with the look-around banner and taps (`veh_shape.cpp`). Smart engine controller page (`mobile_engine.{h,cpp}`). Construction list for a blueprint zone (`construction.cpp`). Not seen by the main session.
+- `mobile_system`: auto notes and distraction managers on `mobile_list`, both on the Actions drawer's Game tab; swap inventory letters, sidebar panel manager, colour manager and keybindings taken off upstream's action menu and main menu while mobile is on (`drop_desktop_actions`). Pick-up with a preset or a limit goes through `mobile_picker::pick_many` (`pickup_selector::execute`). `Character::disp_info` opens the Info drawer, also for an NPC (`mobile_drawer::show_character`); during a blocking activity the note says to tap, and a tap asks whether to stop. Not seen by the main session.
+- In the WIP commits (compile, unseen, may be half done): zones' "Show on map" and a study zone skill picker (`mobile_study.{h,cpp}`, `study_zone_ui.cpp`, `zone_manager_ui.cpp`); exosuit modules (`iuse.cpp`) and "Select door to toggle" (`vehicle_use.cpp`); `do_turn.cpp` puts the blocking-activity context on the input stack.
+
+Still to do from this session's brief:
+- **Step 2 was not done**: the "written but seen by nobody" lists below (round 5 and item 0) are unchanged, except the creator's "Start of game" sheet, zones' Edit menu and its name card, which are now seen. Portrait was only checked for the pause sheet and the zones sheet.
+- Check the round 6 worker screens above on screen, both orientations; finish or remove the WIP parts.
+- The curses build: see the note at the end of this section.
+- Steam Deck: try `--mobile-ui`, a real touchscreen and a controller. Known gaps are listed in AUDIT.md.
+- The UI canvas has no mockups for round 6; the map's new buttons follow its `.fab` and app bar patterns.
+- Rough edges left from round 5: nearby list's first-frame redraw on other screens, "Default ALL" asking first, the missing columns listed below.
+
+
 `mobile-ui` holds all of the above, round 5 included (merged 18 Nov 2026). The session branches `ccr-*` are all merged into it and can be deleted; the worker branches `r5-*` were never pushed.
 
 The owner runs the APKs on a phone and reports back; this side only tests with scripted touches on the desktop build, so the Android-only gesture code in `sdltiles.cpp` is only known to compile here. Nothing below has been run on a real phone by this side.
@@ -127,7 +159,7 @@ Round 5, seen only by the workers in their own builds (screenshots gone with the
 
 Round 5, written but seen by nobody: item sheet's insert, unload, reload, favourite, hide/show contents, auto pickup, and the sheet opened from Move items; nearby list's Fire, safe mode buttons, Sort, Clear filter; Describe's vehicle page, signs and graffiti; bitten, infected, splinted, bandaged or missing limbs, an NPC's status; morale with positive sources; sort armor's Move out, change side, hide; blood analysis with results; the teleporter list; "Select door to toggle"; the starting city row, Height, Start of game; `pick_world`'s own sheet; debug message Ignore and Copy; the NPC epilogue page; the diary's text card with Android's keyboard up (its half-height field is a guess); the zone outline and NPC path on the map, map picking from a real mortar, nuke terminal or camp mission; camp expansion tabs, Recall, single job priority, Clear all, rules Default / Default ALL / import / export; camp crafting, view recipe on a craft in progress; "Remove modification?"; a menu or yes/no over the terminal page, the terminal's landscape layout after its clipping fix; a vending machine emptied or on the bank. The curses build of the new files was not compiled (two workers ran a non-TILES syntax check of theirs). `tools/mobile_ui/ndkcheck.sh` needs `/tmp/ndk_cmd.txt` from a Gradle build and was not run by the workers.
 
-Round 5 rough edges:
+Round 5 rough edges (the first four, the map darkening and the entry card were fixed in round 6, see above):
 - The item action sheet shows over black, not over the inventory. Sheets and yes/no questions opened from a list screen show over the map (the known edge below).
 - "Start of cataclysm" in the creator opens upstream's calendar as a sheet whose heading still says "Press h, LEFT…" (`calendar_ui.cpp`).
 - Vehicle part rows in the shape sheets start with symbol junk such as `|\?`.
