@@ -117,7 +117,7 @@ Everything is behind options registered at the end of `add_options_android()` in
 
 #### Round 6 (seventh session, 18 Nov 2026): read this first
 
-Everything is on the session branch `ccr-b20216f4-3gkwje` (pushed), **not yet merged into `mobile-ui`**. It builds on desktop (TILES) and the two unit-test tags pass. The three workers (`r6-map`, `r6-veh`, `r6-sys`, merged) were cut off by the usage limit before they reported, so what they saw on screen is **not known**; each branch ends in a commit "WIP when the worker stopped", which compiles but was seen by nobody. Nothing was run on a phone, a Steam Deck or with a controller. No APK or Gradle build was made; nothing new is a type or namespace named `detail` (a local variable of that name is harmless).
+Everything is on the session branch `ccr-b20216f4-3gkwje` (pushed), **not yet merged into `mobile-ui`**. It builds on desktop (TILES) and the two unit-test tags pass. The three workers (`r6-map`, `r6-veh`, `r6-sys`, merged) were cut off by the usage limit before they reported, so what they saw on screen is **not known**; each branch ends in a commit "WIP when the worker stopped", which compiles but was seen by nobody. Nothing was run on a phone, a Steam Deck or with a controller. The curses build (`make TILES=0`) compiles and links (the conversation hook in `dialogue_imgui.cpp` needed a TILES guard). No APK or Gradle build was made; nothing new is a type or namespace named `detail` (a local variable of that name is harmless).
 
 Built by the main session and seen on the desktop build (landscape; where it says so, portrait too):
 - **Backdrop** (`mobile_ui::snapshot_backdrop`, `dim_screen`, `mobile_copy_display_buffer` in `sdltiles.cpp`): a list screen (`mobile_list::show_all`) or the inventory copies its last frame as it closes for an action, and the sheet, question or entry card that follows draws that picture under its dimming. The first frame that does not use it drops it. Seen: the item action sheet over the inventory; zones' Edit sheet and the name card over the Zones list (landscape and portrait).
@@ -141,7 +141,6 @@ Built by the workers; seen by the main session after the merge only where it say
 Still to do from this session's brief:
 - **Step 2 was not done**: the "written but seen by nobody" lists below (round 5 and item 0) are unchanged, except the creator's "Start of game" sheet, zones' Edit menu and its name card, which are now seen. Portrait was only checked for the pause sheet and the zones sheet.
 - Check the round 6 worker screens above on screen, both orientations; finish or remove the WIP parts.
-- The curses build: see the note at the end of this section.
 - Steam Deck: try `--mobile-ui`, a real touchscreen and a controller. Known gaps are listed in AUDIT.md.
 - The UI canvas has no mockups for round 6; the map's new buttons follow its `.fab` and app bar patterns.
 - Rough edges left from round 5: nearby list's first-frame redraw on other screens, "Default ALL" asking first, the missing columns listed below.

@@ -216,6 +216,7 @@ void dialogue_imgui_impl::draw_controls()
         ImGui::SetWindowHiddenAndSkipItemsForCurrentFrame( w );
     }
 
+#if defined(TILES)
     // Mobile UI: the phone's conversation layout, see mobile_talk.h
     if( mobile_talk::wanted() && !hide_ui ) {
         std::vector<mobile_talk::message> said;
@@ -235,6 +236,7 @@ void dialogue_imgui_impl::draw_controls()
         }
         return;
     }
+#endif
 
     ImGui::SetWindowSize( ImVec2( window_width, window_height ), ImGuiCond_Once );
     draw_dialogue_sidebar();
