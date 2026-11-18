@@ -1135,7 +1135,8 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
     sdl = renderer.get();
     flush_caches_if_renderer_changed();
     const SDL_FRect area = hud_area( view, window_w, window_h );
-    unit = std::min( area.w, area.h ) / 390.0f;
+    // the size the player chose for the play screen (Settings, Screen sizes)
+    unit = std::min( area.w, area.h ) / 390.0f * mobile_ui::screen_scale( "hud" );
     if( unit <= 0.0f ) {
         return;
     }

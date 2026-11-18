@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cmath>
 #include <map>
 
 #include "cata_imgui.h"
@@ -13,6 +14,10 @@
 #include "filesystem.h"
 #include "game.h"
 #include "input_context.h"
+#include "json.h"
+#include "flexbuffer_json.h"
+#include "cata_utility.h"
+#include "translations.h"
 #include "path_info.h"
 #include "sdl_wrappers.h"
 #include "sdltiles.h"
@@ -43,10 +48,159 @@ static ImFont *font_for( const face f )
     return wanted != nullptr ? wanted : ImGui::GetFont();
 }
 
+// --- Screen sizes ---
+
+namespace
+{
+struct kind_entry {
+    const char *id;
+    const char *name;
+    const char *covers;
+    // window names (after "MOBILE_") of this kind
+    std::vector<const char *> windows;
+};
+} // namespace
+
+static const std::vector<kind_entry> &kind_table()
+{
+    static const std::vector<kind_entry> table = {
+        { "all", translate_marker( "Everything" ), translate_marker( "Every screen and the play screen's pieces, on top of their own size." ), {} },
+        { "hud", translate_marker( "Play screen" ), translate_marker( "The pieces over the map: location, status, quick actions, dials, handles." ), {} },
+        { "items", translate_marker( "Inventory and item lists" ), translate_marker( "Inventory, pick up, the item pickers (eat, wear, drop…), the item card." ), { "INVENTORY", "PICKER", "ITEM_CARD" } },
+        { "lists", translate_marker( "List screens" ), translate_marker( "Zones, bionics, mutations, missions, vehicles, camp, factions, nearby, body, morale and the other lists with a panel." ), { "LIST" } },
+        { "crafting", translate_marker( "Crafting" ), translate_marker( "The crafting screen." ), { "CRAFTING" } },
+        { "sheets", translate_marker( "Sheets and questions" ), translate_marker( "Bottom sheets, yes/no questions, number and text entry, conversation." ), { "SHEET", "ENTRY" } },
+        { "drawers", translate_marker( "Drawers" ), translate_marker( "Info, Log, Actions and Nearby drawers." ), { "DRAWER" } },
+        { "map", translate_marker( "Map" ), translate_marker( "The map screen's buttons and sheets." ), { "OVERMAP" } },
+        { "menu", translate_marker( "Main menu" ), translate_marker( "Title screen and New game." ), { "MAIN_MENU" } },
+        { "chargen", translate_marker( "Character creator" ), translate_marker( "All steps of the creator." ), { "CHARGEN" } },
+        { "settings", translate_marker( "Settings" ), translate_marker( "Settings, all options, worlds and mods, help." ), { "SETTINGS", "OPTIONS", "WORLD", "WORLD_MODS", "HELP" } },
+        { "pages", translate_marker( "Pages" ), translate_marker( "Describe, compare, terminal, diary text, engine controller, death and epilogues." ), { "DESCRIBE", "COMPARE", "TERMINAL", "DIARY_TEXT", "SMART_CONTROLLER", "DEATH", "DEATH_PAGE" } },
+        { "overlays", translate_marker( "On the map" ), translate_marker( "Look-around banner, direction ring, HUD editor." ), { "LOOK_BANNER", "PICK_DIRECTION", "HUD_EDIT", "HUD_ORDER" } },
+    };
+    return table;
+}
+
+static std::map<std::string, int> &screen_percents()
+{
+    static std::map<std::string, int> percents;
+    static bool loaded = false;
+    if( !loaded ) {
+        loaded = true;
+        read_from_file_optional_json( PATH_INFO::config_dir_path() / "mobile_ui_scale.json",
+        []( const JsonValue & jv ) {
+            const JsonObject jo = jv;
+            jo.allow_omitted_members();
+            for( const kind_entry &k : kind_table() ) {
+                if( jo.has_int( k.id ) ) {
+                    percents[k.id] = std::clamp( jo.get_int( k.id ), 50, 150 );
+                }
+            }
+        } );
+    }
+    return percents;
+}
+
+static float percent_of( const std::string &id )
+{
+    const std::map<std::string, int> &percents = screen_percents();
+    const auto found = percents.find( id );
+    return found == percents.end() ? 1.0f : static_cast<float>( found->second ) / 100.0f;
+}
+
+std::vector<screen_kind> screen_kinds()
+{
+    std::vector<screen_kind> kinds;
+    for( const kind_entry &k : kind_table() ) {
+        screen_kind kind;
+        kind.id = k.id;
+        kind.name = _( k.name );
+        kind.covers = _( k.covers );
+        kind.percent = static_cast<int>( std::lround( percent_of( k.id ) * 100.0f ) );
+        kinds.push_back( kind );
+    }
+    return kinds;
+}
+
+// bumped when a size changes, so that what was worked out per window is redone
+static int scale_epoch = 0;
+
+void set_screen_percent( const std::string &id, const int percent )
+{
+    std::map<std::string, int> &percents = screen_percents();
+    percents[id] = std::clamp( percent, 50, 150 );
+    ++scale_epoch;
+    write_to_file( PATH_INFO::config_dir_path() / "mobile_ui_scale.json", [&percents](
+    std::ostream & out ) {
+        JsonOut jsout( out, true );
+        jsout.start_object();
+        for( const std::pair<const std::string, int> &entry : percents ) {
+            jsout.member( entry.first, entry.second );
+        }
+        jsout.end_object();
+    }, _( "screen sizes" ) );
+}
+
+float screen_scale( const std::string &id )
+{
+    return id == "all" ? percent_of( "all" ) : percent_of( "all" ) * percent_of( id );
+}
+
+static std::string last_kind;
+
+std::string last_screen_kind()
+{
+    return last_kind;
+}
+
+// The kind of screen a window is, from its name.
+static std::string kind_of_window( const ImGuiWindow *const root )
+{
+    const std::string name = root->Name;
+    if( name.rfind( "Debug##", 0 ) == 0 ) {
+        // drawing outside any window (the prompt bar)
+        return "all";
+    }
+    if( name.rfind( "MOBILE_", 0 ) != 0 ) {
+        // upstream's windows that draw in the mobile look: sheets, questions, conversation
+        return "sheets";
+    }
+    const std::string bare = name.substr( 7,
+                                          name.find( "##" ) == std::string::npos ? std::string::npos :
+                                          name.find( "##" ) - 7 );
+    for( const kind_entry &k : kind_table() ) {
+        for( const char *const window : k.windows ) {
+            if( bare == window ) {
+                if( bare != "SHEET" && bare != "ENTRY" ) {
+                    last_kind = k.id;
+                }
+                return k.id;
+            }
+        }
+    }
+    return "all";
+}
+
 float unit()
 {
     const ImVec2 size = ImGui::GetIO().DisplaySize;
-    return std::max( std::min( size.x, size.y ) / 390.0f, 0.5f );
+    const float base = std::max( std::min( size.x, size.y ) / 390.0f, 0.5f );
+    const ImGuiContext *const context = ImGui::GetCurrentContext();
+    const ImGuiWindow *const window = context != nullptr ? context->CurrentWindow : nullptr;
+    if( window == nullptr || window->RootWindow == nullptr ) {
+        return base * percent_of( "all" );
+    }
+    // worked out once per window and change of sizes
+    static ImGuiID cached_window = 0;
+    static int cached_epoch = -1;
+    static float cached_scale = 1.0f;
+    const ImGuiWindow *const root = window->RootWindow;
+    if( root->ID != cached_window || cached_epoch != scale_epoch ) {
+        cached_window = root->ID;
+        cached_epoch = scale_epoch;
+        cached_scale = screen_scale( kind_of_window( root ) );
+    }
+    return base * cached_scale;
 }
 
 ImVec4 safe_insets()

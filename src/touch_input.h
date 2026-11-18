@@ -101,6 +101,8 @@ bool floating_joystick();
 bool recenter_on_move();
 bool zoom_no_wrap();
 bool imgui_pointer();
+// The left mouse button counts as a finger (option TOUCH_MOUSE_AS_FINGER).
+bool mouse_as_finger();
 bool menu_tap();
 // True if two fingers on the play screen zoom and pan live.
 bool owns_two_finger_gestures();

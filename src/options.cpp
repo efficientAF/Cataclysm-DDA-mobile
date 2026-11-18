@@ -3476,6 +3476,11 @@ void options_manager::add_options_android()
              mobile_default
            );
 
+        add( "TOUCH_MOUSE_AS_FINGER", page_id, to_translation( "Mouse clicks count as touches" ),
+             to_translation( "If true, the left mouse button works the touch controls like a finger: tap, drag to scroll, the HUD.  Needed where the system hands touches over as mouse clicks, as Steam's Gaming Mode does.  Needs \"Tap and drag in menus\"." ),
+             mobile_default
+           );
+
         add( "TOUCH_IMGUI_POINTER", page_id, to_translation( "Tap and drag in menus" ),
              to_translation( "If true, menus drawn as windows react to your finger: tap a row or button to choose it, drag up or down to scroll.  A sideways swipe still sends the left or right arrow key." ),
              mobile_default

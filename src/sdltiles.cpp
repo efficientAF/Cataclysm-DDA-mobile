@@ -1209,6 +1209,70 @@ static bool mobile_touch_mouse_copy( const SDL_Event &ev )
 }
 #endif
 
+#if !defined(__ANDROID__)
+// Mobile UI: Steam's Gaming Mode (and a plain mouse) gives no finger events:
+// a touch arrives as a left mouse button.  With TOUCH_MOUSE_AS_FINGER on, the
+// left button is turned into a finger here, so the HUD, taps on the map and
+// drag-scrolling work the same either way.  Returns true if ev was rewritten
+// into a finger event, and sets drop if the event is to be ignored instead.
+static uint64_t mobile_last_real_finger = 0;
+static bool mobile_mouse_finger_down = false;
+
+static bool mobile_mouse_to_finger( SDL_Event &ev, bool &drop )
+{
+    drop = false;
+    if( ev.type == CATA_FINGERDOWN || ev.type == CATA_FINGERMOTION || ev.type == CATA_FINGERUP ) {
+        mobile_last_real_finger = SDL_GetTicks();
+        return false;
+    }
+    const bool button = ev.type == CATA_MOUSEBUTTONDOWN || ev.type == CATA_MOUSEBUTTONUP;
+    const bool motion = ev.type == CATA_MOUSEMOTION;
+    if( ( !button && !motion ) || !touch_input::mouse_as_finger() ) {
+        return false;
+    }
+    if( button && ev.button.button != SDL_BUTTON_LEFT ) {
+        return false;
+    }
+    if( motion && !mobile_mouse_finger_down ) {
+        // the pointer moving with no button held is still a mouse
+        return false;
+    }
+    // real fingers are being reported too: this is their mouse copy
+    if( !mobile_mouse_finger_down && SDL_GetTicks() - mobile_last_real_finger < 700 &&
+        mobile_last_real_finger != 0 ) {
+        drop = button;
+        return false;
+    }
+    int w = 0;
+    int h = 0;
+    SDL_GetWindowSize( ::window.get(), &w, &h );
+    if( w <= 0 || h <= 0 ) {
+        return false;
+    }
+    const float x = ( button ? ev.button.x : ev.motion.x ) / static_cast<float>( w );
+    const float y = ( button ? ev.button.y : ev.motion.y ) / static_cast<float>( h );
+    const Uint32 type = motion ? CATA_FINGERMOTION :
+                        ev.type == CATA_MOUSEBUTTONDOWN ? CATA_FINGERDOWN : CATA_FINGERUP;
+    if( type == CATA_FINGERUP && !mobile_mouse_finger_down ) {
+        return false;
+    }
+    mobile_mouse_finger_down = type != CATA_FINGERUP;
+    const Uint64 stamp = button ? ev.button.timestamp : ev.motion.timestamp;
+    const SDL_WindowID win = button ? ev.button.windowID : ev.motion.windowID;
+    SDL_Event finger;
+    SDL_zero( finger );
+    finger.type = type;
+    finger.tfinger.timestamp = stamp;
+    finger.tfinger.touchID = 1;
+    finger.tfinger.fingerID = 1;
+    finger.tfinger.x = x;
+    finger.tfinger.y = y;
+    finger.tfinger.windowID = win;
+    ev = finger;
+    return true;
+}
+#endif
+
 // Mobile UI: whether the game is waiting for a command on the main map.
 static bool mobile_in_default_mode()
 {
@@ -6430,6 +6494,12 @@ static void CheckMessages()
 #if !defined(__ANDROID__)
         // Mobile UI: a finger that also arrives as a mouse is handled once, as a finger
         if( mobile_touch_mouse_copy( ev ) ) {
+            continue;
+        }
+        // and a touch that only arrives as a mouse (Steam's Gaming Mode) becomes a finger
+        bool mobile_drop = false;
+        mobile_mouse_to_finger( ev, mobile_drop );
+        if( mobile_drop ) {
             continue;
         }
 #endif

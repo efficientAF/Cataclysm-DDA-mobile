@@ -12,6 +12,8 @@ namespace mobile_settings
 // options as they are made and saved when leaving, the way upstream's options
 // screen does.
 void show();
+// Settings, Screen sizes: each kind of screen smaller or larger (mobile_ui.h).
+void show_screen_sizes();
 
 } // namespace mobile_settings
 

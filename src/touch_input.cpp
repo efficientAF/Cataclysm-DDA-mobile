@@ -206,6 +206,11 @@ bool imgui_pointer()
     return bool_option( "TOUCH_IMGUI_POINTER" );
 }
 
+bool mouse_as_finger()
+{
+    return bool_option( "TOUCH_MOUSE_AS_FINGER" ) && imgui_pointer();
+}
+
 bool menu_tap()
 {
     return bool_option( "TOUCH_MENU_TAP" );

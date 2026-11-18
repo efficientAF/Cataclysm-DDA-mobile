@@ -877,7 +877,9 @@ void inventory_window::draw_meter( const ImVec2 &pos, const float width, const s
     const ImVec2 value_size = mobile_ui::text_size( face::mono, 11.5f, value_text );
     mobile_ui::text( draw, face::mono, 11.5f, ImVec2( pos.x + width - value_size.x,
                      pos.y + ( row_h - value_size.y ) * 0.5f ), mobile_ui::col_fg, value_text );
-    const ImVec2 bar_min( pos.x + 62.0f * u, pos.y + 3.5f * u );
+    // a narrow meter (in the bar of a wide screen) keeps its bar close to the label
+    const ImVec2 bar_min( pos.x + ( width < 250.0f * u ? label_size.x + 8.0f * u : 62.0f * u ),
+                          pos.y + 3.5f * u );
     const ImVec2 bar_max( pos.x + width - value_size.x - 8.0f * u, pos.y + 10.5f * u );
     if( bar_max.x <= bar_min.x ) {
         return;
@@ -1077,15 +1079,15 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
     }
     y += bar_h;
 
+    // On a screen held sideways height is what is short: weight and volume go
+    // into the bar beside the title, and the tabs and the search share a row,
+    // so that the list keeps most of the height.
+    const ImVec2 screen = ImGui::GetMainViewport()->Size;
+    const bool wide = screen.x > screen.y;
+
     // weight and volume
-    y += 10.0f * u;
     const units::mass weight = you.weight_carried();
     const units::mass weight_max = you.weight_capacity();
-    draw_meter( ImVec2( pos.x + 14.0f * u, y ), size.x - 28.0f * u, _( "Weight" ),
-                units::to_gram<double>( weight ), units::to_gram<double>( weight_max ),
-                string_format( "%s / %s %s", format_weight_number( weight ),
-                               format_weight_number( weight_max ), weight_units() ) );
-    y += 19.0f * u;
     // how full the pockets are: what is in them, of what they hold
     const units::volume volume_max = you.volume_capacity();
     units::volume volume = 0_ml;
@@ -1095,17 +1097,39 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
     if( const item_location weapon = you.get_wielded_item() ) {
         volume += weapon->get_contents_volume();
     }
-    draw_meter( ImVec2( pos.x + 14.0f * u, y ), size.x - 28.0f * u, _( "Volume" ),
-                units::to_milliliter<double>( volume ), units::to_milliliter<double>( volume_max ),
-                string_format( "%s / %s %s", format_volume( volume ), format_volume( volume_max ),
-                               volume_units_abbr() ) );
-    y += 18.0f * u;
+    const std::string weight_text = string_format( "%s / %s %s", format_weight_number( weight ),
+                                    format_weight_number( weight_max ), weight_units() );
+    const std::string volume_text = string_format( "%s / %s %s", format_volume( volume ),
+                                    format_volume( volume_max ), volume_units_abbr() );
+    if( wide ) {
+        const float meter_w = std::min( 190.0f * u, size.x - 150.0f * u );
+        if( meter_w > 120.0f * u ) {
+            const float meter_x = right - 12.0f * u - meter_w;
+            draw_meter( ImVec2( meter_x, pos.y + 11.0f * u ), meter_w, _( "Weight" ),
+                        units::to_gram<double>( weight ), units::to_gram<double>( weight_max ), weight_text );
+            draw_meter( ImVec2( meter_x, pos.y + 29.0f * u ), meter_w, _( "Volume" ),
+                        units::to_milliliter<double>( volume ), units::to_milliliter<double>( volume_max ),
+                        volume_text );
+        }
+    } else {
+        y += 10.0f * u;
+        draw_meter( ImVec2( pos.x + 14.0f * u, y ), size.x - 28.0f * u, _( "Weight" ),
+                    units::to_gram<double>( weight ), units::to_gram<double>( weight_max ), weight_text );
+        y += 19.0f * u;
+        draw_meter( ImVec2( pos.x + 14.0f * u, y ), size.x - 28.0f * u, _( "Volume" ),
+                    units::to_milliliter<double>( volume ), units::to_milliliter<double>( volume_max ),
+                    volume_text );
+        y += 18.0f * u;
+    }
 
     // tabs
+    const bool search_beside = wide && !limited;
+    const float tabs_right = search_beside ? pos.x + 12.0f * u + ( size.x - 24.0f * u ) * 0.6f :
+                             right - 12.0f * u;
     if( !limited ) {
-        y += 10.0f * u;
+        y += ( wide ? 8.0f : 10.0f ) * u;
         const ImVec2 tabs_min( pos.x + 12.0f * u, y );
-        const ImVec2 tabs_max( right - 12.0f * u, y + 44.0f * u );
+        const ImVec2 tabs_max( tabs_right, y + 44.0f * u );
         mobile_ui::box( draw, tabs_min, tabs_max, mobile_ui::col_fill_soft, 0, 12.0f );
         const std::array<std::pair<tab, std::string>, 3> tabs = { {
                 { tab::carried, _( "Carried" ) }, { tab::worn, _( "Worn" ) }, { tab::nearby, _( "Nearby" ) }
@@ -1144,14 +1168,18 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
             draw->AddRectFilled( badge_min, badge_max, IM_COL32( 255, 255, 255, 31 ), badge_h * 0.5f );
             text_centered( draw, face::mono, 10.5f, badge_min, badge_max, ink, count );
         }
-        y += 44.0f * u;
+        if( !search_beside ) {
+            y += 44.0f * u;
+        }
     }
 
-    // search
-    y += 10.0f * u;
+    // search: under the tabs, or beside them where the screen is wide
+    if( !search_beside ) {
+        y += ( wide ? 8.0f : 10.0f ) * u;
+    }
     {
-        const ImVec2 field_pos( pos.x + 12.0f * u, y );
-        const float field_w = size.x - 24.0f * u;
+        const ImVec2 field_pos( search_beside ? tabs_right + 8.0f * u : pos.x + 12.0f * u, y );
+        const float field_w = right - 12.0f * u - field_pos.x;
         const float font_px = 15.0f * u;
         ImGui::PushFont( body_font(), font_px );
         ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( 38.0f * u,
@@ -1165,7 +1193,8 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
         ImGui::SetCursorScreenPos( field_pos );
         ImGui::SetNextItemWidth( field_w );
         ImGui::BeginDisabled( !interactive );
-        ImGui::InputTextWithHint( "##inventory_search", state.current == tab::nearby ?
+        ImGui::InputTextWithHint( "##inventory_search", search_beside ? _( "Search" ) :
+                                  state.current == tab::nearby ?
                                   _( "Search nearby items" ) : _( "Search your items" ), &state.search );
         ImGui::EndDisabled();
         if( ImGui::IsItemActive() ) {
@@ -1175,7 +1204,7 @@ void inventory_window::draw_left( const ImVec2 &pos, const ImVec2 &size, const b
         ImGui::PopStyleColor( 4 );
         ImGui::PopStyleVar( 3 );
         ImGui::PopFont();
-        mobile_ui::icon( draw, "search", ImVec2( pos.x + 24.0f * u, y + 13.0f * u ), 18.0f,
+        mobile_ui::icon( draw, "search", ImVec2( field_pos.x + 12.0f * u, y + 13.0f * u ), 18.0f,
                          mobile_ui::col_muted );
         y += 44.0f * u;
     }

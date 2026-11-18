@@ -17,6 +17,7 @@
 #include "imgui/imgui.h"
 #include "input_context.h"
 #include "mobile_hud_edit.h"
+#include "mobile_list.h"
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "options.h"
@@ -59,6 +60,8 @@ class settings_window : public cataimgui::window
         bool edit_hud = false;
         // "Tileset" was tapped
         bool pick_tileset = false;
+        // "Screen sizes" was tapped
+        bool screen_sizes = false;
         // an option was given a new value
         bool changed = false;
         // where the list was scrolled to, kept while the full options are open
@@ -406,6 +409,10 @@ void settings_window::draw_controls()
                   get_options().get_option( "TILES" ).getValueName() ) ) {
         pick_tileset = true;
     }
+    if( link_row( "##screen_sizes", _( "Screen sizes" ),
+                  _( "Make each kind of screen smaller or larger" ) ) ) {
+        screen_sizes = true;
+    }
     switch_row( "MOBILE_HUD", _( "Full-screen map" ),
                 _( "Hides the sidebar and draws status and messages over the map" ) );
     const bool can_edit = mobile_hud_edit::available();
@@ -500,6 +507,41 @@ void commit( bool changed, const std::string &tileset_before )
 
 } // namespace
 
+// Each kind of screen with its size; the list itself follows "List screens".
+void show_screen_sizes()
+{
+    int tab = 0;
+    int selected = -1;
+    // start on the kind of screen that was open last, the likely one to change
+    const std::string last = mobile_ui::last_screen_kind();
+    while( true ) {
+        const std::vector<mobile_ui::screen_kind> kinds = mobile_ui::screen_kinds();
+        mobile_list::spec what;
+        what.title = _( "Screen sizes" );
+        what.header = _( "Steps of 5%.  A kind's size multiplies with \"Everything\"." );
+        for( size_t i = 0; i < kinds.size(); ++i ) {
+            mobile_list::row r;
+            r.name = kinds[i].name;
+            r.right = string_format( "%d%%", kinds[i].percent );
+            r.description = kinds[i].covers;
+            r.action = _( "Smaller" );
+            r.more_actions = { _( "Larger" ), _( "100%" ) };
+            r.current = kinds[i].percent != 100;
+            what.rows.push_back( r );
+            if( selected < 0 && kinds[i].id == last ) {
+                selected = static_cast<int>( i );
+            }
+        }
+        const mobile_list::outcome did = mobile_list::show_all( what, tab, selected );
+        if( did.row < 0 || static_cast<size_t>( did.row ) >= kinds.size() ) {
+            return;
+        }
+        const mobile_ui::screen_kind &kind = kinds[static_cast<size_t>( did.row )];
+        mobile_ui::set_screen_percent( kind.id, did.action == 0 ? kind.percent - 5 :
+                                       did.action == 1 ? kind.percent + 5 : 100 );
+    }
+}
+
 void show()
 {
     float scroll = 0.0f;
@@ -507,6 +549,7 @@ void show()
         bool open_all = false;
         bool edit_hud = false;
         bool pick_tileset = false;
+        bool screen_sizes = false;
         bool changed = false;
         const std::string tileset_before = get_option<std::string>( "TILES" );
         {
@@ -517,7 +560,8 @@ void show()
             const mobile_prompt::own_controls own_controls( ctxt );
             ctxt.register_action( "QUIT" );
             ctxt.register_action( "ANY_INPUT" );
-            while( !window.done && !window.open_all && !window.edit_hud && !window.pick_tileset ) {
+            while( !window.done && !window.open_all && !window.edit_hud && !window.pick_tileset &&
+                   !window.screen_sizes ) {
                 ui_manager::redraw();
                 if( ctxt.handle_input() == "QUIT" ) {
                     break;
@@ -526,6 +570,7 @@ void show()
             open_all = window.open_all;
             edit_hud = window.edit_hud;
             pick_tileset = window.pick_tileset;
+            screen_sizes = window.screen_sizes;
             changed = window.changed;
             scroll = window.scroll;
         }
@@ -534,6 +579,10 @@ void show()
         }
         commit( changed, tileset_before );
         if( pick_tileset ) {
+            continue;
+        }
+        if( screen_sizes ) {
+            show_screen_sizes();
             continue;
         }
         if( edit_hud ) {
@@ -557,6 +606,7 @@ namespace mobile_settings
 {
 
 void show() {}
+void show_screen_sizes() {}
 
 } // namespace mobile_settings
 

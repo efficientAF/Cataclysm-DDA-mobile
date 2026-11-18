@@ -53,8 +53,30 @@ enum class face : int {
 // Adds the canvas fonts to the atlas.  Called whenever ImGui's fonts are (re)built.
 void add_fonts( ImGuiIO &io );
 
-// Pixels per canvas unit.
+// Pixels per canvas unit, for the screen being drawn: the size of the display
+// times the size the player chose for everything and for this kind of screen.
 float unit();
+
+// --- Screen sizes ---
+//
+// Every kind of screen can be made smaller or larger on its own (Settings,
+// Screen sizes).  The kind is told from the name of the ImGui window being
+// drawn, so screens need no code for it.  Saved in mobile_ui_scale.json in
+// the config folder.
+struct screen_kind {
+    // "all" for everything, "hud" for the play screen's pieces
+    std::string id;
+    std::string name;
+    // which screens are of this kind
+    std::string covers;
+    int percent = 100;
+};
+std::vector<screen_kind> screen_kinds();
+void set_screen_percent( const std::string &id, int percent );
+// The factor for a kind, the "all" factor included.
+float screen_scale( const std::string &id );
+// The kind of the last full screen that was drawn, or empty.
+std::string last_screen_kind();
 
 // Space taken by notches and system bars: x = left, y = top, z = right, w = bottom.
 ImVec4 safe_insets();
