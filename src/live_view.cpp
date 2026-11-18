@@ -13,6 +13,7 @@
 #include "options.h"
 #include "output.h"
 #include "panels.h"
+#include "touch_input.h"
 #include "translations.h"
 #include "ui_manager.h"
 
@@ -41,6 +42,12 @@ void live_view::show( const tripoint &p )
 {
     map &here = get_map();
 
+    // Mobile UI: the mouse view sits in the sidebar, and the HUD has none; a
+    // window without width made the vehicle part list complain about its room
+    if( touch_input::hud_enabled() ) {
+        hide();
+        return;
+    }
     mouse_position = p;
     if( !ui ) {
         ui = std::make_unique<ui_adaptor>();
