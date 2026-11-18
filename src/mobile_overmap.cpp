@@ -1,6 +1,7 @@
 #include "mobile_overmap.h"
 
 #include "coordinates.h"
+#include "mobile_list.h"
 #include "mobile_menu.h"
 #include "overmap_ui.h"
 
@@ -30,6 +31,8 @@
 #include "input.h"
 #include "input_context.h"
 #include "line.h"
+#include "map.h"
+#include "mobile_entry.h"
 #include "mobile_ui.h"
 #include "omdata.h"
 #include "output.h"
@@ -103,6 +106,11 @@ using clock = std::chrono::steady_clock;
 static bool travel_confirmed_flag = false;
 // the legend stays as the player left it
 static bool legend_shown = true;
+// The place a search result or a note of the list took the map to; it gets a
+// ring until the player touches the map again.
+static tripoint_abs_omt marked_place = tripoint_abs_omt::invalid;
+// it was set since the map last had a look
+static bool mark_fresh = false;
 
 static constexpr ImU32 col_glyph_box = IM_COL32( 5, 6, 5, 255 );
 static constexpr ImU32 col_glyph_line = IM_COL32( 255, 255, 255, 15 );
@@ -286,6 +294,13 @@ class view::impl : public cataimgui::window
         // went far enough to not be a tap
         ImVec2 drag_seen = ImVec2( 0.0f, 0.0f );
         bool map_dragged = false;
+        // Frames drawn since the overmap's loop last ran.  More than one means
+        // that a sheet, a card or a question is waiting on top of the map.
+        int frames_since_handle = 0;
+        // the action handed to the overmap's loop may open one
+        bool expect_nested = false;
+        std::string handle( const std::string &action, input_context &ctxt,
+                            tripoint_abs_omt &cursor );
         // height of the app bar over the map, in pixels
         float bar_pixels = 0.0f;
         // the player has been put in the middle of the visible map once
@@ -310,6 +325,13 @@ class view::impl : public cataimgui::window
         void open_sheet( const tripoint_abs_omt &pos );
         void close_sheet();
         void show_toast( const std::string &text );
+        // the pill and the legend are worked out again
+        void forget_cache() {
+            cache_stale = true;
+        }
+        // The "More" sheet: what the map shows, and missions.  Returns the
+        // action upstream's loop should handle, or an empty string.
+        std::string more_sheet( const tripoint_abs_omt &focus );
 
     protected:
         cataimgui::bounds get_bounds() override {
@@ -343,6 +365,70 @@ void view::impl::open_sheet( const tripoint_abs_omt &pos )
     sheet_open = true;
     note_edit = overmap_buffer.has_note( pos ) ? overmap_buffer.note( pos ) : std::string();
     note_field_active = false;
+}
+
+std::string view::impl::more_sheet( const tripoint_abs_omt &focus )
+{
+    //~ %1$s: something the map can show, %2$s: "On" or "Off"
+    const auto with_state = []( const std::string & name, const bool on ) {
+        return mobile_ui::sheet_row{ std::string(), string_format( _( "%1$s: %2$s" ), name, on ? _( "On" ) : _( "Off" ) ), std::string() };
+    };
+    expect_nested = true;
+    // the sheet comes back after a switch, so that several can be set
+    while( true ) {
+        // the map shows what was switched, under the sheet
+        if( g->overmap_data.ui ) {
+            g->overmap_data.ui->invalidate_ui();
+        }
+        mobile_ui::sheet_spec spec;
+        spec.title = _( "Map" );
+        spec.grid = true;
+        // "Mark explored" is about the place in the middle of the map, which
+        // the pill names
+        spec.rows = {
+            { std::string(), _( "Missions" ), std::string() },
+            with_state( _( "Legend" ), legend_shown ),
+            with_state( _( "Notes" ), uistate.overmap_show_map_notes ),
+            with_state( _( "City names" ), uistate.overmap_show_city_labels ),
+            with_state( _( "Hordes" ), uistate.overmap_show_hordes ),
+            with_state( _( "Revealed places" ), uistate.overmap_show_revealed_omts ),
+            with_state( _( "Forest trails" ), uistate.overmap_show_forest_trails ),
+            with_state( _( "Weather" ), uistate.overmap_visible_weather ),
+            {
+                std::string(), overmap_buffer.is_explored( focus ) ? _( "Mark not explored" ) :
+                _( "Mark explored" ), std::string()
+            },
+        };
+        const int choice = mobile_ui::show_sheet( spec );
+        if( choice < 0 || choice > 8 ) {
+            return std::string();
+        }
+        if( choice == 0 ) {
+            return "MISSIONS";
+        }
+        if( choice == 1 ) {
+            legend_shown = !legend_shown;
+        } else if( choice == 2 ) {
+            uistate.overmap_show_map_notes = !uistate.overmap_show_map_notes;
+        } else if( choice == 3 ) {
+            uistate.overmap_show_city_labels = !uistate.overmap_show_city_labels;
+        } else if( choice == 4 ) {
+            uistate.overmap_show_hordes = !uistate.overmap_show_hordes;
+        } else if( choice == 5 ) {
+            uistate.overmap_show_revealed_omts = !uistate.overmap_show_revealed_omts;
+        } else if( choice == 6 ) {
+            uistate.overmap_show_forest_trails = !uistate.overmap_show_forest_trails;
+        } else if( choice == 7 ) {
+            // upstream's own rule and action, see overmap_ui::display
+            if( !uistate.overmap_visible_weather && !get_map().is_outside( get_avatar().pos_bub() ) ) {
+                show_toast( _( "The weather can only be seen from outside." ) );
+                return std::string();
+            }
+            return "TOGGLE_OVERMAP_WEATHER";
+        } else {
+            overmap_buffer.toggle_explored( focus );
+        }
+    }
 }
 
 void view::impl::close_sheet()
@@ -429,7 +515,8 @@ void view::impl::draw_legend( ImDrawList *const draw, const ImVec2 &area_min,
 
     // chips wrap like text and the block sits on the bottom edge
     const float left = area_min.x + 10.0f * u;
-    const float right = area_max.x - 70.0f * u;
+    // up to the two columns of buttons
+    const float right = area_max.x - 126.0f * u;
     const float chip_h = 22.0f * u;
     const float gap = 4.0f * u;
     std::vector<ImVec2> spots;
@@ -556,7 +643,8 @@ void view::impl::draw_chrome( const ImVec2 &area_min, const ImVec2 &area_max,
     const float fab = 48.0f * u;
     const float fab_gap = 8.0f * u;
     const float fab_x = area_max.x - safe.z - 10.0f * u - fab;
-    float fab_y = area_max.y - safe.w - 10.0f * u - 3.0f * fab - 2.0f * fab_gap;
+    const float fab_top = area_max.y - safe.w - 10.0f * u - 3.0f * fab - 2.0f * fab_gap;
+    float fab_y = fab_top;
     for( const std::pair<const char *, const char *> &button : buttons ) {
         const ImVec2 pos( fab_x, fab_y );
         bool held = false;
@@ -570,6 +658,46 @@ void view::impl::draw_chrome( const ImVec2 &area_min, const ImVec2 &area_max,
         mobile_ui::icon( draw, button.first, ImVec2( pos.x + 13.0f * u, pos.y + 13.0f * u ), 22.0f,
                          mobile_ui::col_fg );
         fab_y += fab + fab_gap;
+    }
+
+    // a second column beside it: one level up, the level shown, one level down
+    const int z = g->overmap_data.cursor_pos.z();
+    const float level_x = fab_x - fab_gap - fab;
+    for( int i = 0; i < 2; ++i ) {
+        const bool up = i == 0;
+        const bool possible = up ? z < OVERMAP_HEIGHT : z > -OVERMAP_DEPTH;
+        const ImVec2 pos( level_x, fab_top + ( up ? 0.0f : 2.0f * ( fab + fab_gap ) ) );
+        bool held = false;
+        if( interactive && possible &&
+            mobile_ui::pressable( up ? "##om_fab_up" : "##om_fab_down", pos, ImVec2( fab, fab ), &held ) ) {
+            pending_action = up ? "LEVEL_UP" : "LEVEL_DOWN";
+        }
+        mobile_ui::box( draw, pos, ImVec2( pos.x + fab, pos.y + fab ),
+                        held ? mobile_ui::col_button_down : mobile_ui::col_panel, mobile_ui::col_line, 14.0f );
+        // a chevron; the icon set has none that points up or down
+        const ImVec2 mid( pos.x + fab * 0.5f, pos.y + fab * 0.5f );
+        const float dy = ( up ? -1.0f : 1.0f ) * 4.0f * u;
+        const std::array<ImVec2, 3> chevron = { {
+                ImVec2( mid.x - 8.0f * u, mid.y - dy ), ImVec2( mid.x, mid.y + dy ),
+                ImVec2( mid.x + 8.0f * u, mid.y - dy )
+            }
+        };
+        draw->AddPolyline( chevron.data(), 3, with_alpha( mobile_ui::col_fg, possible ? 1.0f : 0.3f ),
+                           ImDrawFlags_None, 2.2f * u );
+    }
+    {
+        const ImVec2 pos( level_x, fab_top + fab + fab_gap );
+        mobile_ui::box( draw, pos, ImVec2( pos.x + fab, pos.y + fab ), col_pill, mobile_ui::col_line,
+                        14.0f );
+        //~ Label over the number of the level the map shows; keep it very short
+        const std::string caption = _( "LEVEL" );
+        const ImVec2 caption_size = mobile_ui::text_size( face::mono, 8.5f, caption );
+        mobile_ui::text( draw, face::mono, 8.5f, ImVec2( pos.x + ( fab - caption_size.x ) * 0.5f,
+                         pos.y + 7.0f * u ), mobile_ui::col_muted, caption );
+        const std::string number = z > 0 ? string_format( "+%d", z ) : std::to_string( z );
+        const ImVec2 number_size = mobile_ui::text_size( face::bold, 17.0f, number );
+        mobile_ui::text( draw, face::bold, 17.0f, ImVec2( pos.x + ( fab - number_size.x ) * 0.5f,
+                         pos.y + 19.0f * u ), z == 0 ? mobile_ui::col_fg : mobile_ui::col_accent, number );
     }
 
     if( legend_shown ) {
@@ -749,6 +877,14 @@ void view::impl::draw_controls()
     const map_geometry geo = overmap_geometry();
     const tripoint_abs_omt cursor = g->overmap_data.cursor_pos;
 
+    // Something of its own is over the map (the search card, the "More" sheet,
+    // a question).  Nothing else has the overmap drawn again then: the game's
+    // own map, which those ask for, is hidden by the overmap.
+    ++frames_since_handle;
+    if( ( expect_nested || frames_since_handle > 1 ) && g->overmap_data.ui ) {
+        g->overmap_data.ui->invalidate_ui();
+    }
+
     // app bar, opaque over the top edge of the map
     const float bar_bottom = origin.y + safe.y + 54.0f * u;
     draw->AddRectFilled( origin, ImVec2( screen_max.x, bar_bottom ), mobile_ui::col_screen );
@@ -759,19 +895,28 @@ void view::impl::draw_controls()
         pending_action = "QUIT";
     }
     ImGui::EndDisabled();
-    const ImVec2 legend_pos( screen_max.x - safe.z - 52.0f * u, origin.y + safe.y + 5.0f * u );
-    bool legend_held = false;
-    if( interactive &&
-        mobile_ui::pressable( "##om_legend", legend_pos, ImVec2( 44.0f * u, 44.0f * u ),
-                              &legend_held ) ) {
-        legend_shown = !legend_shown;
+    // search, the list of notes, and the rest behind "More"
+    static const std::array<std::pair<const char *, const char *>, 3> bar_buttons = { {
+            { "search", "SEARCH" }, { "note", "LIST_NOTES" }, { "menu", "MORE" }
+        }
+    };
+    float bar_x = screen_max.x - safe.z - 8.0f * u - 3.0f * 44.0f * u;
+    for( const std::pair<const char *, const char *> &button : bar_buttons ) {
+        const ImVec2 pos( bar_x, origin.y + safe.y + 5.0f * u );
+        bool held = false;
+        if( interactive &&
+            mobile_ui::pressable( std::string( "##om_bar_" ) + button.first, pos,
+                                  ImVec2( 44.0f * u, 44.0f * u ), &held ) ) {
+            pending_action = button.second;
+        }
+        if( held ) {
+            mobile_ui::box( draw, pos, ImVec2( pos.x + 44.0f * u, pos.y + 44.0f * u ),
+                            mobile_ui::col_fill_soft, 0, 12.0f );
+        }
+        mobile_ui::icon( draw, button.first, ImVec2( pos.x + 11.0f * u, pos.y + 11.0f * u ), 22.0f,
+                         mobile_ui::col_fg );
+        bar_x += 44.0f * u;
     }
-    if( legend_held ) {
-        mobile_ui::box( draw, legend_pos, ImVec2( legend_pos.x + 44.0f * u, legend_pos.y + 44.0f * u ),
-                        mobile_ui::col_fill_soft, 0, 12.0f );
-    }
-    mobile_ui::icon( draw, "book", ImVec2( legend_pos.x + 11.0f * u, legend_pos.y + 11.0f * u ), 22.0f,
-                     legend_shown ? mobile_ui::col_accent : mobile_ui::col_fg );
 
     const ImVec2 area_min( origin.x, bar_bottom );
     const ImVec2 area_max = screen_max;
@@ -804,6 +949,7 @@ void view::impl::draw_controls()
         if( !ImGui::IsItemActive() ) {
             if( released && !map_dragged ) {
                 if( const std::optional<point> rel = tile_at( geo, io.MouseClickedPos[0] ) ) {
+                    marked_place = tripoint_abs_omt::invalid;
                     open_sheet( cursor + *rel );
                     refresh_cache( selected, geo );
                 }
@@ -816,6 +962,16 @@ void view::impl::draw_controls()
     }
 
     draw_marks( draw, geo, area_min, area_max );
+    // where a search result or a note of the list is
+    if( geo.valid && !marked_place.is_invalid() && marked_place.z() == cursor.z() ) {
+        const ImVec2 corner = tile_corner( geo, ( marked_place.xy() - cursor.xy() ).raw() );
+        const ImVec2 mid( corner.x + static_cast<float>( geo.tile.x ) * 0.5f,
+                          corner.y + static_cast<float>( geo.tile.y ) * 0.5f );
+        draw->PushClipRect( area_min, area_max, true );
+        draw->AddCircle( mid, static_cast<float>( std::max( geo.tile.x, geo.tile.y ) ) * 0.5f + 6.0f * u,
+                         mobile_ui::col_accent, 0, std::max( 2.0f, 2.0f * u ) );
+        draw->PopClipRect();
+    }
     draw_chrome( area_min, area_max, interactive );
 
     if( sheet_open ) {
@@ -848,6 +1004,7 @@ view::view() : pimpl( std::make_unique<impl>() ) {}
 
 view::~view()
 {
+    marked_place = tripoint_abs_omt::invalid;
     touch_input::clear_raw_drag_rect();
     travel_confirmed_flag = false;
 }
@@ -865,6 +1022,25 @@ std::string view::handle( const std::string &action, input_context &ctxt,
                           tripoint_abs_omt &cursor )
 {
     impl &v = *pimpl;
+    v.frames_since_handle = 0;
+    v.expect_nested = false;
+    std::string ret = v.handle( action, ctxt, cursor );
+    // Whatever upstream's loop does with it may put a card, a list or a
+    // question over the map.  The map is drawn under it from its first frame
+    // on; see draw_controls for the frames after that.
+    if( ret != idle_action && ret != "ANY_INPUT" && ret != "QUIT" ) {
+        v.expect_nested = true;
+        if( g->overmap_data.ui ) {
+            g->overmap_data.ui->invalidate_ui();
+        }
+    }
+    return ret;
+}
+
+std::string view::impl::handle( const std::string &action, input_context &ctxt,
+                                tripoint_abs_omt &cursor )
+{
+    impl &v = *this;
     travel_confirmed_flag = false;
 
     if( v.sheet_open ) {
@@ -939,12 +1115,34 @@ std::string view::handle( const std::string &action, input_context &ctxt,
         }
     }
 
+    // a search result or a note was jumped to: upstream put it under the
+    // cursor, it belongs in the middle of the map that shows
+    if( mark_fresh ) {
+        mark_fresh = false;
+        if( !marked_place.is_invalid() ) {
+            cursor = marked_place + point( 0, -v.focus_rows( geo ) );
+            return "ANY_INPUT";
+        }
+    }
+
     if( !v.pending_action.empty() ) {
         std::string ret;
         ret.swap( v.pending_action );
         if( ret == "CENTER" ) {
+            marked_place = tripoint_abs_omt::invalid;
             cursor = centered_cursor;
             return idle_action;
+        }
+        if( ret == "MORE" ) {
+            ret = v.more_sheet( cursor + point( 0, v.focus_rows( geo ) ) );
+            v.forget_cache();
+            // the map is drawn again either way: what it shows may have changed
+            return ret.empty() ? "ANY_INPUT" : ret;
+        }
+        if( ret == "SEARCH" || ret == "LIST_NOTES" ) {
+            // upstream's code runs and hands the list to pick_search_result or
+            // show_notes below; the note count of the pill may change
+            v.forget_cache();
         }
         return ret;
     }
@@ -986,6 +1184,181 @@ bool travel_confirmed()
     return travel_confirmed_flag;
 }
 
+int pick_search_result( const std::string &term, const std::vector<point_abs_omt> &locations,
+                        const int z, const tripoint_abs_omt &from )
+{
+    // Nearest to the player first, as the distances in the list are from
+    // there; upstream's order is from the middle of the map.
+    std::vector<size_t> order( locations.size() );
+    for( size_t i = 0; i < order.size(); ++i ) {
+        order[i] = i;
+    }
+    std::stable_sort( order.begin(), order.end(), [&]( const size_t a, const size_t b ) {
+        const point da = ( locations[a] - from.xy() ).raw();
+        const point db = ( locations[b] - from.xy() ).raw();
+        return da.x * da.x + da.y * da.y < db.x * db.x + db.y * db.y;
+    } );
+    // a common word finds thousands of tiles
+    const size_t shown = std::min<size_t>( locations.size(), 200 );
+    mobile_list::spec what;
+    what.title = _( "Search results" );
+    //~ %1$d: number of places found, %2$s: what was searched for
+    what.header = string_format( n_gettext( "%1$d place matches \"%2$s\"",
+                                            "%1$d places match \"%2$s\"", locations.size() ),
+                                 static_cast<int>( locations.size() ), term );
+    if( shown < locations.size() ) {
+        //~ %d: number of search results in the list
+        what.header += string_format( _( " · the nearest %d are listed" ), static_cast<int>( shown ) );
+    }
+    for( size_t i = 0; i < shown; ++i ) {
+        const tripoint_abs_omt pos( locations[order[i]], z );
+        const place here = place_at( pos );
+        const std::string note = note_text_at( pos );
+        mobile_list::row r;
+        r.name = here.name;
+        r.detail = distance_text( from, pos );
+        if( !note.empty() ) {
+            //~ %s: text of a note on the map
+            r.detail += " · " + string_format( _( "Note: %s" ), note );
+        }
+        r.description = overmap_buffer.get_description_at( project_to<coords::sm>( pos ), false );
+        r.action = _( "Go there" );
+        what.rows.push_back( r );
+    }
+    int tab = 0;
+    int selected = 0;
+    const int chosen = mobile_list::show( what, tab, selected );
+    if( chosen < 0 || static_cast<size_t>( chosen ) >= shown ) {
+        return -1;
+    }
+    marked_place = tripoint_abs_omt( locations[order[chosen]], z );
+    mark_fresh = true;
+    return static_cast<int>( order[chosen] );
+}
+
+// The note's text as the player may edit it, in place of upstream's
+// create_note, whose field sits inside a letter-grid preview.
+static bool edit_note( const tripoint_abs_omt &pos )
+{
+    const std::string old_note = overmap_buffer.note( pos );
+    mobile_entry::spec what;
+    what.title = old_note.empty() ? _( "Add a note to the map." ) : _( "Edit an existing note." );
+    what.description = string_format( "%s\n%s",
+                                      _( "A letter and a colon first sets the note's symbol, a color letter and a semicolon its color." ),
+                                      // NOLINTNEXTLINE(cata-text-style): literal exclamation mark
+                                      _( "Examples: B:Base | g;Loot | !:R;Minefield" ) );
+    what.text = old_note;
+    const std::optional<std::string> entered = mobile_entry::query( what );
+    if( !entered ) {
+        return false;
+    }
+    if( entered->empty() ) {
+        if( !old_note.empty() && query_yn( _( "Really delete note?" ) ) ) {
+            overmap_buffer.delete_note( pos );
+            return true;
+        }
+        return false;
+    }
+    if( *entered != old_note ) {
+        overmap_buffer.add_note( pos, *entered );
+        return true;
+    }
+    return false;
+}
+
+// Upstream's MARK_DANGER, see map_notes_callback::key in overmap_ui.cpp.
+static void mark_danger( const tripoint_abs_omt &pos )
+{
+    const int danger_radius = overmap_buffer.note_danger_radius( pos );
+    if( danger_radius >= 0 ) {
+        if( query_yn( _( "Remove dangerous mark?" ) ) ) {
+            overmap_buffer.mark_note_dangerous( pos, 0, false );
+        }
+        return;
+    }
+    const int max_amount = 20;
+    int amount = 0;
+    // NOLINTNEXTLINE(cata-text-style): No need for two whitespaces
+    if( query_int( amount, true, _( "Danger radius in overmap squares? (0-%d)" ), max_amount ) &&
+        amount >= 0 && amount <= max_amount ) {
+        overmap_buffer.mark_note_dangerous( pos, amount, true );
+    }
+}
+
+point_abs_omt show_notes( const tripoint_abs_omt &origin )
+{
+    const tripoint_abs_omt you = get_avatar().pos_abs_omt();
+    int tab = 0;
+    int selected = -1;
+    bool first = true;
+    while( true ) {
+        const overmapbuffer::t_notes_vector notes = overmap_buffer.get_all_notes( origin.z() );
+        mobile_list::spec what;
+        //~ %d: number of notes
+        what.title = string_format( _( "Map notes (%d)" ), static_cast<int>( notes.size() ) );
+        what.header = uppercase_first_letter( level_text( origin.z() ) );
+        what.empty_text =
+            _( "No notes on this level of the map.  Tap a place on the map to write one." );
+        for( size_t i = 0; i < notes.size(); ++i ) {
+            const tripoint_abs_omt pos( notes[i].first, origin.z() );
+            if( first && pos.xy() == origin.xy() ) {
+                selected = static_cast<int>( i );
+            }
+            const std::string &note = notes[i].second;
+            const std::tuple<char, nc_color, size_t> info = overmap_ui::get_note_display_info( note );
+            const size_t offset = std::get<2>( info );
+            const std::string note_text = trim( offset < note.size() ? note.substr( offset ) : note );
+            const int danger_radius = overmap_buffer.note_danger_radius( pos );
+            const std::string where = overmap_buffer.get_description_at( project_to<coords::sm>( pos ), false );
+            mobile_list::row r;
+            r.name = string_format( "[%c] %s", std::get<0>( info ), note_text );
+            r.detail = distance_text( you, pos ) + " · " + where;
+            std::string danger;
+            if( danger_radius >= 0 ) {
+                //~ %d: radius of the area around a note that is marked dangerous, in map tiles
+                r.right = string_format( _( "Danger %d" ), danger_radius );
+                danger = string_format( _( "DANGEROUS AREA!  (R=%d)" ), danger_radius );
+            } else if( overmap_buffer.is_marked_dangerous( pos ) ) {
+                danger = _( "IN DANGEROUS AREA!" );
+            }
+            r.description = note_text;
+            if( !danger.empty() ) {
+                r.description += "\n" + colorize( danger, c_red );
+            }
+            r.action = _( "Go there" );
+            r.more_actions = {
+                std::string( _( "Edit" ) ),
+                std::string( danger_radius >= 0 ? _( "No danger" ) : _( "Danger" ) ),
+                std::string( _( "Delete" ) )
+            };
+            what.rows.push_back( r );
+        }
+        first = false;
+        const mobile_list::outcome done = mobile_list::show_all( what, tab, selected );
+        if( done.row < 0 || static_cast<size_t>( done.row ) >= notes.size() ) {
+            return point_abs_omt::invalid;
+        }
+        const tripoint_abs_omt pos( notes[done.row].first, origin.z() );
+        switch( done.action ) {
+            case 0:
+                marked_place = pos;
+                mark_fresh = true;
+                return pos.xy();
+            case 1:
+                edit_note( pos );
+                break;
+            case 2:
+                mark_danger( pos );
+                break;
+            default:
+                if( query_yn( _( "Really delete note?" ) ) ) {
+                    overmap_buffer.delete_note( pos );
+                }
+                break;
+        }
+    }
+}
+
 #else // !TILES
 
 class view::impl
@@ -1009,6 +1382,17 @@ bool view::covers_map() const
 bool travel_confirmed()
 {
     return false;
+}
+
+int pick_search_result( const std::string &, const std::vector<point_abs_omt> &, int,
+                        const tripoint_abs_omt & )
+{
+    return -1;
+}
+
+point_abs_omt show_notes( const tripoint_abs_omt & )
+{
+    return point_abs_omt::invalid;
 }
 
 #endif // TILES

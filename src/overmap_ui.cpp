@@ -57,6 +57,7 @@
 #include "mapgendata.h"
 #include "messages.h"
 #include "mission.h"
+#include "mobile_list.h"
 #include "mobile_overmap.h"
 #include "mobile_prompt.h"
 #include "mongroup.h"
@@ -844,6 +845,10 @@ class map_notes_callback : public uilist_callback
 
 static point_abs_omt draw_notes( const tripoint_abs_omt &origin )
 {
+    // Mobile UI: the notes as a list screen
+    if( mobile_list::wanted() ) {
+        return mobile_overmap::show_notes( origin );
+    }
     point_abs_omt result = point_abs_omt::invalid;
 
     bool refresh = true;
@@ -1504,6 +1509,10 @@ static bool search( const ui_adaptor &om_ui, tripoint_abs_omt &curs,
     add_action_desc( "TEXT.CLEAR", pgettext( "string input", "Clear text" ) );
     add_action_desc( "TEXT.QUIT", pgettext( "string input", "Abort" ) );
     add_action_desc( "TEXT.CONFIRM", pgettext( "string input", "Save" ) );
+    // Mobile UI: the entry card has buttons for these
+    if( mobile_list::wanted() ) {
+        act_descs.clear();
+    }
     std::string term = string_input_popup()
                        .title( _( "Search term:" ) )
                        .description( string_format( "%s\n%s",
@@ -1553,6 +1562,16 @@ static bool search( const ui_adaptor &om_ui, tripoint_abs_omt &curs,
         return trig_dist( curs, tripoint_abs_omt( lhs, curs.z() ) ) <
                trig_dist( curs, tripoint_abs_omt( rhs, curs.z() ) );
     } );
+
+    // Mobile UI: the results as a list with "Go there", not one at a time
+    if( mobile_list::wanted() ) {
+        const int chosen = mobile_overmap::pick_search_result( term, locations, curs.z(), orig );
+        if( chosen >= 0 ) {
+            curs.x() = locations[chosen].x();
+            curs.y() = locations[chosen].y();
+        }
+        return true;
+    }
 
     int i = 0;
     //Navigate through results

@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "coords_fwd.h"
 
@@ -32,6 +33,16 @@ bool wanted( const overmap_ui::overmap_draw_data_t &data );
 // True while "Travel here" on the tile sheet stands in for upstream's "Travel to
 // this point?" question.
 bool travel_confirmed();
+
+// The places upstream's search found, nearest first, as a list with "Go
+// there".  Returns the index of the one to show, or -1.  z is the level that
+// was searched, from the place distances are measured from.
+int pick_search_result( const std::string &term, const std::vector<point_abs_omt> &locations,
+                        int z, const tripoint_abs_omt &from );
+
+// The notes on the level of origin as a list: go there, edit, mark dangerous,
+// delete.  Returns the place of the note to show, or an invalid point.
+point_abs_omt show_notes( const tripoint_abs_omt &origin );
 
 class view
 {
