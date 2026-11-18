@@ -132,6 +132,12 @@ int draw( const std::string &name, const std::string &about, const std::vector<m
                        ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     {
+        // new replies start at the first one, not where the last list was left
+        static std::vector<std::string> shown;
+        if( shown != replies ) {
+            shown = replies;
+            ImGui::SetScrollY( 0.0f );
+        }
         ImDrawList *const draw = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
         float row_y = base.y + 6.0f * u;

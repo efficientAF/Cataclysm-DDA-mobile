@@ -30,6 +30,9 @@
 #include "ret_val.h"
 #include "string_formatter.h"
 #include "uilist.h"
+#if defined(TILES)
+#include "mobile_ui.h"
+#endif
 #include "type_id.h"
 #include "vehicle.h"
 
@@ -223,6 +226,10 @@ trade_ui::trade_result_t trade_ui::perform_trade()
                             _balance == 0 ? std::string( _( "The two sides are worth the same." ) ) :
                             _balance > 0 ? string_format( _( "In your favour by %s." ), format_money( _balance ) ) :
                             string_format( _( "You are short by %s." ), format_money( -_balance ) ) );
+#if defined(TILES)
+        // over the conversation (or the picker just left), not over a black screen
+        mobile_ui::snapshot_backdrop();
+#endif
         menu.query();
         switch( menu.ret ) {
             case 0:
