@@ -16,6 +16,7 @@
 #include "input_popup.h"
 #include "json.h"
 #include "map_extras.h"
+#include "mobile_list.h"
 #include "options.h"
 #include "output.h"
 #include "path_info.h"
@@ -299,6 +300,11 @@ void auto_note_manager_gui::set_cached_custom_symbol( const map_extra_id &mapExt
 
 void auto_note_manager_gui::show()
 {
+    // Mobile UI: a list screen (mobile_system.cpp); it ends in finish() too
+    if( mobile_list::wanted() ) {
+        mobile_show();
+        return;
+    }
     const int iHeaderHeight = 4;
     int iContentHeight = 0;
     catacurses::window w_border;
@@ -550,7 +556,12 @@ void auto_note_manager_gui::show()
             ( bCharacter ? charwasChanged : globalwasChanged ) = true;
         }
     }
+    finish();
+}
 
+// Mobile UI: what follows the screen, apart so that the mobile screen shares it
+void auto_note_manager_gui::finish()
+{
     if( !get_option<bool>( "AUTO_NOTES" ) &&
         get_option<bool>( "AUTO_NOTES_MAP_EXTRAS" ) &&
         query_yn( _( "Auto notes are disabled globally.\nDo you want to enable?" ) ) ) {

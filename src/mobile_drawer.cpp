@@ -202,7 +202,7 @@ std::string item_name( const item &it )
     return uppercase_first_letter( remove_color_tags( it.tname( 1, false ) ) );
 }
 
-tab body_tab( const avatar &you )
+tab body_tab( const Character &you )
 {
     tab t;
     t.label = _( "Body" );
@@ -262,7 +262,7 @@ tab body_tab( const avatar &you )
     return t;
 }
 
-tab status_tab( const avatar &you )
+tab status_tab( const Character &you )
 {
     tab t;
     t.label = _( "Status" );
@@ -304,7 +304,7 @@ tab status_tab( const avatar &you )
 
 // Every skill that has been used at all, by name, with its level and how far
 // along the next one is.
-tab skills_tab( const avatar &you )
+tab skills_tab( const Character &you )
 {
     tab t;
     t.label = _( "Skills" );
@@ -328,7 +328,8 @@ tab skills_tab( const avatar &you )
                                       part ) ) );
     }
     if( !any ) {
-        t.blocks.push_back( make_note( _( "No skills yet.  They grow as you use them and read." ) ) );
+        t.blocks.push_back( make_note( you.is_avatar() ?
+                                       _( "No skills yet.  They grow as you use them and read." ) : _( "No skills." ) ) );
     }
     const std::vector<display_proficiency> profs = you.display_proficiencies();
     bool any_prof = false;
@@ -347,7 +348,7 @@ tab skills_tab( const avatar &you )
 }
 
 // What you are: traits and mutations, bionics, and what is acting on you now.
-tab traits_tab( const avatar &you )
+tab traits_tab( const Character &you )
 {
     tab t;
     t.label = _( "Traits" );
@@ -386,14 +387,15 @@ tab traits_tab( const avatar &you )
     }
     t.blocks.push_back( make_title( _( "Effects" ) ) );
     if( effects.pills.empty() ) {
-        t.blocks.push_back( make_note( _( "Nothing is affecting you." ) ) );
+        t.blocks.push_back( make_note( you.is_avatar() ? _( "Nothing is affecting you." ) :
+                                       _( "Nothing is affecting them." ) ) );
     } else {
         t.blocks.push_back( effects );
     }
     return t;
 }
 
-tab gear_tab( const avatar &you )
+tab gear_tab( const Character &you )
 {
     tab t;
     t.label = _( "Gear" );
@@ -596,7 +598,7 @@ std::vector<tab> actions_tabs()
             ACTION_INVENTORY, ACTION_EAT, ACTION_USE, ACTION_WEAR, ACTION_TAKE_OFF, ACTION_WIELD,
             ACTION_READ, ACTION_DROP, ACTION_DIR_DROP, ACTION_UNLOAD, ACTION_UNLOAD_CONTAINER,
             ACTION_INSERT_ITEM, ACTION_RELOAD_ITEM, ACTION_MEND, ACTION_COMPARE, ACTION_ADVANCEDINV,
-            ACTION_SORT_ARMOR, ACTION_ORGANIZE
+            ACTION_SORT_ARMOR
         } ),
         actions_tab( _( "Fight" ), {
             ACTION_FIRE, ACTION_RELOAD_WEAPON, ACTION_SELECT_FIRE_MODE, ACTION_THROW, ACTION_CAST_SPELL,
@@ -615,6 +617,7 @@ std::vector<tab> actions_tabs()
         } ),
         actions_tab( _( "Game" ), {
             ACTION_QUICKSAVE, ACTION_SAVE, ACTION_OPTIONS, ACTION_AUTOPICKUP, ACTION_SAFEMODE,
+            ACTION_AUTONOTES, ACTION_DISTRACTION_MANAGER,
             ACTION_TOGGLE_AUTO_TRAVEL_MODE, ACTION_TOGGLE_AUTO_FEATURES, ACTION_TOGGLE_AUTO_PICKUP,
             ACTION_TOGGLE_THIEF_MODE, ACTION_MAIN_MENU
         } ),
@@ -667,6 +670,19 @@ class drawer_window : public cataimgui::window
                 }
             }
             start_on_map = false;
+        }
+        // The Info drawer for someone else: who they are, then the same tabs
+        // without Area, which is about where you stand.
+        explicit drawer_window( const Character &who ) : cataimgui::window( "MOBILE_DRAWER",
+                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                    ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground ),
+            which( drawer::info ) {
+            tabs = { body_tab( who ), status_tab( who ), skills_tab( who ), traits_tab( who ), gear_tab( who ) };
+            std::vector<block> &blocks = tabs.front().blocks;
+            blocks.insert( blocks.begin(), make_row( remove_color_tags( who.get_name() ),
+                           remove_color_tags( who.disp_profession() ) ) );
+            blocks.insert( blocks.begin(), make_title( who.is_avatar() ? _( "You" ) : _( "Who" ) ) );
         }
 
         bool closed = false;
@@ -1243,6 +1259,39 @@ action_id show( const drawer which )
     return window.open_map ? ACTION_MAP : window.chosen;
 }
 
+void show_character( const Character &who )
+{
+    if( who.is_avatar() ) {
+        // your own sheet is the Info drawer as it is
+        show( drawer::info );
+        return;
+    }
+    drawer_window window( who );
+    input_context ctxt( "default" );
+    const mobile_prompt::own_controls own_controls( ctxt );
+    ctxt.register_action( "QUIT" );
+    ctxt.register_action( "LEFT" );
+    ctxt.register_action( "RIGHT" );
+    ctxt.register_action( "ANY_INPUT" );
+    ctxt.register_action( "TIMEOUT" );
+    while( !window.closed ) {
+        ui_manager::redraw();
+        if( window.sliding() ) {
+            ctxt.set_timeout( 15 );
+        } else {
+            ctxt.reset_timeout();
+        }
+        const std::string action = ctxt.handle_input();
+        if( action == "QUIT" ) {
+            break;
+        } else if( action == "LEFT" ) {
+            window.turn_page( 1 );
+        } else if( action == "RIGHT" ) {
+            window.turn_page( -1 );
+        }
+    }
+}
+
 void open_on_map()
 {
     start_on_map = true;
@@ -1265,6 +1314,10 @@ std::optional<drawer> take_request()
 action_id show( drawer )
 {
     return ACTION_NULL;
+}
+
+void show_character( const Character & )
+{
 }
 
 void open_on_map()

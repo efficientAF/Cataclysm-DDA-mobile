@@ -3338,6 +3338,11 @@ bool game::handle_action()
             } else {
                 act = mobile_menu::pause_sheet();
             }
+            // Mobile UI: "Main menu" in the Actions drawer; upstream opens that
+            // menu further up, before this point
+            if( act == ACTION_MAIN_MENU ) {
+                act = handle_main_menu();
+            }
             if( act == ACTION_ACTIONMENU ) {
                 act = handle_action_menu( here );
             }
