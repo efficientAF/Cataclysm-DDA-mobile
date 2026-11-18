@@ -5079,12 +5079,69 @@ void pickup_selector::apply_selection( std::vector<drop_location> selection )
     }
 }
 
+// Mobile UI: how much of a pick-up's limit the ticked items take, as text, and
+// whether that is too much.  The limit is the caller's (Pickup::pick_info).
+static bool pickup_over_limit( const std::vector<drop_location> &chosen,
+                               const std::optional<units::volume> &max_volume,
+                               const std::optional<units::mass> &max_mass, std::string &limit_text,
+                               std::string &chosen_text )
+{
+    units::mass weight = 0_gram;
+    units::volume volume = 0_ml;
+    // as pickup_selector::get_raw_stats sums them
+    for( const drop_location &loc : chosen ) {
+        if( loc.first->count_by_charges() ) {
+            item copy( *loc.first.get_item() );
+            copy.charges = loc.second;
+            weight += copy.weight();
+            volume += copy.volume();
+        } else {
+            weight += loc.first->weight() * loc.second;
+            volume += loc.first->volume() * loc.second;
+        }
+    }
+    std::vector<std::string> limits;
+    std::vector<std::string> taken;
+    if( max_volume ) {
+        limits.push_back( string_format( "%s %s", format_volume( *max_volume ), volume_units_abbr() ) );
+        taken.push_back( string_format( "%s %s", format_volume( volume ), volume_units_abbr() ) );
+    }
+    if( max_mass ) {
+        limits.push_back( string_format( "%.2f %s", convert_weight( *max_mass ), weight_units() ) );
+        taken.push_back( string_format( "%.2f %s", convert_weight( weight ), weight_units() ) );
+    }
+    limit_text = enumerate_as_string( limits, enumeration_conjunction::none );
+    chosen_text = enumerate_as_string( taken, enumeration_conjunction::none );
+    return ( max_volume && volume > *max_volume ) || ( max_mass && weight > *max_mass );
+}
+
 drop_locations pickup_selector::execute()
 {
-    shared_ptr_fast<ui_adaptor> ui = create_or_get_ui_adaptor();
+    // Mobile UI: the item picker ticks the entries instead of the loop below.
+    // A limit on what may be taken is named in the title, and a choice over
+    // it is sent back to the picker.
+    const bool mobile = mobile_picker::wanted();
+    while( mobile ) {
+        std::string limit_text;
+        std::string chosen_text;
+        pickup_over_limit( to_use, overriden_volume, overriden_mass, limit_text, chosen_text );
+        if( !limit_text.empty() ) {
+            //~ title of the pick-up screen when only so much can be taken: "Pick up (at most 2 L, 1.5 kg)"
+            set_title( string_format( _( "Pick up (at most %s)" ), limit_text ) );
+        }
+        if( !mobile_picker::pick_many( *this ) ) {
+            return drop_locations();
+        }
+        if( !pickup_over_limit( to_use, overriden_volume, overriden_mass, limit_text, chosen_text ) ) {
+            break;
+        }
+        popup( _( "That is too much: you chose %1$s, and at most %2$s can be taken.  Choose less." ),
+               chosen_text, limit_text );
+    }
+    shared_ptr_fast<ui_adaptor> ui = mobile ? nullptr : create_or_get_ui_adaptor();
     debug_print_timer( tp_start );
 
-    while( true ) {
+    while( !mobile ) {
         ui_manager::redraw();
 
         const inventory_input input = get_input();

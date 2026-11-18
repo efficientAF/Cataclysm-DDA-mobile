@@ -31,6 +31,7 @@
 #include "memory_fast.h"
 #include "messages.h"
 #include "mobile_pick.h"
+#include "mobile_system.h"
 #include "options.h"
 #include "output.h"
 #include "path_info.h"
@@ -1067,6 +1068,8 @@ action_id handle_action_menu( map &here )
             title += ": " + catgname;
         }
 
+        // Mobile UI: screens that are of no use by touch are not offered
+        mobile_system::drop_desktop_actions( entries );
         uilist smenu;
         smenu.settext( title );
         smenu.entries = entries;
@@ -1131,6 +1134,8 @@ action_id handle_main_menu()
     entries.emplace_back( ACTION_EXPORT_BUG_REPORT_ARCHIVE, true, 'd',
                           _( "Export save archive for github bug report" ) );
 
+    // Mobile UI: screens that are of no use by touch are not offered
+    mobile_system::drop_desktop_actions( entries );
     uilist smenu;
     smenu.settext( _( "MAIN MENU" ) );
     smenu.entries = entries;

@@ -94,6 +94,11 @@ class auto_note_manager_gui
 
         void fill_custom_symbols_cache();
 
+        // Mobile UI: the manager as a list screen (mobile_system.cpp), and what
+        // show() does once the screen is closed
+        void mobile_show();
+        void finish();
+
         bool charwasChanged{false};
         bool globalwasChanged{false};
 };

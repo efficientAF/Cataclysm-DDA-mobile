@@ -6,6 +6,8 @@
 #include "color.h"
 #include "cursesdef.h"
 #include "input_context.h"
+#include "mobile_list.h"
+#include "mobile_system.h"
 #include "output.h"
 #include "point.h"
 #include "translations.h"
@@ -53,6 +55,15 @@ static const std::vector<configurable_distraction> &get_configurable_distraction
 
 void distraction_manager_gui::show()
 {
+    // Mobile UI: a list screen with a switch per distraction
+    if( mobile_list::wanted() ) {
+        std::vector<mobile_system::distraction> list;
+        for( const configurable_distraction &d : get_configurable_distractions() ) {
+            list.push_back( { _( d.name.c_str() ), _( d.description.c_str() ), d.state, d.is_toggle } );
+        }
+        mobile_system::distractions( list );
+        return;
+    }
     const int iHeaderHeight = 4;
     int iContentHeight = 0;
     const int number_of_distractions = get_configurable_distractions().size();

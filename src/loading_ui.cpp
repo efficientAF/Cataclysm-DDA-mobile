@@ -2,6 +2,8 @@
 
 #include "cached_options.h"
 #include "input.h"
+#include "mobile_menu.h"
+#include "mobile_system.h"
 #include "options.h"
 #include "output.h"
 #include "text_snippets.h"
@@ -64,6 +66,13 @@ static void redraw()
     if( ImGui::Begin( "Loading…", nullptr,
                       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings ) ) {
+        // Mobile UI: the canvas's loading screen in place of the picture and the text
+        if( mobile_menu::enabled() ) {
+            mobile_system::draw_loading( gLUI->context, gLUI->step, gLUI->tip );
+            ImGui::End();
+            ImGui::PopStyleVar();
+            return;
+        }
 
         const float width = ImGui::GetContentRegionAvail().x;
 
@@ -262,6 +271,8 @@ void loading_ui::show( const std::string &context, const std::string &step )
         return;
     }
     update_state( context, step );
+    // Mobile UI: its bar counts the steps
+    mobile_system::loading_step();
     drain_renderer_recovery();
     ui_manager::redraw();
     refresh_display();
@@ -271,6 +282,7 @@ void loading_ui::show( const std::string &context, const std::string &step )
 void loading_ui::done()
 {
     if( gLUI != nullptr ) {
+        mobile_system::loading_done();
 #ifdef TILES
         // Need to manually clear the screen due to using direct ImGui calls
         clear_sdl_window();

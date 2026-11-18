@@ -39,6 +39,8 @@
 #include "item_location.h"
 #include "itype.h"
 #include "magic_enchantment.h"
+#include "mobile_drawer.h"
+#include "mobile_menu.h"
 #include "mutation.h"
 #include "output.h"
 #include "pimpl.h"
@@ -1525,6 +1527,11 @@ static std::pair<unsigned, unsigned> calculate_shared_column_win_height(
 
 void Character::disp_info( bool customize_character )
 {
+    // Mobile UI: the Info drawer stands in for the character sheet, for NPCs too
+    if( mobile_menu::enabled() ) {
+        mobile_drawer::show_character( *this );
+        return;
+    }
     // Customizing any character is always enabled in debug mode
     customize_character |= debug_mode;
 

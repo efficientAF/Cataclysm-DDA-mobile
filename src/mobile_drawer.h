@@ -4,6 +4,7 @@
 
 #include <optional>
 
+class Character;
 enum action_id : int;
 
 // The drawers of the mobile play screen, following the UI canvas: panels that
@@ -27,6 +28,11 @@ enum class drawer : int {
 // ACTION_NULL, ACTION_MAP when "Open the full map" was tapped, or the action
 // chosen in the Actions drawer.
 action_id show( drawer which );
+
+// The Info drawer about someone, an NPC as well: Body, Status, Skills, Traits
+// and Gear.  It stands in for the character sheet (Character::disp_info)
+// wherever that is asked for.
+void show_character( const Character &who );
 
 // The Log drawer opens on its Map tab the next time, not on the log.
 void open_on_map();
