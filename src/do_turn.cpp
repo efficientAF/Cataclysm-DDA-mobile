@@ -52,6 +52,7 @@
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
+#include "mobile_menu.h"
 #include "monster.h"
 #include "mtype.h"
 #include "music.h"
@@ -245,7 +246,9 @@ void handle_key_blocking_activity()
         input_context ctxt = get_default_mode_input_context();
         const std::string action = ctxt.handle_input( 0 );
         bool refresh = true;
-        if( action == "pause" ) {
+        // Mobile UI: no HUD shows while an activity runs, so a tap on the screen
+        // is the way to ask for it to stop
+        if( action == "pause" || ( action == "SELECT" && mobile_menu::enabled() ) ) {
             if( u.activity.is_interruptible_with_kb() ) {
                 g->cancel_activity_query( _( "Confirm:" ) );
             }
@@ -492,7 +495,9 @@ void game::handle_progress_ui()
         wait_redraw = true;
         wait_message = *progress;
         if( u.activity.is_interruptible() && u.activity.interruptable_with_kb ) {
-            wait_message += string_format( _( "\n%s to interrupt" ), press_x( ACTION_PAUSE ) );
+            // Mobile UI: see handle_key_blocking_activity
+            wait_message += mobile_menu::enabled() ? std::string( _( "\nTap the screen to interrupt" ) ) :
+                            string_format( _( "\n%s to interrupt" ), press_x( ACTION_PAUSE ) );
         }
         if( u.activity.id() == ACT_AUTODRIVE ) {
             wait_refresh_rate = 1_turns;
