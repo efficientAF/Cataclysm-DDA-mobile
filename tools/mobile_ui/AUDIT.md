@@ -107,30 +107,48 @@ CLAUDE.md's Status section. By item number below:
 
 ## Steam Deck (Linux desktop build, 1280x800 touch plus gamepad)
 
-Nothing here was tried on a Deck.
+Nothing here was tried on a Deck, with a controller or on a real touchscreen. What is
+marked "seen" was seen on the desktop build under Xvfb with keys standing in for the d-pad.
 
-- **Options are off by default off Android** (`options.cpp:3411-3420`, `mobile_default`).
-  Nothing but `options.json` turns `MOBILE_HUD`, `MOBILE_MENUS` and the `TOUCH_*` options on.
-  A Deck build needs a way to default them on (a build flag, a command-line switch or
-  detection).
-- **Real touch does reach the game on desktop** (`sdltiles.cpp:6936-6948` to
-  `touch_input::desktop_finger_event`), through the same code as Android. Risk: the hints
-  that stop SDL also sending a touch as a mouse event are set only on Android
-  (`sdltiles.cpp:676-680`), so on a real touchscreen each tap may arrive twice (finger and
-  mouse). The scripted tests never produce those mouse events. Steam Input may also turn
-  the touchscreen into a mouse.
+- **Done (18 Nov 2026): the options default to on** (`src/mobile_default.{h,cpp}`,
+  `options.cpp`): with `--mobile-ui`, with `CATA_MOBILE_UI=1` in the environment, when Steam
+  sets `SteamDeck=1`, or in a build with `-DCATA_MOBILE_UI_DEFAULT`. `CATA_MOBILE_UI=0` keeps
+  them off. Defaults only: an `options.json` written by an earlier run keeps its values, so a
+  Deck that already ran the desktop UI must switch `MOBILE_HUD`, `MOBILE_MENUS` and the
+  `TOUCH_*` options on by hand (Options, Interface). Not seen: no run was started with the
+  switch.
+- **Done, not testable here: touch versus mouse.** With `TOUCH_IMGUI_POINTER` or
+  `TOUCH_TAP_TO_ACT` on, the hints that stop SDL reporting a finger as a mouse are set on
+  desktop too (`sdltiles.cpp`, where the window is made), and mouse events that carry
+  `SDL_TOUCH_MOUSEID` are dropped at the top of the event loop (`mobile_touch_mouse_copy`).
+  Steam Input can still turn the touchscreen into a real mouse (then there are no finger
+  events at all, and taps arrive as clicks: ImGui screens work, the HUD and tap-to-act do
+  not). To check on a Deck.
+- **Done: controller focus on the mobile screens.** `mobile_ui::pressable` is an ImGui
+  navigation item (`ImGuiButtonFlags_EnableNav`): the arrow keys, and through ImGui's SDL
+  backend the d-pad and left stick, move a focus ring (`focus_ring` in `mobile_ui.cpp`,
+  drawn over the control); Enter, Space or A presses it; Escape or B is still QUIT. The
+  ring shows after the first direction key and hides on a touch. Scrolling areas are
+  `ImGuiChildFlags_NavFlattened`, so the focus moves into them and they scroll to it.
+  Seen with keys: main menu, New game page (focus moves into the scrolling cards and
+  scrolls), Enter opening a page. Not seen: any screen with a real controller.
+  - Upstream's `uilist` sheets and `query_popup` questions keep upstream's own key and
+    controller handling (their rows are `ImGuiItemFlags_NoNav`), with the selected row
+    shown as before.
+  - The mobile main menu no longer passes keys on to upstream's menu underneath
+    (`main_menu.cpp`): before, Enter also confirmed upstream's hidden selection.
+  - Known gaps: the HUD pieces on the play screen are SDL-drawn and have no focus (the
+    controller plays through upstream's bindings there); sliders, steppers and switches that
+    are not `pressable` (ImGui widgets in Settings) follow ImGui's own rules; text fields
+    need the system keyboard (whether SDL opens Steam's on-screen keyboard is unknown); a
+    screen opens with nothing focused until a direction is pressed; ImGui reads the pad once
+    per drawn frame, and frames are only drawn on input, so a very short press could be
+    missed.
 - **The controller works where upstream's bindings do** (`sdl_gamepad.cpp`; 314 gamepad
-  bindings): the play screen, the radial menus, upstream's own menus, and probably `uilist`
-  sheets (their input loop is upstream's; not tested).
-- **The mobile screens cannot be worked with a controller.** They register only QUIT (so B
-  backs out) and act on taps through `mobile_ui::pressable`; none handles up, down or
-  confirm, and there is no focus highlight. Exceptions: the direction ring takes
-  directions. This is the main piece of work for a Deck: a focus model for `pressable`
-  (ImGui navigation, or one of our own) and a visible focus ring.
-- **Android-only pieces the Deck lacks:** the manual-key prompt buttons (uilist hotkeys,
-  the debug-message keys), re-layout after a text size change
-  (`request_terminal_relayout`), the back key, the keyboard insets. Whether SDL opens
-  Steam's on-screen keyboard for text fields is unknown.
+  bindings): the play screen, the radial menus, upstream's own menus, `uilist` sheets.
+- **Android-only pieces the Deck lacks:** the manual-key prompt buttons (uilist hotkeys),
+  re-layout after a text size change (`request_terminal_relayout`), the back key, the
+  keyboard insets.
 
 ## Suggested order
 
