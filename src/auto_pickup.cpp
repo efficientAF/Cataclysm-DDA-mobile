@@ -713,7 +713,9 @@ void rule::test_pattern() const
 
 bool player_settings::has_rule( const item *it )
 {
-    const std::string &name = it->tname( 1 );
+    // Mobile UI: without the prefixes, as add_rule and remove_rule name it; with them a
+    // favourite or a loaded item never matched its own rule
+    const std::string &name = it->tname( 1, false );
     for( auto_pickup::rule &elem : character_rules ) {
         if( name.length() == elem.sRule.length() && ci_find_substr( name, elem.sRule ) != -1 ) {
             return true;

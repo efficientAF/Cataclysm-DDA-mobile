@@ -3409,7 +3409,9 @@ spell &known_magic::select_spell( Character &guy )
             r.description = s->description();
             const std::string damage = s->damage_string( guy );
             if( !damage.empty() ) {
-                r.description += "\n\n" + damage;
+                // the number alone says nothing: upstream's panel names it
+                r.description += "\n\n" + string_format( "%s: %s", s->damage( guy ) < 0 ? _( "Healing" ) :
+                                 _( "Damage" ), damage );
             }
             r.description += "\n\n" + string_format( _( "Range: %1$d · Casting time: %2$d moves" ),
                              s->range( guy ), s->casting_time( guy ) );

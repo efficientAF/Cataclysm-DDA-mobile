@@ -58,6 +58,7 @@
 #include "map_scale_constants.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "mobile_list.h"
 #include "material.h"
 #include "math_defines.h"
 #include "math_parser_diag_value.h"
@@ -3049,7 +3050,8 @@ std::vector<std::string> optional_vpart_position::extended_description() const
     ret.emplace_back( "--" );
 
     for( int idx : v.parts_at_relative( value().mount_pos(), true ) ) {
-        ret.emplace_back( v.part( idx ).name() );
+        // Mobile UI: without the damage symbols, which are made for a text grid
+        ret.emplace_back( v.part( idx ).name( !mobile_list::wanted() ) );
     }
 
     return ret;

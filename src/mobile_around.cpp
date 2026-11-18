@@ -128,10 +128,11 @@ std::string surroundings_menu::mobile_action()
         if( !get_safemode().empty() ) {
             const std::string mon_name = mon->is_monster() ? mon->as_monster()->name() : "human";
             if( get_safemode().has_rule( mon_name, Creature::Attitude::ANY ) ) {
-                r.more_actions.emplace_back( _( "Safe mode: remove" ) );
+                // short: four buttons share the panel's width
+                r.more_actions.emplace_back( _( "− Safe mode" ) );
                 actions.emplace_back( "SAFEMODE_BLACKLIST_REMOVE" );
             } else {
-                r.more_actions.emplace_back( _( "Safe mode: add" ) );
+                r.more_actions.emplace_back( _( "+ Safe mode" ) );
                 actions.emplace_back( "SAFEMODE_BLACKLIST_ADD" );
             }
         }
