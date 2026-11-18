@@ -159,7 +159,7 @@ void controller_window::draw_controls()
     ImGui::SetCursorScreenPos( ImVec2( left, y ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
     ImGui::BeginChild( "##smart_controller", ImVec2( width, origin.y + size.y - safe.w - y ),
-                       ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground );
+                       ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
     if( rewind ) {
         // the list keeps its place from one opening to the next otherwise
         ImGui::SetScrollY( 0.0f );

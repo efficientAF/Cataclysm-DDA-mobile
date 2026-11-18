@@ -641,7 +641,8 @@ void options_window::draw_list( const ImVec2 &pos, const ImVec2 &size )
     }
     ImGui::SetCursorScreenPos( pos );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##options_list", size, ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground );
+    ImGui::BeginChild( "##options_list", size, ImGuiChildFlags_NavFlattened,
+                       ImGuiWindowFlags_NoBackground );
     if( to_top ) {
         ImGui::SetScrollY( 0.0f );
         to_top = false;

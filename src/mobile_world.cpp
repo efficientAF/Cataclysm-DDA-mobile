@@ -337,7 +337,8 @@ void world_window::draw_controls()
     const float list_top = origin.y + safe.y + bar_h;
     ImGui::SetCursorScreenPos( ImVec2( bar_left, list_top ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##world_scroll", ImVec2( bar_width, foot_y - list_top ), ImGuiChildFlags_NavFlattened,
+    ImGui::BeginChild( "##world_scroll", ImVec2( bar_width, foot_y - list_top ),
+                       ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground );
     if( restore_scroll ) {
         ImGui::SetScrollY( scroll );

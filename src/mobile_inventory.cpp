@@ -1409,7 +1409,8 @@ void inventory_window::draw_detail_pane( const ImVec2 &pos, const ImVec2 &size )
     draw->AddLine( pos, ImVec2( pos.x, pos.y + size.y ), mobile_ui::col_line, std::max( 1.0f, u ) );
     ImGui::SetCursorScreenPos( ImVec2( pos.x, pos.y + 8.0f * u ) );
     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
-    ImGui::BeginChild( "##inventory_detail", ImVec2( size.x, size.y - 8.0f * u ), ImGuiChildFlags_NavFlattened,
+    ImGui::BeginChild( "##inventory_detail", ImVec2( size.x, size.y - 8.0f * u ),
+                       ImGuiChildFlags_NavFlattened,
                        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar );
     const ImVec2 base = ImGui::GetCursorScreenPos();
     const float height = detail_content( ImGui::GetWindowDrawList(), base, size.x );
