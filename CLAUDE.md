@@ -115,7 +115,7 @@ Everything is behind options registered at the end of `add_options_android()` in
 
 ### Status and open work (17 Nov 2026, sixth session)
 
-`mobile-ui` holds everything up to round 4. Round 5 is on the session branch `ccr-53dd53dd-sxiog8` (the worker branches `r5-item`, `r5-body`, `r5-cheap`, `r5-diary`, `r5-camp`, `r5-craft` are merged into it and were never pushed); merge it into `mobile-ui`. Older session branches are merged and can be deleted.
+`mobile-ui` holds all of the above, round 5 included (merged 18 Nov 2026). The session branches `ccr-*` are all merged into it and can be deleted; the worker branches `r5-*` were never pushed.
 
 The owner runs the APKs on a phone and reports back; this side only tests with scripted touches on the desktop build, so the Android-only gesture code in `sdltiles.cpp` is only known to compile here. Nothing below has been run on a real phone by this side.
 
