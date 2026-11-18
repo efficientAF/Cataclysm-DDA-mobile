@@ -1132,9 +1132,6 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
         window_h <= 0 ) {
         return;
     }
-    if( default_mode ) {
-        mobile_ui::note_play_screen();
-    }
     sdl = renderer.get();
     flush_caches_if_renderer_changed();
     const SDL_FRect area = hud_area( view, window_w, window_h );

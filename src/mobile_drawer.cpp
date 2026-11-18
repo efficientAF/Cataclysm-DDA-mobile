@@ -700,7 +700,10 @@ class drawer_window : public cataimgui::window
 
     protected:
         cataimgui::bounds get_bounds() override {
-            return { 0.0f, 0.0f, 1.0f, 1.0f };
+            // one pixel short of the screen: the map under the drawer keeps being
+            // redrawn, or the darkening would add up frame by frame
+            const ImVec2 screen = ImGui::GetMainViewport()->Size;
+            return { 0.0f, 0.0f, screen.x, std::max( screen.y - 1.0f, 2.0f ) };
         }
         void draw_controls() override;
 
@@ -1109,6 +1112,8 @@ void drawer_window::draw_controls()
     draw->PushClipRectFullScreen();
     draw->AddRectFilled( origin, ImVec2( origin.x + size.x, origin.y + size.y ), col_behind );
     draw->PopClipRect();
+    // and the HUD beside the panel
+    mobile_ui::sheet_area( min, max );
     draw->AddRectFilled( min, max, col_panel, 16.0f * u, corners );
     draw->AddRect( min, max, mobile_ui::col_line, 16.0f * u, corners, hairline );
     // no border along the screen edge the panel is attached to
@@ -1200,6 +1205,7 @@ action_id show( const drawer which )
     ctxt.register_action( "ANY_INPUT" );
     ctxt.register_action( "TIMEOUT" );
     while( !window.closed && !window.open_map && window.chosen == ACTION_NULL && window.picked == -1 ) {
+        mobile_ui::keep_map_under();
         ui_manager::redraw();
         // while the drawer slides in, redraw without waiting for input
         if( window.sliding() ) {

@@ -121,8 +121,9 @@ static bool sheet_marked = false;
 // the same for the frame that was drawn last
 static bool sheet_shown = false;
 static ImVec4 sheet_where;
-// nothing but sheets was drawn since the HUD last showed the play screen
-static bool over_play_screen = false;
+// the game drew the map in the frame being drawn, and in the one drawn last
+static bool map_marked = false;
+static bool map_shown = false;
 
 void sheet_area( const ImVec2 &min, const ImVec2 &max )
 {
@@ -144,14 +145,14 @@ void sheet_area( const ImVec2 &min, const ImVec2 &max )
     sheet_marked = true;
 }
 
-void note_play_screen()
+void note_map_drawn()
 {
-    over_play_screen = true;
+    map_marked = true;
 }
 
 bool sheet_over_play_screen( ImVec4 &where )
 {
-    if( !sheet_shown || !over_play_screen || backdrop_set ) {
+    if( !sheet_shown || !map_shown || backdrop_set ) {
         return false;
     }
     where = sheet_where;
@@ -165,11 +166,9 @@ void end_frame()
     }
     backdrop_used = false;
     sheet_shown = sheet_marked;
-    if( !sheet_marked ) {
-        // some other screen: the map is no longer what is under the next sheet
-        over_play_screen = false;
-    }
     sheet_marked = false;
+    map_shown = map_marked;
+    map_marked = false;
 }
 
 // --- Icons ---

@@ -235,6 +235,7 @@
 #include "zzip.h"
 
 #if defined(TILES)
+#include "mobile_ui.h"
 #include "sdl_utils.h"
 #endif // TILES
 
@@ -3236,6 +3237,10 @@ shared_ptr_fast<ui_adaptor> game::create_or_get_main_ui_adaptor()
         main_ui_adaptor = ui = make_shared_fast<ui_adaptor>();
         ui->on_redraw( []( ui_adaptor & ui ) {
             g->draw( ui );
+#if defined(TILES)
+            // Mobile UI: the map is on screen in this frame, see mobile_ui::sheet_area
+            mobile_ui::note_map_drawn();
+#endif
         } );
         ui->on_screen_resize( [this]( ui_adaptor & ui ) {
             // remove some space for the sidebar, this is the maximal space

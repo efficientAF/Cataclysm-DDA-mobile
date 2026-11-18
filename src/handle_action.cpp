@@ -3293,6 +3293,11 @@ bool game::handle_action()
             return false;
         }
 
+        // Mobile UI: the back key opens the pause sheet, not upstream's menu of menus
+        if( act == ACTION_MAIN_MENU && mobile_menu::enabled() ) {
+            act = ACTION_ACTIONMENU;
+        }
+
         if( act == ACTION_MAIN_MENU ) {
             if( uquit == QUIT_WATCH ) {
                 return false;

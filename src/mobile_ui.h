@@ -108,8 +108,8 @@ void end_frame();
 // a one is the only thing over the play screen, the HUD stays on screen around
 // it, dimmed (mobile_hud.h, draw).
 void sheet_area( const ImVec2 &min, const ImVec2 &max );
-// The HUD was just drawn for the play screen: what follows is over the map.
-void note_play_screen();
+// The game drew the map in this frame (game.cpp): no full screen is over it.
+void note_map_drawn();
 // Where the sheet over the play screen is, as fractions of the screen (x, y,
 // right, bottom), if there is one and nothing else is between it and the map.
 bool sheet_over_play_screen( ImVec4 &where );
