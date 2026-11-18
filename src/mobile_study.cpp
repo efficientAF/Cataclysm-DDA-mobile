@@ -43,11 +43,6 @@ study_zone_ui_result query( std::map<std::string, std::set<skill_id>> &npc_skill
             npc_names.push_back( elem.first );
         }
     }
-    // TEMPTEST
-    if( getenv( "CATA_STUDY_TEST" ) ) {
-        npc_names.emplace_back( "Marta Okonkwo" );
-        npc_names.emplace_back( "Dev Ramaswamy" );
-    }
     std::sort( npc_names.begin(), npc_names.end(), localized_compare );
 
     bool changed = false;
