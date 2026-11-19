@@ -74,7 +74,7 @@ static const std::vector<kind_entry> &kind_table()
         { "map", translate_marker( "Map" ), translate_marker( "The map screen's buttons and sheets." ), { "OVERMAP" } },
         { "menu", translate_marker( "Main menu" ), translate_marker( "Title screen and New game." ), { "MAIN_MENU" } },
         { "chargen", translate_marker( "Character creator" ), translate_marker( "All steps of the creator." ), { "CHARGEN" } },
-        { "settings", translate_marker( "Settings" ), translate_marker( "Settings, all options, worlds and mods, help." ), { "SETTINGS", "OPTIONS", "WORLD", "WORLD_MODS", "HELP" } },
+        { "settings", translate_marker( "Settings" ), translate_marker( "Settings, all options, worlds and mods, help." ), { "SETTINGS", "OPTIONS", "WORLD", "WORLD_MODS", "HELP", "PAD", "PAD_PICKER", "PAD_MENUS" } },
         { "pages", translate_marker( "Pages" ), translate_marker( "Describe, compare, terminal, diary text, engine controller, death and epilogues." ), { "DESCRIBE", "COMPARE", "TERMINAL", "DIARY_TEXT", "SMART_CONTROLLER", "DEATH", "DEATH_PAGE" } },
         { "overlays", translate_marker( "On the map" ), translate_marker( "Look-around banner, direction ring, HUD editor." ), { "LOOK_BANNER", "PICK_DIRECTION", "HUD_EDIT", "HUD_ORDER" } },
     };

@@ -41,6 +41,7 @@
 #include "ui_manager.h"
 #include "sdl_gamepad.h"
 #include "mobile_controls.h"
+#include "mobile_pad.h"
 
 enum class kb_menu_status {
     remove, reset, add, add_global, execute, show, filter
@@ -498,6 +499,18 @@ const std::string &input_context::handle_input( const int timeout )
         if( next_action.type == input_event_t::timeout ) {
             result = &TIMEOUT;
             break;
+        }
+
+        // Mobile UI: the controller layout names the play screen's action itself,
+        // see mobile_pad.h
+        if( next_action.type == input_event_t::gamepad && mobile_pad::has_queued_action() ) {
+            static std::string pad_action;
+            pad_action = mobile_pad::take_queued_action();
+            if( category == "DEFAULTMODE" ) {
+                result = &pad_action;
+                break;
+            }
+            continue;
         }
 
         const std::string &action = input_to_action( next_action );

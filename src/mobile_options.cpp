@@ -103,8 +103,8 @@ std::vector<page> access::pages( options_manager &options, const bool ingame,
     };
     page inputs;
     inputs.name = _( "Inputs" );
-    inputs.entries.push_back( { entry_kind::link, _( "Controller buttons" ), nullptr,
-                                _( "See and change what each button of a controller does, screen by screen" ),
+    inputs.entries.push_back( { entry_kind::link, _( "Controller" ), nullptr,
+                                _( "A picture of the controller: what each button does when pressed and held, and its radial menus" ),
                                 "controller" } );
     inputs.entries.push_back( {} );
     // in three parts, each in upstream's order: touch, mouse and controller, keyboard

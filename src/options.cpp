@@ -3481,6 +3481,21 @@ void options_manager::add_options_android()
              mobile_default
            );
 
+        add( "MOBILE_PAD", page_id, to_translation( "Controller layout with radial menus" ),
+             to_translation( "If true, on the play screen a controller follows the layout set under Controller: every button has a press and a long press, or radial menus on the sticks while it is held.  If false, the game's own controller scheme is used." ),
+             mobile_default
+           );
+
+        add( "MOBILE_PAD_HOLD_MS", page_id, to_translation( "Controller hold time" ),
+             to_translation( "How long, in milliseconds, a controller button must stay down to count as held.  Let go sooner and it is a press." ),
+             150, 500, 250
+           );
+
+        add( "MOBILE_PAD_FLICK_MS", page_id, to_translation( "Controller flick time" ),
+             to_translation( "With a radial menu open, a stick that returns to the centre within this many milliseconds runs the slot it pointed at.  A slower return runs nothing." ),
+             50, 400, 150
+           );
+
         add( "TOUCH_IMGUI_POINTER", page_id, to_translation( "Tap and drag in menus" ),
              to_translation( "If true, menus drawn as windows react to your finger: tap a row or button to choose it, drag up or down to scroll.  A sideways swipe still sends the left or right arrow key." ),
              mobile_default

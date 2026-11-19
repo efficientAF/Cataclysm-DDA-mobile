@@ -5,11 +5,13 @@
 #include <string>
 #include <vector>
 
-// Controller buttons: which button of a controller does what, per input
-// context (the play screen, the inventory, the map...).  Reached from the
-// Inputs page of the options screen.  The bindings are upstream's (gamepad
-// events in the keybindings); this is a touch screen for looking at them and
-// changing them, since upstream's keybindings window is hidden on mobile.
+// The controller screens.  "Controller" (show) is a picture of the controller:
+// tap a control to see and change its press action, its long press and the
+// radial menus on the sticks while it is held (the layout of mobile_pad.h,
+// for the play screen).  From it: the action picker, the radial menu editor,
+// and "Other screens", a plain list of upstream's gamepad bindings per input
+// context (menus, lists, the map), which that layout does not touch.
+// Reached from the Inputs page of the options screen.
 namespace mobile_controls
 {
 
@@ -37,11 +39,15 @@ std::vector<std::string> set_buttons( const std::string &category, const std::st
 // Writes the keybindings file.
 void save();
 
-// The name of a button for people: "A", "L1 + X", "Right stick up".
+// The name of one of upstream's buttons for people: "A", "L2 + X", "Right stick up".
 std::string button_name( int code );
 
-// Shows the screen and waits until it is closed.
+// Shows the controller page and waits until it is closed.
 void show();
+
+// Draws the open radial menu over the play screen, if one is open.  Called at
+// the end of every UI frame (ui_manager.cpp).
+void draw_ring();
 
 } // namespace mobile_controls
 

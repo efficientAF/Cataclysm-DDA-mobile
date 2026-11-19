@@ -7,7 +7,9 @@
 
 #include "debug.h"
 #include "input.h"
+#include "input_context.h"
 #include "input_enums.h"
+#include "mobile_pad.h"
 #include "point.h"
 #include "ui_manager.h"
 #include "game.h"
@@ -77,6 +79,8 @@ struct task_t {
     int counter;
     int state;
     input_event_t type;
+    // Mobile UI: an action of the controller layout to repeat, see mobile_pad.h
+    std::string pad_action;
 };
 } // namespace
 
@@ -132,6 +136,9 @@ void init()
         return;
     }
 
+    // Mobile UI: a virtual controller for tests, see mobile_pad.h
+    mobile_pad::script_attach();
+
     int num_joysticks = 0;
     SDL_JoystickID *joysticks = SDL_GetJoysticks( &num_joysticks );
     if( joysticks && num_joysticks > 0 ) {
@@ -142,7 +149,8 @@ void init()
     }
     SDL_free( joysticks );
 
-    timer_id = SDL_AddTimer( 50, timer_func, nullptr );
+    // Mobile UI: scripted input is timed more finely
+    timer_id = SDL_AddTimer( mobile_pad::script_wanted() ? 10 : 50, timer_func, nullptr );
     printErrorIf( timer_id == 0, "SDL_AddTimer failed" );
 }
 
@@ -182,6 +190,7 @@ static void schedule_task( task_t &task, uint32_t when, int button, int state,
     task.counter = 1;
     task.state = state;
     task.type = type;
+    task.pad_action.clear();
 }
 
 static void cancel_task( task_t &task )
@@ -360,6 +369,103 @@ static void send_direction_movement()
     }
 }
 
+// Mobile UI: on the play screen the controller layout of mobile_pad.h decides
+// what a button does.  Menus and other screens keep the scheme above.
+static constexpr int pad_wake_code = -2;
+
+static bool pad_takes_input()
+{
+    if( !mobile_pad::enabled() || is_in_menu() ) {
+        return false;
+    }
+    input_context *const ctx = input_context::input_context_stack.back();
+    // an action that only the play screen registers
+    return ctx != nullptr && ctx->is_registered_action( "toggle_auto_pulp_butcher" );
+}
+
+static mobile_pad::machine &pad_machine()
+{
+    mobile_pad::machine &m = mobile_pad::state();
+    m.hold_time = mobile_pad::hold_ms();
+    m.flick_time = mobile_pad::flick_ms();
+    return m;
+}
+
+// Hands an action of the layout to the play screen.
+static void pad_emit( const std::string &action )
+{
+    if( action == mobile_pad::action_step ) {
+        if( left_stick_dir != direction::NONE ) {
+            send_direction_movement();
+            return;
+        }
+        mobile_pad::queue_action( "pause" );
+    } else {
+        mobile_pad::queue_action( action );
+    }
+    send_input( pad_wake_code );
+}
+
+// Runs what the layout made of an event.  Returns true if the screen changed.
+static bool pad_apply( const mobile_pad::outcome &out, task_t *const repeat_task, uint32_t now )
+{
+    if( !out.action.empty() ) {
+        pad_emit( out.action );
+        if( out.repeat && repeat_task != nullptr ) {
+            schedule_task( *repeat_task, now + repeat_delay, -1, 1 );
+            repeat_task->pad_action = out.action;
+        }
+    }
+    if( out.changed && g ) {
+        g->invalidate_main_ui_adaptor();
+    }
+    return out.changed;
+}
+
+static mobile_pad::button pad_button( int sdl_button )
+{
+    switch( sdl_button ) {
+        case CATA_BUTTON_A:
+            return mobile_pad::button::a;
+        case CATA_BUTTON_B:
+            return mobile_pad::button::b;
+        case CATA_BUTTON_X:
+            return mobile_pad::button::x;
+        case CATA_BUTTON_Y:
+            return mobile_pad::button::y;
+        case CATA_BUTTON_LEFTSHOULDER:
+            return mobile_pad::button::l1;
+        case CATA_BUTTON_RIGHTSHOULDER:
+            return mobile_pad::button::r1;
+        case CATA_BUTTON_LEFTSTICK:
+            return mobile_pad::button::l3;
+        case CATA_BUTTON_RIGHTSTICK:
+            return mobile_pad::button::r3;
+        case CATA_BUTTON_DPAD_UP:
+            return mobile_pad::button::up;
+        case CATA_BUTTON_DPAD_DOWN:
+            return mobile_pad::button::down;
+        case CATA_BUTTON_DPAD_LEFT:
+            return mobile_pad::button::left;
+        case CATA_BUTTON_DPAD_RIGHT:
+            return mobile_pad::button::right;
+        case CATA_BUTTON_BACK:
+            return mobile_pad::button::select;
+        case CATA_BUTTON_START:
+            return mobile_pad::button::start;
+        default:
+            return mobile_pad::button::count;
+    }
+}
+
+// The layout stops reading the controller when a menu opens: forget what was held.
+static void pad_idle()
+{
+    if( mobile_pad::state().holding() ) {
+        mobile_pad::state().reset();
+    }
+}
+
 static bool handle_axis_event( SDL_Event &event )
 {
     if( event.type != CATA_CONTROLLERAXISMOTION ) {
@@ -380,6 +486,32 @@ static bool handle_axis_event( SDL_Event &event )
         task_t &task = all_tasks[triggers_task_index + idx];
         bool trigger_pressed = value > triggers_threshold + error_margin;
         bool trigger_released = value < triggers_threshold - error_margin;
+
+        // Mobile UI: the triggers are buttons of the layout on the play screen
+        if( pad_takes_input() ) {
+            const mobile_pad::button b = idx == 0 ? mobile_pad::button::l2 : mobile_pad::button::r2;
+            bool changed = false;
+            if( !state && trigger_pressed ) {
+                triggers_state[idx] = 1;
+                changed = pad_apply( pad_machine().button_event( mobile_pad::current(), b, true, now ),
+                                     &task, now );
+            } else if( state && trigger_released ) {
+                triggers_state[idx] = 0;
+                cancel_task( task );
+                if( idx == 0 ) {
+                    // it may have gone down as upstream's modifier, in a menu
+                    alt_modifier_held = false;
+                    radial_left_open = false;
+                    radial_right_open = false;
+                    radial_left_last_dir = direction::NONE;
+                    radial_right_last_dir = direction::NONE;
+                }
+                changed = pad_apply( pad_machine().button_event( mobile_pad::current(), b, false, now ),
+                                     nullptr, now );
+            }
+            return changed;
+        }
+        pad_idle();
 
         if( idx == 1 ) {
             // Right trigger (RT)
@@ -455,6 +587,29 @@ static bool handle_axis_event( SDL_Event &event )
 
             task_t &stick_task = all_tasks[sticks_task_index + i];
             direction old_dir = ( i == 0 ) ? left_stick_dir : right_stick_dir;
+
+            // Mobile UI: while a button of the layout is held the sticks work its
+            // rings and nothing else
+            if( pad_takes_input() ) {
+                mobile_pad::machine &pad = pad_machine();
+                const mobile_pad::outcome out = pad.stick_event( mobile_pad::current(), i,
+                                                static_cast<float>( val.x ) / 32767.0f,
+                                                static_cast<float>( val.y ) / 32767.0f, now );
+                if( pad.holding() || !out.action.empty() || out.changed ) {
+                    cancel_task( stick_task );
+                    if( old_dir != direction::NONE && g ) {
+                        g->invalidate_main_ui_adaptor();
+                        direction_changed = true;
+                    }
+                    ( i == 0 ? left_stick_dir : right_stick_dir ) = direction::NONE;
+                    if( pad_apply( out, nullptr, now ) ) {
+                        direction_changed = true;
+                    }
+                    continue;
+                }
+            } else {
+                pad_idle();
+            }
 
             if( dir != old_dir ) {
                 direction_changed = true;
@@ -555,6 +710,19 @@ static void handle_button_event( SDL_Event &event )
 {
     int button = event.gbutton.button;
     uint32_t now = GetTicks();
+
+    // Mobile UI: the layout's buttons on the play screen
+    if( pad_takes_input() ) {
+        const bool down = event.type != CATA_CONTROLLERBUTTONUP;
+        task_t *const task = button >= 0 && button < max_buttons ? &all_tasks[button] : nullptr;
+        if( !down && task != nullptr ) {
+            cancel_task( *task );
+        }
+        pad_apply( pad_machine().button_event( mobile_pad::current(), pad_button( button ), down, now ),
+                   down ? task : nullptr, now );
+        return;
+    }
+    pad_idle();
 
     if( event.type == CATA_CONTROLLERBUTTONUP ) {
         // Button released - only handle cleanup/task cancellation
@@ -703,11 +871,29 @@ static void handle_device_event( SDL_Event &event )
     }
 }
 
-static void handle_scheduler_event( SDL_Event &/*event*/ )
+static bool handle_scheduler_event( SDL_Event &/*event*/ )
 {
     uint32_t now = GetTicks();
+    mobile_pad::script_play();
+    // Mobile UI: the long press and the hold come without an event
+    bool changed = false;
+    if( pad_takes_input() ) {
+        changed = pad_apply( pad_machine().tick( mobile_pad::current(), now ), nullptr, now );
+    } else {
+        pad_idle();
+    }
     for( size_t i = 0; i < all_tasks.size(); ++i ) {
         gamepad::task_t &task = all_tasks[i];
+        if( task.counter && task.when <= now && !task.pad_action.empty() ) {
+            if( pad_takes_input() ) {
+                pad_emit( task.pad_action );
+                task.counter += 1;
+                task.when = now + repeat_interval;
+            } else {
+                cancel_task( task );
+            }
+            continue;
+        }
         if( task.counter && task.when <= now ) {
             // Check if this is the RT repeat task
             if( i == triggers_task_index + 1 && left_stick_dir != direction::NONE ) {
@@ -726,6 +912,7 @@ static void handle_scheduler_event( SDL_Event &/*event*/ )
             task.when = now + repeat_interval;
         }
     }
+    return changed;
 }
 
 direction get_left_stick_direction()
@@ -831,8 +1018,7 @@ bool handle_event( SDL_Event &event )
             handle_device_event( event );
             return false;
         case SDL_GAMEPAD_SCHEDULER:
-            handle_scheduler_event( event );
-            return false;
+            return handle_scheduler_event( event );
         default:
             return false;
     }
