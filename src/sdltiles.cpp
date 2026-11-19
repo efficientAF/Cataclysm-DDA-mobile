@@ -715,6 +715,11 @@ static void WinCreate()
     // overwriting it with this calculation.
     if( desired_fullscreen != FullscreenMode::windowed
         || ( window_flags & CATA_WINDOW_MAXIMIZED ) ) {
+        // Mobile UI: going fullscreen or maximized is not instant on X11 and
+        // Wayland.  Without waiting, the size read here is still the small
+        // starting window's, the terminal stays 80x24 and is drawn stretched to
+        // twice its size (seen on a Steam Deck).
+        SDL_SyncWindow( ::window.get() );
         GetWindowSize( ::window.get(), &WindowWidth, &WindowHeight );
         // Ignore previous values, use the whole window, but nothing more.
         TERMINAL_WIDTH = WindowWidth / fontwidth / scaling_factor;
@@ -823,6 +828,10 @@ static void WinCreate()
     select_applied_memory_preset();
 
     imclient = std::make_unique<cataimgui::client>( renderer, window, geometry );
+
+    // Mobile UI: the pixel size read before the renderer existed can still be the
+    // starting window's; fingers are placed with it
+    refresh_drawable_dims();
 
     // Mobile UI: what the touch and HUD code has to work with, for reports from
     // devices this was never run on
