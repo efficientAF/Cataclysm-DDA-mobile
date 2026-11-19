@@ -169,7 +169,9 @@ marked "seen" was seen on the desktop build under Xvfb with keys standing in for
   `mobile_controls.{h,cpp}`, hooks in `sdl_gamepad.cpp`): press, long press, and radial menus
   on the sticks while a button is held, set on a picture of the controller (Settings, All
   options, Inputs, Controller). Seen with a virtual gamepad under Xvfb only; never with a
-  real controller. Still to do: the same model for the map, look-around and aiming (they
+  real controller. Sticks can walk, point, pan or zoom and the d-pad can walk; other screens
+  are shown and changed on the same page (upstream's bindings). Still to do: the same model
+  for the map, look-around and aiming (they
   keep upstream's left-trigger modifier and rings), tapping a slot of the ring, the pages in
   portrait and worked by the controller itself. CLAUDE.md, "Controller layout", has the list
   of what was seen.
