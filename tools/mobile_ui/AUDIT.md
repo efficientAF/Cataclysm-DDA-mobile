@@ -165,6 +165,14 @@ marked "seen" was seen on the desktop build under Xvfb with keys standing in for
   window came up 640x384 although `FULLSCREEN` defaults to borderless; probably Xvfb having
   no window manager, to be checked on the Deck. Built on Ubuntu 24.04: the binary needs
   glibc 2.38 and the other libraries (freetype, harfbuzz, png, zlib...) from the system.
+- **Done (19 Nov 2026): a controller layout for the play screen** (`mobile_pad.{h,cpp}`,
+  `mobile_controls.{h,cpp}`, hooks in `sdl_gamepad.cpp`): press, long press, and radial menus
+  on the sticks while a button is held, set on a picture of the controller (Settings, All
+  options, Inputs, Controller). Seen with a virtual gamepad under Xvfb only; never with a
+  real controller. Still to do: the same model for the map, look-around and aiming (they
+  keep upstream's left-trigger modifier and rings), tapping a slot of the ring, the pages in
+  portrait and worked by the controller itself. CLAUDE.md, "Controller layout", has the list
+  of what was seen.
 - **The controller works where upstream's bindings do** (`sdl_gamepad.cpp`; 314 gamepad
   bindings): the play screen, the radial menus, upstream's own menus, `uilist` sheets.
 - **Android-only pieces the Deck lacks:** the manual-key prompt buttons (uilist hotkeys),
