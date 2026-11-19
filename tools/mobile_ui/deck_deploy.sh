@@ -6,7 +6,9 @@
 #   game/       the current build (replaced on every deploy)
 #   game.old/   the build before it
 #   userdata/   saves, settings, HUD layout (never touched)
+#   backups/    copies of userdata/config from the last five deploys
 #   play.sh     what to run
+# The script replaces itself with the one in the zip when that one is newer.
 # It also adds a "CDDA Mobile" entry to the application menu, which is what
 # Steam's "Add a Non-Steam Game" list shows.
 set -euo pipefail
@@ -41,6 +43,15 @@ rm -rf "$HERE/game.old"
 mv "$NEW" "$HERE/game"
 mkdir -p "$HERE/userdata"
 
+# Settings (options, HUD layout, screen sizes, key bindings) are in
+# userdata/config and are never touched by a deploy.  A copy is kept anyway,
+# of the last five deploys, in case a new build writes something unwanted.
+if [ -d "$HERE/userdata/config" ]; then
+    mkdir -p "$HERE/backups"
+    cp -a "$HERE/userdata/config" "$HERE/backups/config-$(date +%Y%m%d-%H%M%S)"
+    ls -1d "$HERE"/backups/config-* | sort | head -n -5 | xargs -r rm -rf
+fi
+
 cat > "$HERE/play.sh" <<'PLAY'
 #!/bin/bash
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +77,13 @@ Categories=Game;
 DESKTOP
 chmod +x "$APPS/cdda-mobile.desktop"
 update-desktop-database "$APPS" 2>/dev/null || true
+
+# The zip carries the deploy script it was made with: take it over if it differs.
+# The file is swapped in one step, and this is the last thing the script does.
+SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
+if [ -f "$TMP/deploy.sh" ] && ! cmp -s "$TMP/deploy.sh" "$SELF"; then
+    cp "$TMP/deploy.sh" "$SELF.new" && mv "$SELF.new" "$SELF" && echo "deploy.sh was updated from the zip."
+fi
 
 echo "Done. Run $HERE/play.sh, or start \"CDDA Mobile\" from the application menu."
 echo "In Steam: Add a Non-Steam Game, tick \"CDDA Mobile\" in the list."

@@ -382,6 +382,69 @@ void icon( ImDrawList *const draw, const std::string &name, const ImVec2 &pos,
                     pos, ImVec2( pos.x + size, pos.y + size ), ImVec2( 0.0f, 0.0f ), ImVec2( 1.0f, 1.0f ), color );
 }
 
+// --- Pictures ---
+
+namespace
+{
+struct loaded_picture {
+    SDL_Texture *texture = nullptr;
+    float w = 0.0f;
+    float h = 0.0f;
+};
+} // namespace
+
+static const loaded_picture &load_picture( const std::string &path )
+{
+    static uint64_t generation = 0;
+    static std::map<std::string, loaded_picture> pictures;
+    const uint64_t now = renderer_resource_generation();
+    if( generation != now ) {
+        // the renderer was rebuilt and took the old textures with it
+        pictures.clear();
+        generation = now;
+    }
+    const auto found = pictures.find( path );
+    if( found != pictures.end() ) {
+        return found->second;
+    }
+    loaded_picture loaded;
+    const std::string file = PATH_INFO::datadir() + "mobile_ui/" + path;
+    const SDL_Renderer_Ptr &renderer = get_sdl_renderer();
+    if( renderer && file_exist( file ) ) {
+        if( SDL_Surface *const surface = IMG_Load( file.c_str() ) ) {
+            loaded.texture = SDL_CreateTextureFromSurface( renderer.get(), surface );
+            loaded.w = static_cast<float>( surface->w );
+            loaded.h = static_cast<float>( surface->h );
+            SDL_DestroySurface( surface );
+        }
+    }
+    return pictures[path] = loaded;
+}
+
+ImVec2 picture_size( const std::string &path, const ImVec2 &box )
+{
+    const loaded_picture &loaded = load_picture( path );
+    if( loaded.texture == nullptr || loaded.w <= 0.0f || loaded.h <= 0.0f || box.x <= 0.0f ||
+        box.y <= 0.0f ) {
+        return ImVec2( 0.0f, 0.0f );
+    }
+    const float scale = std::min( box.x / loaded.w, box.y / loaded.h );
+    return ImVec2( loaded.w * scale, loaded.h * scale );
+}
+
+ImVec2 picture( ImDrawList *const draw, const std::string &path, const ImVec2 &pos,
+                const ImVec2 &box )
+{
+    const ImVec2 size = picture_size( path, box );
+    if( size.x <= 0.0f ) {
+        return size;
+    }
+    const loaded_picture &loaded = load_picture( path );
+    draw->AddImage( ImTextureRef( static_cast<ImTextureID>( reinterpret_cast<intptr_t>
+                                  ( loaded.texture ) ) ), pos, ImVec2( pos.x + size.x, pos.y + size.y ) );
+    return size;
+}
+
 // --- Controls ---
 
 // The frame around the control that the arrow keys or a controller are on.

@@ -91,8 +91,21 @@ void list_window::draw_panel( const ImVec2 &min, const ImVec2 &max )
         ImDrawList *const inner = ImGui::GetWindowDrawList();
         const ImVec2 base = ImGui::GetCursorScreenPos();
         const std::string text = remove_color_tags( r.description );
+        const float text_px = mobile_ui::text_size( face::body, 13.5f, text, width ).y;
         mobile_ui::text( inner, face::body, 13.5f, base, mobile_ui::col_text_soft, text, width );
-        ImGui::Dummy( ImVec2( 1.0f, mobile_ui::text_size( face::body, 13.5f, text, width ).y + 8.0f * u ) );
+        float used = text_px + 8.0f * u;
+        if( !r.picture.empty() ) {
+            // an example under the text, as large as the panel has room for
+            const ImVec2 at( base.x, base.y + used );
+            const ImVec2 box( width, std::max( ImGui::GetWindowHeight() - used - 14.0f * u, 90.0f * u ) );
+            const ImVec2 took = mobile_ui::picture( inner, r.picture, at, box );
+            if( took.x > 0.0f ) {
+                inner->AddRect( at, ImVec2( at.x + took.x, at.y + took.y ), mobile_ui::col_line, 6.0f * u, 0,
+                                std::max( 1.0f, u ) );
+                used += took.y + 6.0f * u;
+            }
+        }
+        ImGui::Dummy( ImVec2( 1.0f, used ) );
     }
     ImGui::EndChild();
     ImGui::PopStyleVar();

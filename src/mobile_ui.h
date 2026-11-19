@@ -92,6 +92,14 @@ void icon( ImDrawList *draw, const std::string &name, const ImVec2 &pos, float s
 // The icon as a white texture to tint, or nullptr.  Owned by the cache here.
 SDL_Texture *icon_texture( const std::string &name );
 
+// --- Pictures (data/mobile_ui/<path>, e.g. "previews/items.png") ---
+
+// Draws the picture as large as fits into the box, keeping its shape, at the
+// box's top left.  Returns the size it took, or zero if there is no such file.
+ImVec2 picture( ImDrawList *draw, const std::string &path, const ImVec2 &pos, const ImVec2 &box );
+// The size picture() would take, without drawing.
+ImVec2 picture_size( const std::string &path, const ImVec2 &box );
+
 // --- Controls ---
 
 // An invisible button over a rectangle.  Returns true when tapped; held tells

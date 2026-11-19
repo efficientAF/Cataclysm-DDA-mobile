@@ -23,6 +23,9 @@ struct row {
     int tab = 0;
     // shown in the panel when the row is selected; may carry color tags
     std::string description;
+    // a picture shown in the panel over the description, as a path under
+    // data/mobile_ui/ (see mobile_ui::picture); empty for none
+    std::string picture;
     // the label of the panel's button, or empty for none
     std::string action;
     // further buttons beside it, for rows with more than one thing to do

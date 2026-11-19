@@ -524,6 +524,8 @@ void show_screen_sizes()
             r.name = kinds[i].name;
             r.right = string_format( "%d%%", kinds[i].percent );
             r.description = kinds[i].covers;
+            // what such a screen looks like, if there is a picture of one
+            r.picture = "previews/" + kinds[i].id + ".png";
             r.action = _( "Smaller" );
             r.more_actions = { _( "Larger" ), _( "100%" ) };
             r.current = kinds[i].percent != 100;
