@@ -1963,52 +1963,58 @@ void show()
     }
 }
 
-// One ring of a held button: the menu's eight slots round its name.
-static void draw_one_ring( const board &b, const mobile_pad::menu &m, const int pointed,
-                           const bool with_dot, const float dot_x, const float dot_y, const std::string &caption )
+// One ring of a held button: the menu's eight slots round its name, compact, in
+// five rows.  mid is its centre on the screen.  quiet: the other stick is at
+// work, this ring only stands by.
+static void draw_one_ring( board b, const ImVec2 &mid, const mobile_pad::menu &m, const int pointed,
+                           const bool with_dot, const float dot_x, const float dot_y,
+                           const std::string &caption, const bool quiet )
 {
-    const float mid_x = 640.0f;
-    const float mid_y = 380.0f;
-    b.draw->AddCircleFilled( b.at( mid_x, mid_y ), 210.0f * b.c, IM_COL32( 14, 17, 13, 235 ), 96 );
-    b.draw->AddCircle( b.at( mid_x, mid_y ), 210.0f * b.c, mobile_ui::col_line, 96,
-                       std::max( 1.0f, 2.0f * b.c ) );
-    b.draw->AddCircleFilled( b.at( mid_x, mid_y ), 80.0f * b.c, col_chip, 64 );
-    b.draw->AddCircle( b.at( mid_x, mid_y ), 80.0f * b.c, mobile_ui::col_line, 64,
+    // the board's own point 0, 0 is the ring's centre
+    b.origin = mid;
+    const ImU32 col_name = quiet ? mobile_ui::col_muted : mobile_ui::col_fg;
+    b.draw->AddCircleFilled( b.at( 0.0f, 0.0f ), 205.0f * b.c, IM_COL32( 14, 17, 13,
+                             quiet ? 150 : 215 ),
+                             96 );
+    b.draw->AddCircleFilled( b.at( 0.0f, 0.0f ), 62.0f * b.c, col_chip, 64 );
+    b.draw->AddCircle( b.at( 0.0f, 0.0f ), 62.0f * b.c, mobile_ui::col_line, 64,
                        std::max( 1.0f, b.c ) );
-    b.text_centered( face::display, 22.0f, mid_x - 72.0f, mid_y - 24.0f, 144.0f, 28.0f,
-                     mobile_ui::col_fg, m.name );
-    b.text_centered( face::body, 12.0f, mid_x - 76.0f, mid_y + 6.0f, 152.0f, 18.0f,
-                     mobile_ui::col_muted, caption );
+    b.text_centered_2( face::display, 20.0f, -56.0f, -30.0f, 112.0f, 44.0f, col_name, m.name );
+    b.text_centered( face::body, 11.0f, -58.0f, 18.0f, 116.0f, 16.0f, mobile_ui::col_muted, caption );
+    // where each slot's box is centred: up, then clockwise
+    static const std::array<std::array<float, 2>, mobile_pad::num_slots> places = { {
+            { { 0.0f, -168.0f } }, { { 122.0f, -100.0f } }, { { 150.0f, 0.0f } }, { { 122.0f, 100.0f } },
+            { { 0.0f, 168.0f } }, { { -122.0f, 100.0f } }, { { -150.0f, 0.0f } }, { { -122.0f, -100.0f } }
+        }
+    };
+    const float w = 150.0f;
+    const float h = 54.0f;
     for( int i = 0; i < mobile_pad::num_slots; ++i ) {
-        const float turn = ( static_cast<float>( i ) * 45.0f - 90.0f ) * 3.14159265f / 180.0f;
         const bool on = i == pointed;
-        const float w = on ? 180.0f : 160.0f;
-        const float h = on ? 76.0f : 64.0f;
-        const float x = mid_x + std::cos( turn ) * 285.0f - w * 0.5f;
-        const float y = mid_y + std::sin( turn ) * 238.0f - h * 0.5f;
+        const float x = places[static_cast<size_t>( i )][0] - w * 0.5f;
+        const float y = places[static_cast<size_t>( i )][1] - h * 0.5f;
         const std::string &id = m.slots[static_cast<size_t>( i )];
         if( id.empty() ) {
             b.box( x, y, w, h, on ? mobile_ui::col_button_down : IM_COL32( 14, 17, 13, 200 ),
-                   mobile_ui::col_line, 14.0f );
+                   mobile_ui::col_line, 12.0f );
             b.text_centered( face::body, 15.0f, x + 6.0f, y, w - 12.0f, h, mobile_ui::col_muted,
                              _( "empty" ) );
         } else {
-            b.box( x, y, w, h, on ? mobile_ui::col_accent : col_chip, on ? 0 : mobile_ui::col_line,
-                   on ? 16.0f : 14.0f );
-            b.text_centered_2( face::bold, on ? 17.0f : 15.0f, x + 8.0f, y, w - 16.0f, h,
-                               on ? mobile_ui::col_on_accent : mobile_ui::col_fg, action_name( id ) );
+            b.box( x, y, w, h, on ? mobile_ui::col_accent : col_chip, on ? 0 : mobile_ui::col_line, 12.0f );
+            b.text_centered_2( face::bold, 17.0f, x + 6.0f, y, w - 12.0f, h,
+                               on ? mobile_ui::col_on_accent : col_name, action_name( id ) );
         }
     }
     if( with_dot ) {
-        const ImVec2 dot = b.at( mid_x + dot_x * 120.0f, mid_y + dot_y * 120.0f );
-        b.draw->AddCircleFilled( dot, 15.0f * b.c, mobile_ui::col_accent, 32 );
-        b.draw->AddCircle( dot, 15.0f * b.c, mobile_ui::col_on_accent, 32, std::max( 1.0f, 3.0f * b.c ) );
+        const ImVec2 dot = b.at( dot_x * 46.0f, dot_y * 46.0f );
+        b.draw->AddCircleFilled( dot, 12.0f * b.c, mobile_ui::col_accent, 32 );
+        b.draw->AddCircle( dot, 12.0f * b.c, mobile_ui::col_on_accent, 32, std::max( 1.0f, 2.5f * b.c ) );
     }
 }
 
 // The rings in play: on screen from the moment a button with menus counts as
-// held.  Both of its menus show side by side until a stick is pushed; then
-// that stick's ring has the screen.
+// held.  The left stick's menu is always at the left of the screen and the
+// right stick's at the right, one or two of them.
 void draw_ring()
 {
     const mobile_pad::machine &pad = mobile_pad::state();
@@ -2024,59 +2030,56 @@ void draw_ring()
         return;
     }
     const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    const ImVec4 safe = mobile_ui::safe_insets();
     board b;
     b.u = mobile_ui::unit();
     b.c = std::min( viewport->Size.x / 1280.0f, viewport->Size.y / 800.0f );
-    b.origin = ImVec2( viewport->Pos.x + ( viewport->Size.x - 1280.0f * b.c ) * 0.5f,
-                       viewport->Pos.y + ( viewport->Size.y - 800.0f * b.c ) * 0.5f );
+    b.origin = viewport->Pos;
     b.draw = ImGui::GetForegroundDrawList();
     b.draw->AddRectFilled( viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x,
-                           viewport->Pos.y + viewport->Size.y ), IM_COL32( 0, 0, 0, 115 ) );
+                           viewport->Pos.y + viewport->Size.y ), IM_COL32( 0, 0, 0, 70 ) );
     const std::string holder = short_name( pad.held_button() );
     const int stick = pad.ring_stick_index();
     const int pointed = pad.ring_slot();
+    const float mid_y = viewport->Pos.y + viewport->Size.y * 0.5f - 20.0f * b.c;
+    for( int s = 0; s < 2; ++s ) {
+        const mobile_pad::menu *const m = menus[static_cast<size_t>( s )];
+        if( m == nullptr ) {
+            continue;
+        }
+        // its own side of the screen, clear of a notch
+        const float reach = 240.0f * b.c;
+        const ImVec2 mid( s == 0 ? viewport->Pos.x + safe.x + reach :
+                          viewport->Pos.x + viewport->Size.x - safe.z - reach, mid_y );
+        const bool active = stick == s;
+        draw_one_ring( b, mid, *m, active ? pointed : -1, active, pad.stick_x( s ), pad.stick_y( s ),
+                       active ? _( "flick or release" ) : s == 0 ? _( "left stick" ) : _( "right stick" ),
+                       stick >= 0 && !active );
+    }
     std::vector<std::string> pills;
     if( stick >= 0 && menus[static_cast<size_t>( stick )] != nullptr ) {
-        const mobile_pad::menu &m = *menus[static_cast<size_t>( stick )];
-        draw_one_ring( b, m, pointed, true, pad.stick_x( stick ), pad.stick_y( stick ),
-                       _( "flick or release to run" ) );
-        pills.push_back( string_format( stick == 0 ? _( "%s held · left stick picks" ) :
-                                        _( "%s held · right stick picks" ), holder ) );
         if( pointed >= 0 ) {
-            const std::string &id = m.slots[static_cast<size_t>( pointed )];
+            const std::string &id = menus[static_cast<size_t>( stick )]->slots[static_cast<size_t>( pointed )];
             pills.push_back( string_format( _( "Let the stick snap back, or release %1$s: %2$s" ), holder,
                                             id.empty() ? std::string( _( "nothing" ) ) : action_name( id ) ) );
         }
         pills.emplace_back( _( "Ease the stick back slowly, or B: cancel" ) );
     } else {
-        // nothing pushed yet: what each stick would open
-        const bool both = menus[0] != nullptr && menus[1] != nullptr;
-        for( int s = 0; s < 2; ++s ) {
-            if( menus[static_cast<size_t>( s )] == nullptr ) {
-                continue;
-            }
-            board ring = b;
-            if( both ) {
-                // smaller, the left stick's on the left
-                ring.c = b.c * 0.7f;
-                const ImVec2 mid = b.at( s == 0 ? 325.0f : 955.0f, 380.0f );
-                ring.origin = ImVec2( mid.x - 640.0f * ring.c, mid.y - 380.0f * ring.c );
-            }
-            draw_one_ring( ring, *menus[static_cast<size_t>( s )], -1, false, 0.0f, 0.0f,
-                           s == 0 ? _( "push the left stick" ) : _( "push the right stick" ) );
-        }
         pills.push_back( string_format( _( "%s held · push a stick to pick" ), holder ) );
         pills.push_back( string_format( _( "Release %s or B: cancel" ), holder ) );
     }
+    // along the bottom, centred
+    b.origin = ImVec2( viewport->Pos.x + ( viewport->Size.x - 1280.0f * b.c ) * 0.5f,
+                       viewport->Pos.y + viewport->Size.y - 800.0f * b.c );
     float total = -10.0f;
     for( const std::string &pill : pills ) {
-        total += b.measure( face::body, 15.0f, pill ).x + 32.0f + 10.0f;
+        total += b.measure( face::body, 16.0f, pill ).x + 32.0f + 10.0f;
     }
     float x = ( 1280.0f - total ) * 0.5f;
     for( const std::string &pill : pills ) {
-        const float w = b.measure( face::body, 15.0f, pill ).x + 32.0f;
-        b.box( x, 728.0f, w, 42.0f, IM_COL32( 14, 17, 13, 235 ), mobile_ui::col_line, 21.0f );
-        b.text( face::body, 15.0f, x + 16.0f, 738.0f, mobile_ui::col_fg, pill );
+        const float w = b.measure( face::body, 16.0f, pill ).x + 32.0f;
+        b.box( x, 736.0f, w, 44.0f, IM_COL32( 14, 17, 13, 235 ), mobile_ui::col_line, 22.0f );
+        b.text( face::body, 16.0f, x + 16.0f, 746.0f, mobile_ui::col_fg, pill );
         x += w + 10.0f;
     }
 }
