@@ -1131,7 +1131,7 @@ void draw( const SDL_Renderer_Ptr &renderer, Font &, const SDL_Rect &view, const
     const bool under_sheet = !default_mode && !editing && mobile_ui::sheet_over_play_screen( sheet );
     // an open radial menu of the controller has the screen to itself (mobile_pad.h)
     if( !g || ( !default_mode && !editing && !under_sheet ) || !renderer || window_w <= 0 ||
-        window_h <= 0 || mobile_pad::state().ring_open() ) {
+        window_h <= 0 || mobile_pad::state().showing() ) {
         return;
     }
     sdl = renderer.get();

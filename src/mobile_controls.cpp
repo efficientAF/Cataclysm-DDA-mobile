@@ -81,15 +81,6 @@ std::string button_name( const int code )
     return prefix + key;
 }
 
-static std::string buttons_text( const std::vector<int> &codes )
-{
-    std::string text;
-    for( const int code : codes ) {
-        text += ( text.empty() ? "" : ", " ) + button_name( code );
-    }
-    return text;
-}
-
 // "ADVANCED_INVENTORY" as "Advanced inventory".
 static std::string context_name( const std::string &category )
 {
@@ -108,197 +99,6 @@ static std::string context_name( const std::string &category )
 }
 
 #if defined(TILES)
-
-// Waits for a button of the controller.  Nothing for six seconds, a tap or a
-// key gives up.
-static std::optional<int> wait_for_button( const std::string &for_what )
-{
-    input_context ctxt( "default", keyboard_mode::keycode );
-    const mobile_prompt::own_controls own_controls( ctxt );
-    ctxt.register_action( "ANY_INPUT" );
-    ctxt.register_action( "SELECT" );
-    ctxt.register_action( "QUIT" );
-    ctxt.set_timeout( 100 );
-    static_popup note;
-    note.message(
-        _( "%s\n\nPress the button on the controller now.  Hold L2 with it for an L2 combination.  Tap the screen to cancel." ),
-        for_what );
-    const auto started = std::chrono::steady_clock::now();
-    while( std::chrono::steady_clock::now() - started < std::chrono::seconds( 6 ) ) {
-        ui_manager::redraw();
-        const std::string action = ctxt.handle_input();
-        const input_event event = ctxt.get_raw_input();
-        if( event.type == input_event_t::gamepad && !event.sequence.empty() ) {
-            return event.get_first_input();
-        }
-        if( action != "TIMEOUT" && action != "ANY_INPUT" ) {
-            break;
-        }
-        if( action == "ANY_INPUT" && event.type != input_event_t::timeout &&
-            event.type != input_event_t::error ) {
-            // a key or a click
-            break;
-        }
-    }
-    return std::nullopt;
-}
-
-// The actions of one context.
-static void show_context( const std::string &category )
-{
-    int tab = 0;
-    int selected = -1;
-    std::string notice;
-    while( true ) {
-        std::vector<binding> all = bindings();
-        all.erase( std::remove_if( all.begin(), all.end(), [&category]( const binding & b ) {
-            return b.category != category;
-        } ), all.end() );
-        // what has a button first, then by name
-        std::stable_sort( all.begin(), all.end(), []( const binding & a, const binding & b ) {
-            if( a.buttons.empty() != b.buttons.empty() ) {
-                return b.buttons.empty();
-            }
-            return localized_compare( a.name, b.name );
-        } );
-        mobile_list::spec what;
-        what.title = context_name( category );
-        what.header = notice.empty() ? std::string(
-                          _( "Pick an action, then Set and press its button.  Add gives it a second one." ) ) : notice;
-        for( const binding &b : all ) {
-            mobile_list::row r;
-            r.name = b.name;
-            r.right = b.buttons.empty() ? std::string( "–" ) : buttons_text( b.buttons );
-            r.enabled = !b.buttons.empty();
-            r.current = b.buttons != b.defaults;
-            r.description = string_format( _( "Now: %s\nBy default: %s" ),
-                                           b.buttons.empty() ? _( "no button" ) : buttons_text( b.buttons ),
-                                           b.defaults.empty() ? _( "no button" ) : buttons_text( b.defaults ) );
-            r.action = _( "Set" );
-            r.more_actions = { _( "Add" ), _( "Clear" ), _( "Default" ) };
-            what.rows.push_back( r );
-        }
-        const mobile_list::outcome did = mobile_list::show_all( what, tab, selected );
-        if( did.row < 0 || static_cast<size_t>( did.row ) >= all.size() ) {
-            return;
-        }
-        const binding &b = all[static_cast<size_t>( did.row )];
-        std::vector<int> wanted;
-        if( did.action == 0 || did.action == 1 ) {
-            const std::optional<int> pressed = wait_for_button( b.name );
-            if( !pressed ) {
-                notice = _( "No button was pressed; nothing changed." );
-                continue;
-            }
-            if( did.action == 1 ) {
-                wanted = b.buttons;
-            }
-            if( std::find( wanted.begin(), wanted.end(), *pressed ) == wanted.end() ) {
-                wanted.push_back( *pressed );
-            }
-        } else if( did.action == 3 ) {
-            wanted = b.defaults;
-        }
-        const std::string action_id = b.action;
-        const std::string action_name = b.name;
-        const std::vector<std::string> lost = set_buttons( category, action_id, wanted );
-        save();
-        notice = wanted.empty() ? string_format( _( "%s has no button now." ), action_name ) :
-                 string_format( _( "%1$s: %2$s." ), action_name, buttons_text( wanted ) );
-        if( !lost.empty() ) {
-            notice += "  " + string_format( _( "Taken from: %s." ), enumerate_as_string( lost ) );
-        }
-        // the list is sorted again; stay on the action that was changed
-        std::vector<binding> after = bindings();
-        after.erase( std::remove_if( after.begin(), after.end(), [&category]( const binding & o ) {
-            return o.category != category;
-        } ), after.end() );
-        std::stable_sort( after.begin(), after.end(), []( const binding & x, const binding & y ) {
-            if( x.buttons.empty() != y.buttons.empty() ) {
-                return y.buttons.empty();
-            }
-            return localized_compare( x.name, y.name );
-        } );
-        for( size_t i = 0; i < after.size(); ++i ) {
-            if( after[i].action == action_id ) {
-                selected = static_cast<int>( i );
-            }
-        }
-    }
-}
-
-// The plain list: every screen with its buttons, as the keybindings have them.
-static void show_other_screens()
-{
-    int tab = 0;
-    int selected = -1;
-    while( true ) {
-        const std::vector<binding> all = bindings();
-        // the contexts, the play screen and the menus first
-        std::vector<std::string> categories;
-        std::map<std::string, std::pair<int, int>> counts;
-        for( const binding &b : all ) {
-            if( counts.find( b.category ) == counts.end() ) {
-                categories.push_back( b.category );
-            }
-            std::pair<int, int> &count = counts[b.category];
-            count.first += b.buttons.empty() ? 0 : 1;
-            count.second += b.buttons != b.defaults ? 1 : 0;
-        }
-        const auto rank = []( const std::string & category ) {
-            return category == "DEFAULTMODE" ? 0 : category == "default" ? 1 : 2;
-        };
-        std::stable_sort( categories.begin(), categories.end(), [&rank]( const std::string & a,
-        const std::string & b ) {
-            return rank( a ) != rank( b ) ? rank( a ) < rank( b ) : context_name( a ) < context_name( b );
-        } );
-        mobile_list::spec what;
-        what.title = _( "Other screens" );
-        what.header =
-            _( "Menus, lists and the map keep the game's own buttons.  Pick a screen to see and change them.  The play screen follows the controller page while its layout is on." );
-        what.empty_text = _( "No screen has controller buttons." );
-        for( const std::string &category : categories ) {
-            const std::pair<int, int> &count = counts[category];
-            mobile_list::row r;
-            r.name = context_name( category );
-            r.right = string_format( _( "%d set" ), count.first );
-            r.current = count.second > 0;
-            r.description = count.second > 0 ?
-                            string_format( _( "%1$d actions have a button; %2$d differ from the defaults." ), count.first,
-                                           count.second ) :
-                            string_format( _( "%d actions have a button, all as by default." ), count.first );
-            r.action = _( "Open" );
-            if( count.second > 0 ) {
-                r.more_actions = { _( "All to default" ) };
-            }
-            what.rows.push_back( r );
-        }
-        const mobile_list::outcome did = mobile_list::show_all( what, tab, selected );
-        if( did.row < 0 || static_cast<size_t>( did.row ) >= categories.size() ) {
-            return;
-        }
-        const std::string &category = categories[static_cast<size_t>( did.row )];
-        if( did.action == 1 ) {
-            if( query_yn( _( "Put every controller button of \"%s\" back to its default?" ),
-                          context_name( category ) ) ) {
-                // defaults that moved between actions do not fight: clear all, then set
-                for( const binding &b : all ) {
-                    if( b.category == category && b.buttons != b.defaults ) {
-                        set_buttons( category, b.action, {} );
-                    }
-                }
-                for( const binding &b : all ) {
-                    if( b.category == category && b.buttons != b.defaults ) {
-                        set_buttons( category, b.action, b.defaults );
-                    }
-                }
-                save();
-            }
-            continue;
-        }
-        show_context( category );
-    }
-}
 
 // --- The controller page, the action picker, the menu editor and the ring ---
 //
@@ -724,18 +524,64 @@ const std::vector<std::string> &other_actions()
     return others;
 }
 
+// What the picker offers and for what.
+struct pick_group {
+    std::string name;
+    std::string note;
+    std::vector<std::string> ids;
+};
+
+struct pick_spec {
+    // "A button, press"
+    std::string title;
+    std::string badge;
+    // the action it has now, or empty
+    std::string now;
+    // "Play screen"
+    std::string scope;
+    std::vector<pick_group> groups;
+    // the actions' names; the play screen's where this is empty
+    std::map<std::string, std::string> names;
+    // where each action is now: "on A", "in menu Activities"
+    std::map<std::string, std::vector<std::string>> places;
+
+    std::string name_of( const std::string &id ) const {
+        if( names.empty() || id.empty() ) {
+            return action_name( id );
+        }
+        const auto found = names.find( id );
+        return found != names.end() ? found->second : id;
+    }
+};
+
+// The picker for the play screen's layout.  own_place: where the action being
+// chosen for is, as places_of_actions says it.
+pick_spec play_pick( const std::string &title, const std::string &badge, const std::string &now,
+                     const std::string &own_place )
+{
+    pick_spec spec;
+    spec.title = title;
+    spec.badge = badge;
+    spec.now = now;
+    spec.scope = _( "Play screen" );
+    for( const action_group &g : action_groups() ) {
+        spec.groups.push_back( { _( g.name ), _( g.note ), std::vector<std::string>( g.ids.begin(), g.ids.end() ) } );
+    }
+    spec.groups.push_back( { _( "Other" ), _( "Everything else the play screen can do" ), other_actions() } );
+    spec.places = places_of_actions( mobile_pad::current() );
+    for( std::pair<const std::string, std::vector<std::string>> &place : spec.places ) {
+        std::vector<std::string> &where = place.second;
+        where.erase( std::remove( where.begin(), where.end(), own_place ), where.end() );
+    }
+    return spec;
+}
+
 class picker_window : public cataimgui::window
 {
     public:
-        // own_place: where the action being chosen for is, as places_of_actions says it
-        picker_window( const std::string &title, const std::string &badge, const std::string &now,
-                       const std::string &own_place ) :
-            cataimgui::window( "MOBILE_PAD_PICKER", page_flags ), picked( now ), title( title ),
-            badge( badge ), places( places_of_actions( mobile_pad::current() ) ) {
-            for( std::pair<const std::string, std::vector<std::string>> &place : places ) {
-                std::vector<std::string> &where = place.second;
-                where.erase( std::remove( where.begin(), where.end(), own_place ), where.end() );
-            }
+        explicit picker_window( const pick_spec &spec ) :
+            cataimgui::window( "MOBILE_PAD_PICKER", page_flags ), picked( spec.now ), spec( spec ),
+            title( spec.title ), badge( spec.badge ), places( spec.places ) {
         }
         bool done = false;
         bool accepted = false;
@@ -748,6 +594,7 @@ class picker_window : public cataimgui::window
         }
         void draw_controls() override;
     private:
+        pick_spec spec;
         std::string title;
         std::string badge;
         std::map<std::string, std::vector<std::string>> places;
@@ -777,8 +624,8 @@ void picker_window::draw_controls()
     const float search_w = wide ? 300.0f : 240.0f;
     const float search_x = cw - 20.0f - search_w;
     b.text( face::body, 14.0f, title_end + 14.0f, 24.0f, mobile_ui::col_muted,
-            b.fit( face::body, 14.0f, string_format( _( "Play screen · now: %s" ),
-                    action_name( picked ) ), search_x - title_end - 28.0f ) );
+            b.fit( face::body, 14.0f, string_format( _( "%1$s · now: %2$s" ), spec.scope,
+                    spec.name_of( picked ) ), search_x - title_end - 28.0f ) );
     bool search_held = false;
     if( b.press( "##pad_search", search_x, 10.0f, search_w, 44.0f, &search_held ) ) {
         want_search = true;
@@ -792,34 +639,25 @@ void picker_window::draw_controls()
             b.fit( face::body, 15.0f, filter.empty() ? std::string( _( "Search actions" ) ) : filter,
                    search_w - 50.0f ) );
 
-    const std::vector<action_group> &groups = action_groups();
-    const int group_count = static_cast<int>( groups.size() ) + 1;
+    const std::vector<pick_group> &groups = spec.groups;
+    const int group_count = static_cast<int>( groups.size() );
+    group = std::max( 0, std::min( group, group_count - 1 ) );
     // which actions the list shows
     std::vector<std::string> shown;
     std::string note;
     if( !filter.empty() ) {
         std::set<std::string> seen;
-        const auto consider = [&]( const std::string & id ) {
-            if( seen.insert( id ).second && lcmatch( action_name( id ), filter ) ) {
-                shown.push_back( id );
+        for( const pick_group &g : groups ) {
+            for( const std::string &id : g.ids ) {
+                if( seen.insert( id ).second && lcmatch( spec.name_of( id ), filter ) ) {
+                    shown.push_back( id );
+                }
             }
-        };
-        for( const action_group &g : groups ) {
-            for( const char *const id : g.ids ) {
-                consider( id );
-            }
-        }
-        for( const std::string &id : other_actions() ) {
-            consider( id );
         }
         note = string_format( _( "Search: %s" ), filter );
-    } else if( group < static_cast<int>( groups.size() ) ) {
-        const action_group &g = groups[static_cast<size_t>( group )];
-        shown.assign( g.ids.begin(), g.ids.end() );
-        note = _( g.note );
-    } else {
-        shown = other_actions();
-        note = _( "Everything else the play screen can do" );
+    } else if( group_count > 0 ) {
+        shown = groups[static_cast<size_t>( group )].ids;
+        note = groups[static_cast<size_t>( group )].note;
     }
 
     // the groups: a column on a wide screen, a row of chips on a tall one
@@ -830,11 +668,8 @@ void picker_window::draw_controls()
                          std::max( 1.0f, b.c ) );
     }
     for( int i = 0; i < group_count; ++i ) {
-        const bool last = i == group_count - 1;
-        const std::string name = last ? std::string( _( "Other" ) ) : std::string( _(
-                                     groups[static_cast<size_t>( i )].name ) );
-        const int count = static_cast<int>( last ? other_actions().size() :
-                                            groups[static_cast<size_t>( i )].ids.size() );
+        const std::string &name = groups[static_cast<size_t>( i )].name;
+        const int count = static_cast<int>( groups[static_cast<size_t>( i )].ids.size() );
         const bool on = filter.empty() && i == group;
         float x;
         float y;
@@ -916,7 +751,7 @@ void picker_window::draw_controls()
             const float where_w = std::min( rows.measure( face::mono, 12.0f, where ).x,
                                             list_w * 0.45f );
             rows.text( face::bold, 16.0f, 18.0f, y + 20.0f, mobile_ui::col_fg,
-                       rows.fit( face::bold, 16.0f, action_name( id ), list_w - 84.0f - where_w ) );
+                       rows.fit( face::bold, 16.0f, spec.name_of( id ), list_w - 84.0f - where_w ) );
             if( !where.empty() ) {
                 const std::string where_fit = rows.fit( face::mono, 12.0f, where, where_w );
                 rows.text( face::mono, 12.0f, list_w - 48.0f - rows.measure( face::mono, 12.0f,
@@ -940,7 +775,7 @@ void picker_window::draw_controls()
     b.draw->AddRectFilled( b.at( list_x, footer_y ), b.at( cw, ch ), mobile_ui::col_panel );
     b.draw->AddLine( b.at( list_x, footer_y ), b.at( cw, footer_y ), mobile_ui::col_line,
                      std::max( 1.0f, b.c ) );
-    std::string footer = string_format( _( "%1$s will do: %2$s" ), title, action_name( picked ) );
+    std::string footer = string_format( _( "%1$s will do: %2$s" ), title, spec.name_of( picked ) );
     const auto elsewhere = places.find( picked );
     if( elsewhere != places.end() && !elsewhere->second.empty() ) {
         footer += "  " + string_format( _( "It is also %s." ), enumerate_as_string( elsewhere->second ) );
@@ -959,10 +794,9 @@ void picker_window::draw_controls()
 }
 
 // Asks for an action.  Nothing if cancelled; an empty string is "Nothing".
-std::optional<std::string> pick_action( const std::string &title, const std::string &badge,
-                                        const std::string &now, const std::string &own_place )
+std::optional<std::string> pick_action( const pick_spec &spec )
 {
-    picker_window window( title, badge, now, own_place );
+    picker_window window( spec );
     input_context ctxt( "default" );
     const mobile_prompt::own_controls own_controls( ctxt );
     ctxt.register_action( "QUIT" );
@@ -1218,9 +1052,9 @@ void show_menus( const std::string &start )
         } else if( asked == menus_window::ask::choose ) {
             const std::string title = string_format( _( "%1$s, slot %2$s" ), m.name,
                                       _( slot_names[static_cast<size_t>( window.slot )] ) );
-            const std::optional<std::string> chosen = pick_action( title,
+            const std::optional<std::string> chosen = pick_action( play_pick( title,
                     string_format( "%d", window.slot + 1 ), m.slots[static_cast<size_t>( window.slot )],
-                    string_format( _( "in menu %s" ), m.name ) );
+                    string_format( _( "in menu %s" ), m.name ) ) );
             if( chosen ) {
                 m.slots[static_cast<size_t>( window.slot )] = *chosen;
                 mobile_pad::save();
@@ -1278,6 +1112,173 @@ const std::array<picture_part, 18> picture = { {
     }
 };
 
+bool is_dpad( const mobile_pad::button b )
+{
+    return b == mobile_pad::button::up || b == mobile_pad::button::down ||
+           b == mobile_pad::button::left || b == mobile_pad::button::right;
+}
+
+std::string stick_mode_name( const mobile_pad::stick_mode m )
+{
+    switch( m ) {
+        case mobile_pad::stick_mode::move:
+            return _( "Move" );
+        case mobile_pad::stick_mode::direction:
+            return _( "Pick a direction" );
+        case mobile_pad::stick_mode::pan:
+            return _( "Pan the view" );
+        case mobile_pad::stick_mode::zoom:
+            return _( "Zoom" );
+        default:
+            return _( "Nothing" );
+    }
+}
+
+// --- Screens other than the play screen ---
+//
+// They keep upstream's scheme: a button is bound to an action of the screen's
+// input context in the keybindings, the left trigger is a modifier (a second
+// action per button), and in menus some buttons are fixed.  The page shows and
+// changes those bindings.
+
+// upstream's code for a button, plain and with the left trigger held (or -1)
+int joy_code( const mobile_pad::button b, const bool with_l2 )
+{
+    switch( b ) {
+        case mobile_pad::button::a:
+            return with_l2 ? JOY_ALT_A : JOY_A;
+        case mobile_pad::button::b:
+            return with_l2 ? JOY_ALT_B : JOY_B;
+        case mobile_pad::button::x:
+            return with_l2 ? JOY_ALT_X : JOY_X;
+        case mobile_pad::button::y:
+            return with_l2 ? JOY_ALT_Y : JOY_Y;
+        case mobile_pad::button::l1:
+            return with_l2 ? JOY_ALT_LB : JOY_LB;
+        case mobile_pad::button::r1:
+            return with_l2 ? JOY_ALT_RB : JOY_RB;
+        case mobile_pad::button::r2:
+            return with_l2 ? JOY_ALT_RT : JOY_RT;
+        case mobile_pad::button::l3:
+            return with_l2 ? JOY_ALT_LS : JOY_LS;
+        case mobile_pad::button::r3:
+            return with_l2 ? JOY_ALT_RS : JOY_RS;
+        case mobile_pad::button::up:
+            return with_l2 ? JOY_ALT_UP : JOY_UP;
+        case mobile_pad::button::down:
+            return with_l2 ? JOY_ALT_DOWN : JOY_DOWN;
+        case mobile_pad::button::left:
+            return with_l2 ? JOY_ALT_LEFT : JOY_LEFT;
+        case mobile_pad::button::right:
+            return with_l2 ? JOY_ALT_RIGHT : JOY_RIGHT;
+        case mobile_pad::button::select:
+            return with_l2 ? JOY_ALT_BACK : JOY_BACK;
+        case mobile_pad::button::start:
+            return with_l2 ? JOY_ALT_START : JOY_START;
+        default:
+            return -1;
+    }
+}
+
+// What a button always does in a menu, whatever is bound; empty if nothing.
+std::string fixed_in_menus( const mobile_pad::button b )
+{
+    switch( b ) {
+        case mobile_pad::button::a:
+            return _( "Confirm" );
+        case mobile_pad::button::b:
+        case mobile_pad::button::select:
+        case mobile_pad::button::start:
+            return _( "Back" );
+        case mobile_pad::button::l1:
+            return _( "Previous tab" );
+        case mobile_pad::button::r1:
+            return _( "Next tab" );
+        case mobile_pad::button::up:
+        case mobile_pad::button::down:
+        case mobile_pad::button::left:
+        case mobile_pad::button::right:
+            return _( "Move the selection" );
+        default:
+            return "";
+    }
+}
+
+// The gamepad bindings of one input context.
+struct screen_bindings {
+    std::string category;
+    std::vector<binding> actions;
+    // upstream's button code to the action bound to it
+    std::map<int, std::string> by_code;
+    std::map<std::string, std::string> names;
+
+    std::string action_on( const int code ) const {
+        const auto found = by_code.find( code );
+        return found != by_code.end() ? found->second : std::string();
+    }
+    std::string name_of( const std::string &id ) const {
+        const auto found = names.find( id );
+        return found != names.end() ? found->second : id;
+    }
+};
+
+screen_bindings load_screen( const std::string &category )
+{
+    screen_bindings screen;
+    screen.category = category;
+    for( const binding &b : bindings() ) {
+        if( b.category != category ) {
+            continue;
+        }
+        screen.names[b.action] = b.name;
+        for( const int code : b.buttons ) {
+            screen.by_code[code] = b.action;
+        }
+        screen.actions.push_back( b );
+    }
+    return screen;
+}
+
+// Gives a button code to an action of a context (or to none), and saves.
+void bind_code( const std::string &category, const int code, const std::string &action )
+{
+    for( const binding &b : bindings() ) {
+        if( b.category != category ) {
+            continue;
+        }
+        const bool has = std::find( b.buttons.begin(), b.buttons.end(), code ) != b.buttons.end();
+        std::vector<int> wanted = b.buttons;
+        if( b.action == action && !has ) {
+            wanted.push_back( code );
+        } else if( b.action != action && has ) {
+            wanted.erase( std::remove( wanted.begin(), wanted.end(), code ), wanted.end() );
+        } else {
+            continue;
+        }
+        set_buttons( category, b.action, wanted );
+    }
+    save();
+}
+
+// The contexts a controller reaches, the menus' shared one first.
+std::vector<std::string> other_screens()
+{
+    std::vector<std::string> categories;
+    for( const binding &b : bindings() ) {
+        if( b.category != "DEFAULTMODE" &&
+            std::find( categories.begin(), categories.end(), b.category ) == categories.end() ) {
+            categories.push_back( b.category );
+        }
+    }
+    std::stable_sort( categories.begin(), categories.end(), []( const std::string & a,
+    const std::string & b ) {
+        const bool a_first = a == "default";
+        const bool b_first = b == "default";
+        return a_first != b_first ? a_first : context_name( a ) < context_name( b );
+    } );
+    return categories;
+}
+
 class pad_window : public cataimgui::window
 {
     public:
@@ -1287,8 +1288,9 @@ class pad_window : public cataimgui::window
             none,
             press,
             long_press,
+            with_l2,
             menus,
-            other,
+            screen,
             clear,
             defaults
         };
@@ -1296,16 +1298,103 @@ class pad_window : public cataimgui::window
         ask asked = ask::none;
         // index into controls
         int selected = 0;
+        // the input context shown; empty for the play screen and its layout
+        std::string category;
+        // the bindings of that context, read again when they change
+        screen_bindings screen;
     protected:
         cataimgui::bounds get_bounds() override {
             return { 0.0f, 0.0f, 1.0f, 1.0f };
         }
         void draw_controls() override;
     private:
-        // 0 none, 1 the left stick's dropdown, 2 the right stick's
-        int dropdown = 0;
-        void draw_panel( const board &b, float px, float py, float pw, float ph );
+        enum class drop : int {
+            none,
+            menu_left,
+            menu_right,
+            stick,
+            dpad
+        };
+        // the open dropdown, where it is (canvas pixels) and what it offers
+        drop dropdown = drop::none;
+        float drop_x = 0.0f;
+        float drop_y = 0.0f;
+        float drop_w = 0.0f;
+        std::vector<std::string> choices;
+        int drop_now = 0;
+
+        // A dropdown's closed box.  Opens it when tapped.
+        void drop_box( const board &b, drop which, float x, float y, float w, const std::string &shown,
+                       bool muted );
+        void open_choices( const control &sel );
+        void choose( const control &sel, int index );
+        void draw_panel( const board &b, float px, float py, float pw );
+        void draw_play_panel( const board &b, const control &sel, float x, float y, float w );
+        void draw_other_panel( const board &b, const control &sel, float x, float y, float w );
 };
+
+void pad_window::open_choices( const control &sel )
+{
+    const mobile_pad::layout &l = mobile_pad::current();
+    choices.clear();
+    drop_now = 0;
+    if( dropdown == drop::menu_left || dropdown == drop::menu_right ) {
+        const mobile_pad::assignment &a = l.of( sel.b );
+        const std::string &now = dropdown == drop::menu_left ? a.menu_left : a.menu_right;
+        choices.emplace_back( _( "None" ) );
+        for( const mobile_pad::menu &m : l.menus ) {
+            if( m.name == now ) {
+                drop_now = static_cast<int>( choices.size() );
+            }
+            choices.push_back( m.name );
+        }
+    } else if( dropdown == drop::stick ) {
+        for( int i = 0; i < static_cast<int>( mobile_pad::stick_mode::count ); ++i ) {
+            choices.push_back( stick_mode_name( static_cast<mobile_pad::stick_mode>( i ) ) );
+        }
+        drop_now = static_cast<int>( l.sticks[static_cast<size_t>( sel.stick )] );
+    } else if( dropdown == drop::dpad ) {
+        choices.emplace_back( _( "Four buttons" ) );
+        choices.emplace_back( _( "Move" ) );
+        drop_now = l.dpad_moves ? 1 : 0;
+    }
+}
+
+void pad_window::choose( const control &sel, const int index )
+{
+    mobile_pad::layout &l = mobile_pad::current();
+    if( dropdown == drop::menu_left || dropdown == drop::menu_right ) {
+        mobile_pad::assignment &a = l.of( sel.b );
+        ( dropdown == drop::menu_left ? a.menu_left : a.menu_right ) =
+            index == 0 ? std::string() : choices[static_cast<size_t>( index )];
+    } else if( dropdown == drop::stick ) {
+        l.sticks[static_cast<size_t>( sel.stick )] = static_cast<mobile_pad::stick_mode>( index );
+    } else if( dropdown == drop::dpad ) {
+        l.dpad_moves = index == 1;
+    }
+    mobile_pad::save();
+}
+
+void pad_window::drop_box( const board &b, const drop which, const float x, const float y,
+                           const float w, const std::string &shown, const bool muted )
+{
+    bool held = false;
+    if( b.press( string_format( "##pad_dropdown%d", static_cast<int>( which ) ), x, y, w, 48.0f,
+                 &held ) ) {
+        dropdown = which;
+        drop_x = x;
+        drop_y = y + 50.0f;
+        drop_w = w;
+    }
+    b.box( x, y, w, 48.0f, held ? mobile_ui::col_button_down : col_well,
+           dropdown == which ? mobile_ui::col_accent : col_line_strong, 12.0f );
+    b.text( face::bold, 16.0f, x + 12.0f, y + 13.0f, muted ? mobile_ui::col_muted : mobile_ui::col_fg,
+            b.fit( face::bold, 16.0f, shown, w - 48.0f ) );
+    const float ax = x + w - 24.0f;
+    const float ay = y + 21.0f;
+    b.draw->AddTriangleFilled( b.at( ax - 6.0f, ay ), b.at( ax + 6.0f, ay ), b.at( ax, ay + 7.0f ),
+                               mobile_ui::col_text_soft );
+}
 
 void pad_window::draw_controls()
 {
@@ -1316,6 +1405,7 @@ void pad_window::draw_controls()
     board b = fit_board( cw, ch );
     mobile_pad::layout &l = mobile_pad::current();
     const control &sel = controls[static_cast<size_t>( selected )];
+    const bool play = category.empty();
     const float panel_x = wide ? 880.0f : 0.0f;
     const float panel_y = wide ? 64.0f : 64.0f + 700.0f;
     const float panel_w = wide ? 400.0f : 880.0f;
@@ -1323,59 +1413,63 @@ void pad_window::draw_controls()
 
     // An open dropdown comes first so that it gets the tap, and the rest of the
     // page does not react under it.  It is drawn last.
-    const float drop_x = panel_x + 18.0f + 14.0f + 96.0f;
-    const float drop_w = panel_w - 36.0f - 28.0f - 96.0f;
     const float drop_row = 48.0f;
-    std::vector<std::string> choices;
-    float drop_y = 0.0f;
-    if( dropdown != 0 && sel.stick < 0 ) {
-        choices.emplace_back();
-        for( const mobile_pad::menu &m : l.menus ) {
-            choices.push_back( m.name );
-        }
-        const float wanted = panel_y + 268.0f + ( dropdown == 1 ? 34.0f : 90.0f ) + 50.0f;
-        drop_y = std::max( 70.0f, std::min( wanted, ch - 8.0f - drop_row * choices.size() ) );
+    float list_y = 0.0f;
+    if( dropdown != drop::none ) {
+        open_choices( sel );
+        list_y = std::max( 70.0f, std::min( drop_y, ch - 8.0f - drop_row * choices.size() ) );
         for( size_t i = 0; i < choices.size(); ++i ) {
             if( b.press( string_format( "##pad_drop%d", static_cast<int>( i ) ), drop_x,
-                         drop_y + drop_row * i, drop_w, drop_row ) ) {
-                mobile_pad::assignment &a = l.of( sel.b );
-                ( dropdown == 1 ? a.menu_left : a.menu_right ) = choices[i];
-                mobile_pad::save();
-                dropdown = 0;
+                         list_y + drop_row * i, drop_w, drop_row ) ) {
+                choose( sel, static_cast<int>( i ) );
+                dropdown = drop::none;
             }
         }
-        if( dropdown != 0 && b.press( "##pad_drop_close", 0.0f, 0.0f, cw, ch ) ) {
-            dropdown = 0;
+        if( dropdown != drop::none && b.press( "##pad_drop_close", 0.0f, 0.0f, cw, ch ) ) {
+            dropdown = drop::none;
         }
         b.live = false;
-    } else {
-        dropdown = 0;
     }
     const bool show_dropdown = !b.live;
 
     if( top_bar( b, cw, _( "Controller" ), nullptr ) ) {
         done = true;
     }
-    const std::string menus_label = string_format( _( "Radial menus (%d)" ),
-                                    static_cast<int>( l.menus.size() ) );
-    if( text_button( b, "##pad_menus", cw - 20.0f - 190.0f, 10.0f, 190.0f, 44.0f, menus_label ) ) {
-        asked = ask::menus;
+    float bar_x = cw - 20.0f;
+    if( play ) {
+        const std::string menus_label = string_format( _( "Radial menus (%d)" ),
+                                        static_cast<int>( l.menus.size() ) );
+        bar_x -= 190.0f;
+        if( text_button( b, "##pad_menus", bar_x, 10.0f, 190.0f, 44.0f, menus_label ) ) {
+            asked = ask::menus;
+        }
+        bar_x -= 10.0f;
     }
-    if( text_button( b, "##pad_other", cw - 20.0f - 190.0f - 10.0f - 160.0f, 10.0f, 160.0f, 44.0f,
-                     _( "Other screens" ) ) ) {
-        asked = ask::other;
-    }
-    if( wide ) {
-        const std::string scope = _( "Play screen" );
-        b.text( face::mono, 13.0f, cw - 20.0f - 190.0f - 10.0f - 160.0f - 16.0f -
-                b.measure( face::mono, 13.0f, scope ).x, 25.0f, mobile_ui::col_muted, scope );
+    // which screen: a button that opens the list of them
+    const float screen_w = wide ? 330.0f : 280.0f;
+    bar_x -= screen_w;
+    {
+        bool held = false;
+        if( b.press( "##pad_screen", bar_x, 10.0f, screen_w, 44.0f, &held ) ) {
+            asked = ask::screen;
+        }
+        b.box( bar_x, 10.0f, screen_w, 44.0f, held ? mobile_ui::col_button_down : col_well,
+               mobile_ui::col_accent, 12.0f );
+        b.text( face::mono, 11.0f, bar_x + 12.0f, 25.0f, mobile_ui::col_muted, _( "SCREEN" ) );
+        b.text( face::bold, 15.0f, bar_x + 70.0f, 22.0f, mobile_ui::col_fg,
+                b.fit( face::bold, 15.0f, play ? std::string( _( "Play screen" ) ) : context_name( category ),
+                       screen_w - 108.0f ) );
+        const float ax = bar_x + screen_w - 22.0f;
+        b.draw->AddTriangleFilled( b.at( ax - 6.0f, 29.0f ), b.at( ax + 6.0f, 29.0f ),
+                                   b.at( ax, 36.0f ), mobile_ui::col_text_soft );
     }
 
     // --- the picture and the labels ---
     board pane = b;
     pane.origin = b.at( 0.0f, 64.0f );
     pane.text( face::body, 14.0f, 20.0f, 14.0f, mobile_ui::col_muted,
-               _( "Each control shows what it does on the play screen.  Tap one, here or on the picture, to change it." ),
+               play ? _( "Each control shows what it does on the play screen.  Tap one, here or on the picture, to change it." )
+               : _( "Each control shows what it does on this screen.  Tap one, here or on the picture, to change it." ),
                840.0f );
     pane.box( 250.0f, 235.0f, 340.0f, 250.0f, col_body, col_line_strong, 70.0f );
     pane.draw->AddRectFilled( pane.at( 318.0f, 406.0f ), pane.at( 344.0f, 432.0f ), col_part );
@@ -1418,28 +1512,57 @@ void pad_window::draw_controls()
         draw_glyph( pane, c, c.x + 10.0f, c.y + 10.0f, 34.0f,
                     on ? mobile_ui::col_on_accent : mobile_ui::col_fg );
         std::string main;
+        bool main_muted = false;
         std::vector<std::string> subs;
-        if( c.stick == 0 ) {
-            main = _( "Pick a direction" );
-        } else if( c.stick == 1 ) {
-            main = _( "Move the view" );
+        if( play ) {
+            if( c.stick >= 0 ) {
+                main = stick_mode_name( l.sticks[static_cast<size_t>( c.stick )] );
+            } else if( l.dpad_moves && is_dpad( c.b ) ) {
+                main = _( "Move" );
+            } else {
+                const mobile_pad::assignment &a = l.of( c.b );
+                main = action_name( a.press );
+                if( const mobile_pad::menu *const m = l.menu_on( c.b, 0 ) ) {
+                    subs.push_back( string_format( _( "Hold + L stick: %s" ), m->name ) );
+                }
+                if( const mobile_pad::menu *const m = l.menu_on( c.b, 1 ) ) {
+                    subs.push_back( string_format( _( "Hold + R stick: %s" ), m->name ) );
+                }
+                if( l.has_long_press( c.b ) ) {
+                    subs.push_back( string_format( _( "Long press: %s" ), action_name( a.long_press ) ) );
+                }
+            }
+        } else if( c.stick >= 0 ) {
+            main = c.stick == 0 ? _( "With L2: a ring" ) : _( "Move the selection" );
+            main_muted = true;
+            if( c.stick == 1 ) {
+                subs.emplace_back( _( "With L2: a ring" ) );
+            }
+        } else if( c.b == mobile_pad::button::l2 ) {
+            main = _( "Second action of a button" );
+            main_muted = true;
         } else {
-            const mobile_pad::assignment &a = l.of( c.b );
-            main = action_name( a.press );
-            if( const mobile_pad::menu *const m = l.menu_on( c.b, 0 ) ) {
-                subs.push_back( string_format( _( "Hold + L stick: %s" ), m->name ) );
+            const std::string bound = screen.action_on( joy_code( c.b, false ) );
+            const std::string fixed = fixed_in_menus( c.b );
+            if( !bound.empty() ) {
+                main = screen.name_of( bound );
+            } else if( !fixed.empty() ) {
+                main = fixed;
+                main_muted = true;
+            } else {
+                main = _( "Nothing" );
+                main_muted = true;
             }
-            if( const mobile_pad::menu *const m = l.menu_on( c.b, 1 ) ) {
-                subs.push_back( string_format( _( "Hold + R stick: %s" ), m->name ) );
-            }
-            if( l.has_long_press( c.b ) ) {
-                subs.push_back( string_format( _( "Long press: %s" ), action_name( a.long_press ) ) );
+            const std::string second = screen.action_on( joy_code( c.b, true ) );
+            if( !second.empty() ) {
+                subs.push_back( string_format( _( "With L2: %s" ), screen.name_of( second ) ) );
             }
         }
         const float text_w = c.w - 64.0f;
         const float lines_h = 17.0f + 13.0f * subs.size();
         float ty = c.y + ( 54.0f - lines_h ) * 0.5f;
-        pane.text( face::bold, 14.0f, c.x + 54.0f, ty, mobile_ui::col_fg,
+        pane.text( face::bold, 14.0f, c.x + 54.0f, ty,
+                   main_muted ? mobile_ui::col_muted : mobile_ui::col_fg,
                    pane.fit( face::bold, 14.0f, main, text_w ) );
         ty += 17.0f;
         for( const std::string &sub : subs ) {
@@ -1459,64 +1582,113 @@ void pad_window::draw_controls()
         b.draw->AddLine( b.at( 0.0f, panel_y ), b.at( cw, panel_y ), mobile_ui::col_line,
                          std::max( 1.0f, b.c ) );
     }
-    draw_panel( b, panel_x, panel_y, panel_w, panel_h );
+    draw_panel( b, panel_x, panel_y, panel_w );
 
     if( show_dropdown ) {
         const float h = drop_row * choices.size();
         b.draw->AddRectFilled( b.at( 0.0f, 0.0f ), b.at( cw, ch ), IM_COL32( 0, 0, 0, 90 ) );
-        b.box( drop_x, drop_y, drop_w, h, mobile_ui::col_sheet, mobile_ui::col_accent, 12.0f );
-        const mobile_pad::assignment &a = l.of( sel.b );
-        const std::string &now = dropdown == 1 ? a.menu_left : a.menu_right;
+        b.box( drop_x, list_y, drop_w, h, mobile_ui::col_sheet, mobile_ui::col_accent, 12.0f );
         for( size_t i = 0; i < choices.size(); ++i ) {
-            const bool on = choices[i] == now || ( i == 0 && l.find_menu( now ) == nullptr );
+            const bool on = static_cast<int>( i ) == drop_now;
             if( on ) {
-                b.box( drop_x + 4.0f, drop_y + drop_row * i + 4.0f, drop_w - 8.0f, drop_row - 8.0f,
+                b.box( drop_x + 4.0f, list_y + drop_row * i + 4.0f, drop_w - 8.0f, drop_row - 8.0f,
                        mobile_ui::col_accent_soft, 0, 9.0f );
             }
-            b.text( face::bold, 16.0f, drop_x + 14.0f, drop_y + drop_row * i + 14.0f,
+            b.text( face::bold, 16.0f, drop_x + 14.0f, list_y + drop_row * i + 13.0f,
                     on ? mobile_ui::col_accent : mobile_ui::col_fg,
-                    b.fit( face::bold, 16.0f, i == 0 ? std::string( _( "None" ) ) : choices[i],
-                           drop_w - 28.0f ) );
+                    b.fit( face::bold, 16.0f, choices[i], drop_w - 28.0f ) );
         }
     }
 }
 
-void pad_window::draw_panel( const board &b, const float px, const float py, const float pw,
-                             const float /*ph*/ )
+void pad_window::draw_panel( const board &b, const float px, const float py, const float pw )
 {
-    mobile_pad::layout &l = mobile_pad::current();
     const control &sel = controls[static_cast<size_t>( selected )];
     const float x = px + 18.0f;
     const float w = pw - 36.0f;
     // which control
     b.box( x, py + 18.0f, 52.0f, 52.0f, mobile_ui::col_accent, 0, 14.0f );
     draw_glyph( b, sel, x, py + 18.0f, 52.0f, mobile_ui::col_on_accent );
-    b.text( face::display, 24.0f, x + 64.0f, py + 20.0f, mobile_ui::col_fg, _( sel.name ) );
-    b.text( face::body, 13.0f, x + 64.0f, py + 50.0f, mobile_ui::col_muted, _( "Play screen" ) );
+    b.text( face::display, 24.0f, x + 64.0f, py + 18.0f, mobile_ui::col_fg, _( sel.name ) );
+    b.text( face::body, 13.0f, x + 64.0f, py + 50.0f, mobile_ui::col_muted,
+            b.fit( face::body, 13.0f, category.empty() ? std::string( _( "Play screen" ) ) :
+                   context_name( category ), w - 64.0f ) );
+    if( category.empty() ) {
+        draw_play_panel( b, sel, x, py + 84.0f, w );
+    } else {
+        draw_other_panel( b, sel, x, py + 84.0f, w );
+    }
+    // at the foot of the panel
+    const float foot = py + ( 736.0f - 18.0f - 48.0f );
+    const float half = ( w - 8.0f ) * 0.5f;
+    if( text_button( b, "##pad_clear", x, foot, half, 48.0f, _( "Clear this button" ),
+                     button_look::plain, sel.stick < 0 ) ) {
+        asked = ask::clear;
+    }
+    if( text_button( b, "##pad_defaults", x + half + 8.0f, foot, half, 48.0f,
+                     category.empty() ? _( "All to default" ) : _( "Screen to default" ) ) ) {
+        asked = ask::defaults;
+    }
+}
 
-    const auto card = [&]( const float y, const float h, const std::string & label,
+void pad_window::draw_play_panel( const board &b, const control &sel, const float x, float y,
+                                  const float w )
+{
+    mobile_pad::layout &l = mobile_pad::current();
+    const auto card = [&]( const float cy, const float h, const std::string & label,
     const ImU32 border, const ImU32 label_col ) {
-        b.box( x, y, w, h, 0, border, 14.0f );
-        b.text( face::mono, 11.0f, x + 14.0f, y + 12.0f, label_col, label );
+        b.box( x, cy, w, h, 0, border, 14.0f );
+        b.text( face::mono, 11.0f, x + 14.0f, cy + 12.0f, label_col, label );
+    };
+    const auto note = [&]( const float cy, const std::string & text ) {
+        const float h = b.measure( face::body, 14.0f, text, w - 28.0f ).y + 28.0f;
+        b.box( x, cy, w, h, 0, mobile_ui::col_line, 14.0f );
+        b.text( face::body, 14.0f, x + 14.0f, cy + 14.0f, mobile_ui::col_text_soft, text, w - 28.0f );
+        return h;
     };
 
-    float y = py + 84.0f;
     if( sel.stick >= 0 ) {
-        card( y, 78.0f, _( "PUSH" ), mobile_ui::col_line, mobile_ui::col_muted );
-        b.text( face::bold, 17.0f, x + 14.0f, y + 38.0f, mobile_ui::col_fg,
-                sel.stick == 0 ? _( "Pick a direction for the next step or action" ) : _( "Move the view" ) );
-        y += 92.0f;
-        b.box( x, y, w, 120.0f, 0, mobile_ui::col_line, 14.0f );
-        b.text( face::body, 15.0f, x + 14.0f, y + 14.0f, mobile_ui::col_text_soft,
-                _( "A stick has no long press and no menus of its own.  To put a radial menu on this stick, select a button and choose the menu there." ),
-                w - 28.0f );
+        const mobile_pad::stick_mode mode = l.sticks[static_cast<size_t>( sel.stick )];
+        card( y, 92.0f, _( "PUSHING THE STICK" ), IM_COL32( 240, 145, 63, 100 ), mobile_ui::col_accent );
+        drop_box( b, drop::stick, x + 14.0f, y + 32.0f, w - 28.0f, stick_mode_name( mode ), false );
+        y += 106.0f;
+        std::string what;
+        switch( mode ) {
+            case mobile_pad::stick_mode::move:
+                what = _( "Push the stick to walk that way; hold it to keep walking." );
+                break;
+            case mobile_pad::stick_mode::direction:
+                what = _( "The stick points at a tile next to you.  \"Step / wait a turn\" walks there, and Interact, Smash, Grab and the like act on it." );
+                break;
+            case mobile_pad::stick_mode::pan:
+                what = _( "Push the stick to scroll the view." );
+                break;
+            case mobile_pad::stick_mode::zoom:
+                what = _( "Up zooms in, down zooms out." );
+                break;
+            default:
+                what = _( "The stick does nothing by itself." );
+                break;
+        }
+        y += note( y, what ) + 14.0f;
+        note( y, _( "While a button with a radial menu is held, the stick works that menu instead.  To put a menu on this stick, select a button and choose the menu there." ) );
         return;
+    }
+    if( is_dpad( sel.b ) ) {
+        card( y, 92.0f, _( "THE D-PAD" ), IM_COL32( 240, 145, 63, 100 ), mobile_ui::col_accent );
+        drop_box( b, drop::dpad, x + 14.0f, y + 32.0f, w - 28.0f,
+                  l.dpad_moves ? _( "Move" ) : _( "Four buttons" ), false );
+        y += 106.0f;
+        if( l.dpad_moves ) {
+            note( y, _( "The d-pad walks: one direction, or two at once for a diagonal.  What its four buttons were set to rests until this is back on \"Four buttons\"." ) );
+            return;
+        }
     }
     mobile_pad::assignment &a = l.of( sel.b );
     const float change_w = 96.0f;
     // press
     card( y, 78.0f, _( "PRESS" ), mobile_ui::col_line, mobile_ui::col_muted );
-    b.text( face::bold, 17.0f, x + 14.0f, y + 38.0f, mobile_ui::col_fg,
+    b.text( face::bold, 17.0f, x + 14.0f, y + 36.0f, mobile_ui::col_fg,
             b.fit( face::bold, 17.0f, action_name( a.press ), w - 42.0f - change_w ) );
     if( text_button( b, "##pad_change_press", x + w - 14.0f - change_w, y + 22.0f, change_w, 44.0f,
                      _( "Change" ), button_look::primary ) ) {
@@ -1529,11 +1701,11 @@ void pad_window::draw_panel( const board &b, const float px, const float py, con
     if( menus ) {
         b.draw->AddRectFilled( b.at( x, y ), b.at( x + w, y + 78.0f ), IM_COL32( 255, 255, 255, 8 ),
                                14.0f * b.c );
-        b.text( face::body, 14.0f, x + 14.0f, y + 32.0f, mobile_ui::col_muted,
+        b.text( face::body, 13.0f, x + 14.0f, y + 30.0f, mobile_ui::col_muted,
                 _( "Not available: holding this button opens a menu.  Set both menus below to None to use a long press." ),
                 w - 28.0f );
     } else {
-        b.text( face::bold, 17.0f, x + 14.0f, y + 38.0f, mobile_ui::col_fg,
+        b.text( face::bold, 17.0f, x + 14.0f, y + 36.0f, mobile_ui::col_fg,
                 b.fit( face::bold, 17.0f, action_name( a.long_press ), w - 42.0f - change_w ) );
         if( text_button( b, "##pad_change_long", x + w - 14.0f - change_w, y + 22.0f, change_w, 44.0f,
                          _( "Change" ) ) ) {
@@ -1546,45 +1718,91 @@ void pad_window::draw_panel( const board &b, const float px, const float py, con
           mobile_ui::col_accent );
     for( int stick = 0; stick < 2; ++stick ) {
         const float row_y = y + ( stick == 0 ? 34.0f : 90.0f );
-        b.text( face::bold, 15.0f, x + 14.0f, row_y + 15.0f, mobile_ui::col_fg,
+        b.text( face::bold, 15.0f, x + 14.0f, row_y + 14.0f, mobile_ui::col_fg,
                 stick == 0 ? _( "Left stick" ) : _( "Right stick" ) );
-        const float dx = x + 14.0f + 96.0f;
-        const float dw = w - 28.0f - 96.0f;
-        bool held = false;
-        if( b.press( string_format( "##pad_dropdown%d", stick ), dx, row_y, dw, 48.0f, &held ) ) {
-            dropdown = stick + 1;
-        }
-        b.box( dx, row_y, dw, 48.0f, held ? mobile_ui::col_button_down : col_well,
-               dropdown == stick + 1 ? mobile_ui::col_accent : col_line_strong, 12.0f );
         const mobile_pad::menu *const m = l.menu_on( sel.b, stick );
-        b.text( face::bold, 16.0f, dx + 12.0f, row_y + 14.0f,
-                m != nullptr ? mobile_ui::col_fg : mobile_ui::col_muted,
-                b.fit( face::bold, 16.0f, m != nullptr ? m->name : std::string( _( "None" ) ),
-                       dw - 48.0f ) );
-        // the arrow of a dropdown
-        const float ax = dx + dw - 24.0f;
-        const float ay = row_y + 21.0f;
-        b.draw->AddTriangleFilled( b.at( ax - 6.0f, ay ), b.at( ax + 6.0f, ay ), b.at( ax, ay + 7.0f ),
-                                   mobile_ui::col_text_soft );
+        drop_box( b, stick == 0 ? drop::menu_left : drop::menu_right, x + 14.0f + 96.0f, row_y,
+                  w - 28.0f - 96.0f, m != nullptr ? m->name : std::string( _( "None" ) ), m == nullptr );
     }
     if( text_button( b, "##pad_edit_menus", x + 14.0f, y + 146.0f, w - 28.0f, 40.0f,
                      _( "Edit menus or make a new one" ), button_look::quiet ) ) {
         asked = ask::menus;
     }
     y += 208.0f;
+    if( !is_dpad( sel.b ) ) {
+        b.text( face::body, 13.0f, x, y, mobile_ui::col_muted,
+                _( "Hold the button and its menus come on screen; push a stick to pick.  The same menu can be on several buttons." ),
+                w );
+    }
+}
+
+void pad_window::draw_other_panel( const board &b, const control &sel, const float x, float y,
+                                   const float w )
+{
+    const auto card = [&]( const float cy, const float h, const std::string & label ) {
+        b.box( x, cy, w, h, 0, mobile_ui::col_line, 14.0f );
+        b.text( face::mono, 11.0f, x + 14.0f, cy + 12.0f, mobile_ui::col_muted, label );
+    };
+    const auto note = [&]( const float cy, const std::string & text ) {
+        const float h = b.measure( face::body, 14.0f, text, w - 28.0f ).y + 28.0f;
+        b.box( x, cy, w, h, 0, mobile_ui::col_line, 14.0f );
+        b.text( face::body, 14.0f, x + 14.0f, cy + 14.0f, mobile_ui::col_text_soft, text, w - 28.0f );
+        return h;
+    };
+    if( sel.stick >= 0 ) {
+        // the ring upstream gives this stick while the left trigger is held
+        y += note( y, sel.stick == 0 ?
+                   _( "On this screen the left stick only works with L2 held: it then picks from this screen's ring." )
+                   :
+                   _( "On this screen the right stick moves the selection.  With L2 held it picks from this screen's second ring." ) )
+             + 14.0f;
+        const int first = sel.stick == 0 ? JOY_L_RADIAL_N : JOY_R_RADIAL_N;
+        std::string ring;
+        for( int i = 0; i < mobile_pad::num_slots; ++i ) {
+            const std::string id = screen.action_on( first + i );
+            if( !id.empty() ) {
+                ring += string_format( "%s: %s\n", _( slot_names[static_cast<size_t>( i )] ),
+                                       screen.name_of( id ) );
+            }
+        }
+        if( ring.empty() ) {
+            ring = _( "The ring is empty on this screen." );
+        } else {
+            ring.pop_back();
+        }
+        card( y, b.measure( face::body, 14.0f, ring, w - 28.0f ).y + 46.0f, _( "RING WITH L2 HELD" ) );
+        b.text( face::body, 14.0f, x + 14.0f, y + 32.0f, mobile_ui::col_fg, ring, w - 28.0f );
+        return;
+    }
+    if( sel.b == mobile_pad::button::l2 ) {
+        note( y, _( "On this screen L2 is held together with another button for that button's second action, or with a stick for a ring.  Radial menus of your own and long presses are for the play screen." ) );
+        return;
+    }
+    const float change_w = 96.0f;
+    const std::string fixed = fixed_in_menus( sel.b );
+    for( int with_l2 = 0; with_l2 < 2; ++with_l2 ) {
+        const std::string bound = screen.action_on( joy_code( sel.b, with_l2 == 1 ) );
+        card( y, 78.0f, with_l2 == 1 ? _( "WITH L2 HELD" ) : _( "PRESS" ) );
+        const bool muted = bound.empty();
+        b.text( face::bold, 17.0f, x + 14.0f, y + 36.0f, muted ? mobile_ui::col_muted : mobile_ui::col_fg,
+                b.fit( face::bold, 17.0f, !bound.empty() ? screen.name_of( bound ) :
+                       with_l2 == 0 && !fixed.empty() ? fixed : std::string( _( "Nothing" ) ),
+                       w - 42.0f - change_w ) );
+        if( text_button( b, string_format( "##pad_change_other%d", with_l2 ), x + w - 14.0f - change_w,
+                         y + 22.0f, change_w, 44.0f, _( "Change" ),
+                         with_l2 == 0 ? button_look::primary : button_look::plain ) ) {
+            asked = with_l2 == 1 ? ask::with_l2 : ask::press;
+        }
+        y += 92.0f;
+    }
+    if( !fixed.empty() ) {
+        y += note( y, string_format(
+                       _( "In menus and lists this button always does \"%s\", whatever is set here.  What is set here counts where the screen is not a menu." ),
+                       fixed ) ) + 14.0f;
+    }
     b.text( face::body, 13.0f, x, y, mobile_ui::col_muted,
-            _( "Every button works this way, L1, L2, R1 and R2 included.  A menu opens when its stick is pushed while the button is held.  The same menu can be on several buttons." ),
+            _( "Radial menus of your own and long presses are for the play screen.  Here a button has one action, and a second one with L2 held." ),
             w );
-    // at the foot of the panel
-    const float foot = py + ( 736.0f - 18.0f - 48.0f );
-    const float half = ( w - 8.0f ) * 0.5f;
-    if( text_button( b, "##pad_clear", x, foot, half, 48.0f, _( "Clear this button" ) ) ) {
-        asked = ask::clear;
-    }
-    if( text_button( b, "##pad_defaults", x + half + 8.0f, foot, half, 48.0f,
-                     _( "All to default" ) ) ) {
-        asked = ask::defaults;
-    }
 }
 
 } // namespace
@@ -1604,28 +1822,70 @@ void show()
         }
         const pad_window::ask asked = window.asked;
         window.asked = pad_window::ask::none;
+        if( asked == pad_window::ask::none ) {
+            continue;
+        }
         mobile_pad::layout &l = mobile_pad::current();
         const control &sel = controls[static_cast<size_t>( window.selected )];
+        const bool play = window.category.empty();
+        // the drawn glyphs have no letter: the d-pad, Select and Start
+        const std::string badge = sel.glyph[0] != '\0' ? sel.glyph :
+                                  sel.b == mobile_pad::button::select ? "SEL" :
+                                  sel.b == mobile_pad::button::start ? "ST" : "D";
         switch( asked ) {
             case pad_window::ask::press:
-            case pad_window::ask::long_press: {
+            case pad_window::ask::long_press:
+            case pad_window::ask::with_l2: {
                 if( sel.stick >= 0 ) {
                     break;
                 }
-                const bool press = asked == pad_window::ask::press;
-                mobile_pad::assignment &a = l.of( sel.b );
-                const std::string title = string_format( press ? _( "%s, press" ) : _( "%s, long press" ),
-                                          _( sel.name ) );
-                // the drawn glyphs have no letter: the d-pad, Select and Start
-                const std::string badge = sel.glyph[0] != '\0' ? sel.glyph :
-                                          sel.b == mobile_pad::button::select ? "SEL" :
-                                          sel.b == mobile_pad::button::start ? "ST" : "D";
-                const std::optional<std::string> chosen = pick_action( title, badge,
-                        press ? a.press : a.long_press,
-                        string_format( press ? _( "on %s" ) : _( "on %s, long press" ), short_name( sel.b ) ) );
+                if( play ) {
+                    const bool press = asked == pad_window::ask::press;
+                    mobile_pad::assignment &a = l.of( sel.b );
+                    const std::string title = string_format( press ? _( "%s, press" ) : _( "%s, long press" ),
+                                              _( sel.name ) );
+                    const std::optional<std::string> chosen = pick_action( play_pick( title, badge,
+                            press ? a.press : a.long_press,
+                            string_format( press ? _( "on %s" ) : _( "on %s, long press" ), short_name( sel.b ) ) ) );
+                    if( chosen ) {
+                        ( press ? a.press : a.long_press ) = *chosen;
+                        mobile_pad::save();
+                    }
+                    break;
+                }
+                // another screen: one of its own actions, in the keybindings
+                const bool with_l2 = asked == pad_window::ask::with_l2;
+                const int code = joy_code( sel.b, with_l2 );
+                if( code < 0 ) {
+                    break;
+                }
+                pick_spec spec;
+                spec.title = string_format( with_l2 ? _( "%s with L2" ) : _( "%s, press" ), _( sel.name ) );
+                spec.badge = badge;
+                spec.now = window.screen.action_on( code );
+                spec.scope = context_name( window.category );
+                pick_group all;
+                all.name = _( "This screen" );
+                all.note = _( "What this screen can do" );
+                std::vector<binding> sorted = window.screen.actions;
+                std::sort( sorted.begin(), sorted.end(), []( const binding & x, const binding & y ) {
+                    return localized_compare( x.name, y.name );
+                } );
+                for( const binding &bound : sorted ) {
+                    all.ids.push_back( bound.action );
+                    spec.names[bound.action] = bound.name;
+                    for( const int other : bound.buttons ) {
+                        if( other != code ) {
+                            spec.places[bound.action].push_back( string_format( _( "on %s" ),
+                                                                 button_name( other ) ) );
+                        }
+                    }
+                }
+                spec.groups.push_back( all );
+                const std::optional<std::string> chosen = pick_action( spec );
                 if( chosen ) {
-                    ( press ? a.press : a.long_press ) = *chosen;
-                    mobile_pad::save();
+                    bind_code( window.category, code, *chosen );
+                    window.screen = load_screen( window.category );
                 }
                 break;
             }
@@ -1638,20 +1898,63 @@ void show()
                 show_menus( start );
                 break;
             }
-            case pad_window::ask::other:
-                show_other_screens();
+            case pad_window::ask::screen: {
+                const std::vector<std::string> others = other_screens();
+                mobile_ui::sheet_spec sheet;
+                sheet.title = _( "Which screen?" );
+                sheet.description =
+                    _( "The play screen has the layout with long presses and radial menus.  Every other screen has its own plain buttons." );
+                sheet.rows.push_back( { "", _( "Play screen" ), "" } );
+                for( const std::string &other : others ) {
+                    sheet.rows.push_back( { "", context_name( other ), "" } );
+                }
+                const int row = mobile_ui::show_sheet( sheet );
+                if( row == 0 ) {
+                    window.category.clear();
+                } else if( row > 0 && static_cast<size_t>( row ) <= others.size() ) {
+                    window.category = others[static_cast<size_t>( row ) - 1];
+                    window.screen = load_screen( window.category );
+                }
                 break;
+            }
             case pad_window::ask::clear:
-                if( sel.stick < 0 ) {
+                if( sel.stick >= 0 ) {
+                    break;
+                }
+                if( play ) {
                     l.of( sel.b ) = mobile_pad::assignment();
                     mobile_pad::save();
+                } else {
+                    bind_code( window.category, joy_code( sel.b, false ), "" );
+                    if( joy_code( sel.b, true ) != joy_code( sel.b, false ) ) {
+                        bind_code( window.category, joy_code( sel.b, true ), "" );
+                    }
+                    window.screen = load_screen( window.category );
                 }
                 break;
             case pad_window::ask::defaults:
-                if( query_yn(
-                        _( "Put every button and every menu back to the default layout?  Menus you made are lost." ) ) ) {
-                    l = mobile_pad::default_layout();
-                    mobile_pad::save();
+                if( play ) {
+                    if( query_yn(
+                            _( "Put every button, both sticks and every menu back to the default layout?  Menus you made are lost." ) ) ) {
+                        l = mobile_pad::default_layout();
+                        mobile_pad::save();
+                    }
+                } else if( query_yn( _( "Put every controller button of \"%s\" back to its default?" ),
+                                     context_name( window.category ) ) ) {
+                    // defaults that moved between actions do not fight: clear all, then set
+                    const std::vector<binding> all = bindings();
+                    for( const binding &bound : all ) {
+                        if( bound.category == window.category && bound.buttons != bound.defaults ) {
+                            set_buttons( window.category, bound.action, {} );
+                        }
+                    }
+                    for( const binding &bound : all ) {
+                        if( bound.category == window.category && bound.buttons != bound.defaults ) {
+                            set_buttons( window.category, bound.action, bound.defaults );
+                        }
+                    }
+                    save();
+                    window.screen = load_screen( window.category );
                 }
                 break;
             case pad_window::ask::none:
@@ -1660,28 +1963,10 @@ void show()
     }
 }
 
-// The ring in play: drawn over the map while a held button's menu is open.
-void draw_ring()
+// One ring of a held button: the menu's eight slots round its name.
+static void draw_one_ring( const board &b, const mobile_pad::menu &m, const int pointed,
+                           const bool with_dot, const float dot_x, const float dot_y, const std::string &caption )
 {
-    const mobile_pad::machine &pad = mobile_pad::state();
-    if( !pad.ring_open() || ImGui::GetCurrentContext() == nullptr || !mobile_pad::enabled() ) {
-        return;
-    }
-    const mobile_pad::layout &l = mobile_pad::current();
-    const int stick = pad.ring_stick_index();
-    const mobile_pad::menu *const m = l.menu_on( pad.held_button(), stick );
-    if( m == nullptr ) {
-        return;
-    }
-    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
-    board b;
-    b.u = mobile_ui::unit();
-    b.c = std::min( viewport->Size.x / 1280.0f, viewport->Size.y / 800.0f );
-    b.origin = ImVec2( viewport->Pos.x + ( viewport->Size.x - 1280.0f * b.c ) * 0.5f,
-                       viewport->Pos.y + ( viewport->Size.y - 800.0f * b.c ) * 0.5f );
-    b.draw = ImGui::GetForegroundDrawList();
-    b.draw->AddRectFilled( viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x,
-                           viewport->Pos.y + viewport->Size.y ), IM_COL32( 0, 0, 0, 115 ) );
     const float mid_x = 640.0f;
     const float mid_y = 380.0f;
     b.draw->AddCircleFilled( b.at( mid_x, mid_y ), 210.0f * b.c, IM_COL32( 14, 17, 13, 235 ), 96 );
@@ -1691,10 +1976,9 @@ void draw_ring()
     b.draw->AddCircle( b.at( mid_x, mid_y ), 80.0f * b.c, mobile_ui::col_line, 64,
                        std::max( 1.0f, b.c ) );
     b.text_centered( face::display, 22.0f, mid_x - 72.0f, mid_y - 24.0f, 144.0f, 28.0f,
-                     mobile_ui::col_fg, m->name );
-    b.text_centered( face::body, 12.0f, mid_x - 72.0f, mid_y + 6.0f, 144.0f, 18.0f,
-                     mobile_ui::col_muted, _( "flick or release to run" ) );
-    const int pointed = pad.ring_slot();
+                     mobile_ui::col_fg, m.name );
+    b.text_centered( face::body, 12.0f, mid_x - 76.0f, mid_y + 6.0f, 152.0f, 18.0f,
+                     mobile_ui::col_muted, caption );
     for( int i = 0; i < mobile_pad::num_slots; ++i ) {
         const float turn = ( static_cast<float>( i ) * 45.0f - 90.0f ) * 3.14159265f / 180.0f;
         const bool on = i == pointed;
@@ -1702,7 +1986,7 @@ void draw_ring()
         const float h = on ? 76.0f : 64.0f;
         const float x = mid_x + std::cos( turn ) * 285.0f - w * 0.5f;
         const float y = mid_y + std::sin( turn ) * 238.0f - h * 0.5f;
-        const std::string &id = m->slots[static_cast<size_t>( i )];
+        const std::string &id = m.slots[static_cast<size_t>( i )];
         if( id.empty() ) {
             b.box( x, y, w, h, on ? mobile_ui::col_button_down : IM_COL32( 14, 17, 13, 200 ),
                    mobile_ui::col_line, 14.0f );
@@ -1715,23 +1999,75 @@ void draw_ring()
                                on ? mobile_ui::col_on_accent : mobile_ui::col_fg, action_name( id ) );
         }
     }
-    // the stick
-    b.draw->AddCircleFilled( b.at( mid_x + pad.stick_x( stick ) * 120.0f,
-                                   mid_y + pad.stick_y( stick ) * 120.0f ), 15.0f * b.c, mobile_ui::col_accent, 32 );
-    b.draw->AddCircle( b.at( mid_x + pad.stick_x( stick ) * 120.0f,
-                             mid_y + pad.stick_y( stick ) * 120.0f ), 15.0f * b.c, mobile_ui::col_on_accent, 32,
-                       std::max( 1.0f, 3.0f * b.c ) );
-    // what the hands can do now
-    const std::string holder = short_name( pad.held_button() );
-    std::vector<std::string> pills;
-    pills.push_back( string_format( stick == 0 ? _( "%s held · left stick picks" ) :
-                                    _( "%s held · right stick picks" ), holder ) );
-    if( pointed >= 0 ) {
-        const std::string &id = m->slots[static_cast<size_t>( pointed )];
-        pills.push_back( string_format( _( "Let the stick snap back, or release %1$s: %2$s" ), holder,
-                                        id.empty() ? std::string( _( "nothing" ) ) : action_name( id ) ) );
+    if( with_dot ) {
+        const ImVec2 dot = b.at( mid_x + dot_x * 120.0f, mid_y + dot_y * 120.0f );
+        b.draw->AddCircleFilled( dot, 15.0f * b.c, mobile_ui::col_accent, 32 );
+        b.draw->AddCircle( dot, 15.0f * b.c, mobile_ui::col_on_accent, 32, std::max( 1.0f, 3.0f * b.c ) );
     }
-    pills.emplace_back( _( "Ease the stick back slowly, or B: cancel" ) );
+}
+
+// The rings in play: on screen from the moment a button with menus counts as
+// held.  Both of its menus show side by side until a stick is pushed; then
+// that stick's ring has the screen.
+void draw_ring()
+{
+    const mobile_pad::machine &pad = mobile_pad::state();
+    if( !pad.showing() || ImGui::GetCurrentContext() == nullptr || !mobile_pad::enabled() ) {
+        return;
+    }
+    const mobile_pad::layout &l = mobile_pad::current();
+    const std::array<const mobile_pad::menu *, 2> menus = { {
+            l.menu_on( pad.held_button(), 0 ), l.menu_on( pad.held_button(), 1 )
+        }
+    };
+    if( menus[0] == nullptr && menus[1] == nullptr ) {
+        return;
+    }
+    const ImGuiViewport *const viewport = ImGui::GetMainViewport();
+    board b;
+    b.u = mobile_ui::unit();
+    b.c = std::min( viewport->Size.x / 1280.0f, viewport->Size.y / 800.0f );
+    b.origin = ImVec2( viewport->Pos.x + ( viewport->Size.x - 1280.0f * b.c ) * 0.5f,
+                       viewport->Pos.y + ( viewport->Size.y - 800.0f * b.c ) * 0.5f );
+    b.draw = ImGui::GetForegroundDrawList();
+    b.draw->AddRectFilled( viewport->Pos, ImVec2( viewport->Pos.x + viewport->Size.x,
+                           viewport->Pos.y + viewport->Size.y ), IM_COL32( 0, 0, 0, 115 ) );
+    const std::string holder = short_name( pad.held_button() );
+    const int stick = pad.ring_stick_index();
+    const int pointed = pad.ring_slot();
+    std::vector<std::string> pills;
+    if( stick >= 0 && menus[static_cast<size_t>( stick )] != nullptr ) {
+        const mobile_pad::menu &m = *menus[static_cast<size_t>( stick )];
+        draw_one_ring( b, m, pointed, true, pad.stick_x( stick ), pad.stick_y( stick ),
+                       _( "flick or release to run" ) );
+        pills.push_back( string_format( stick == 0 ? _( "%s held · left stick picks" ) :
+                                        _( "%s held · right stick picks" ), holder ) );
+        if( pointed >= 0 ) {
+            const std::string &id = m.slots[static_cast<size_t>( pointed )];
+            pills.push_back( string_format( _( "Let the stick snap back, or release %1$s: %2$s" ), holder,
+                                            id.empty() ? std::string( _( "nothing" ) ) : action_name( id ) ) );
+        }
+        pills.emplace_back( _( "Ease the stick back slowly, or B: cancel" ) );
+    } else {
+        // nothing pushed yet: what each stick would open
+        const bool both = menus[0] != nullptr && menus[1] != nullptr;
+        for( int s = 0; s < 2; ++s ) {
+            if( menus[static_cast<size_t>( s )] == nullptr ) {
+                continue;
+            }
+            board ring = b;
+            if( both ) {
+                // smaller, the left stick's on the left
+                ring.c = b.c * 0.7f;
+                const ImVec2 mid = b.at( s == 0 ? 325.0f : 955.0f, 380.0f );
+                ring.origin = ImVec2( mid.x - 640.0f * ring.c, mid.y - 380.0f * ring.c );
+            }
+            draw_one_ring( ring, *menus[static_cast<size_t>( s )], -1, false, 0.0f, 0.0f,
+                           s == 0 ? _( "push the left stick" ) : _( "push the right stick" ) );
+        }
+        pills.push_back( string_format( _( "%s held · push a stick to pick" ), holder ) );
+        pills.push_back( string_format( _( "Release %s or B: cancel" ), holder ) );
+    }
     float total = -10.0f;
     for( const std::string &pill : pills ) {
         total += b.measure( face::body, 15.0f, pill ).x + 32.0f + 10.0f;
@@ -1740,7 +2076,7 @@ void draw_ring()
     for( const std::string &pill : pills ) {
         const float w = b.measure( face::body, 15.0f, pill ).x + 32.0f;
         b.box( x, 728.0f, w, 42.0f, IM_COL32( 14, 17, 13, 235 ), mobile_ui::col_line, 21.0f );
-        b.text( face::body, 15.0f, x + 16.0f, 739.0f, mobile_ui::col_fg, pill );
+        b.text( face::body, 15.0f, x + 16.0f, 738.0f, mobile_ui::col_fg, pill );
         x += w + 10.0f;
     }
 }

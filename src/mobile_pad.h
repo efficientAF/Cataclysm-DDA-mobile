@@ -74,9 +74,30 @@ struct assignment {
     std::string menu_right;
 };
 
+// What pushing a stick does while no button with menus is held.
+enum class stick_mode : int {
+    // walk that way
+    move = 0,
+    // point at a neighbouring tile: "Step" walks there, Interact and others use it
+    direction,
+    // scroll the view
+    pan,
+    // up zooms in, down zooms out
+    zoom,
+    nothing,
+    count
+};
+
+// "move", "direction", "pan", "zoom", "nothing": the name in the layout file.
+std::string stick_mode_id( stick_mode m );
+
 struct layout {
     std::array<assignment, num_buttons> buttons;
     std::vector<menu> menus;
+    // left, right
+    std::array<stick_mode, 2> sticks = { { stick_mode::move, stick_mode::pan } };
+    // the d-pad walks, and its four buttons' assignments rest
+    bool dpad_moves = false;
 
     const assignment &of( button b ) const {
         return buttons[static_cast<size_t>( b )];
@@ -140,6 +161,11 @@ class machine
         button held_button() const {
             return holder;
         }
+        // the button is held and has menus: its rings are on screen
+        bool showing() const {
+            return holder != button::count && state == phase::held;
+        }
+        // a stick is pushed in its ring
         bool ring_open() const {
             return ring_stick >= 0;
         }

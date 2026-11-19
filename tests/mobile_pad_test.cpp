@@ -90,9 +90,17 @@ TEST_CASE( "mobile_pad_menu_button", "[mobile_pad]" )
     }
     SECTION( "held without a stick runs nothing" ) {
         m.button_event( l, button::l2, true, 1000 );
-        CHECK( m.tick( l, 1300 ).action.empty() );
+        CHECK_FALSE( m.showing() );
+        mobile_pad::outcome out = m.tick( l, 1300 );
+        CHECK( out.action.empty() );
+        // the rings show as soon as the button counts as held
+        CHECK( out.changed );
+        CHECK( m.showing() );
         CHECK_FALSE( m.ring_open() );
-        CHECK( m.button_event( l, button::l2, false, 1500 ).action.empty() );
+        out = m.button_event( l, button::l2, false, 1500 );
+        CHECK( out.action.empty() );
+        CHECK( out.changed );
+        CHECK_FALSE( m.showing() );
     }
     SECTION( "letting go of the button with the stick pushed runs the slot" ) {
         m.button_event( l, button::l2, true, 1000 );
@@ -129,6 +137,7 @@ TEST_CASE( "mobile_pad_menu_button", "[mobile_pad]" )
         CHECK( out.action == "n" );
         CHECK_FALSE( m.ring_open() );
         CHECK( m.holding() );
+        CHECK( m.showing() );
         // again, in one jump
         m.stick_event( l, 0, 1.0f, 0.0f, 2500 );
         CHECK( m.ring_open() );
@@ -174,6 +183,7 @@ TEST_CASE( "mobile_pad_menu_button", "[mobile_pad]" )
         CHECK( out.action.empty() );
         CHECK( out.changed );
         CHECK_FALSE( m.ring_open() );
+        CHECK_FALSE( m.showing() );
         // the stick does nothing more until the button is pressed again
         m.stick_event( l, 0, 0.0f, 1.0f, 1600 );
         CHECK_FALSE( m.ring_open() );

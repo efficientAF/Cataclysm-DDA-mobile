@@ -47,6 +47,28 @@ bool is_dpad( const button b )
 
 } // namespace
 
+static const std::array<const char *, static_cast<size_t>( stick_mode::count )> stick_mode_ids = { {
+        "move", "direction", "pan", "zoom", "nothing"
+    }
+};
+
+std::string stick_mode_id( const stick_mode m )
+{
+    const int i = static_cast<int>( m );
+    return i >= 0 &&
+           i < static_cast<int>( stick_mode::count ) ? stick_mode_ids[static_cast<size_t>( i )] : "";
+}
+
+static stick_mode stick_mode_from( const std::string &id, const stick_mode fallback )
+{
+    for( size_t i = 0; i < stick_mode_ids.size(); ++i ) {
+        if( id == stick_mode_ids[i] ) {
+            return static_cast<stick_mode>( i );
+        }
+    }
+    return fallback;
+}
+
 std::string button_id( const button b )
 {
     const int i = static_cast<int>( b );
@@ -221,6 +243,9 @@ static void load( layout &l )
         } else {
             read.menus = l.menus;
         }
+        read.sticks[0] = stick_mode_from( jo.get_string( "stick_left", "" ), l.sticks[0] );
+        read.sticks[1] = stick_mode_from( jo.get_string( "stick_right", "" ), l.sticks[1] );
+        read.dpad_moves = jo.get_bool( "dpad_moves", l.dpad_moves );
         l = read;
     } );
 }
@@ -242,6 +267,9 @@ void save()
     write_to_file( layout_path(), [&l]( std::ostream & out ) {
         JsonOut jsout( out, true );
         jsout.start_object();
+        jsout.member( "stick_left", stick_mode_id( l.sticks[0] ) );
+        jsout.member( "stick_right", stick_mode_id( l.sticks[1] ) );
+        jsout.member( "dpad_moves", l.dpad_moves );
         jsout.member( "buttons" );
         jsout.start_object();
         for( int i = 0; i < num_buttons; ++i ) {
@@ -329,8 +357,10 @@ outcome machine::come_of_age( const layout &l )
 {
     outcome out;
     if( l.has_menus( holder ) ) {
+        // the rings come on screen, pushed stick or not
         state = phase::held;
-        out.changed = open_ring_if_pushed( l );
+        open_ring_if_pushed( l );
+        out.changed = true;
     } else {
         state = phase::done;
         out.action = l.of( holder ).long_press;
@@ -358,7 +388,7 @@ outcome machine::button_event( const layout &l, const button b, const bool down,
         if( b == holder ) {
             return out;
         }
-        if( ring_open() && b == button::b ) {
+        if( showing() && b == button::b ) {
             // B backs out of the ring; the held button has had its turn
             close_ring();
             state = phase::done;
@@ -395,7 +425,7 @@ outcome machine::button_event( const layout &l, const button b, const bool down,
             out.action = m->slots[static_cast<size_t>( slot )];
         }
     }
-    out.changed = out.changed || ring_open();
+    out.changed = out.changed || showing();
     holder = button::count;
     close_ring();
     return out;

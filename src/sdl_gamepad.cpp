@@ -458,9 +458,64 @@ static mobile_pad::button pad_button( int sdl_button )
     }
 }
 
+// What a stick last pointed at for the layout, and whether it must come back to
+// the centre before it does anything again (it was working a ring).
+static std::array<direction, max_sticks> pad_stick_dir = { { direction::NONE, direction::NONE } };
+static std::array<bool, max_sticks> pad_stick_spent = { { false, false } };
+// the d-pad's four buttons, for walking with it: up, down, left, right
+static std::array<bool, 4> pad_dpad_down = { { false, false, false, false } };
+
+// The action a stick or the d-pad runs for a direction, or empty.
+static std::string pad_direction_action( const mobile_pad::stick_mode mode, const direction dir )
+{
+    static const std::array<const char *, 9> moves = { {
+            "", "UP", "RIGHTUP", "RIGHT", "RIGHTDOWN", "DOWN", "LEFTDOWN", "LEFT", "LEFTUP"
+        }
+    };
+    static const std::array<const char *, 9> pans = { {
+            "", "shift_n", "shift_ne", "shift_e", "shift_se", "shift_s", "shift_sw", "shift_w", "shift_nw"
+        }
+    };
+    const size_t at = static_cast<size_t>( dir );
+    switch( mode ) {
+        case mobile_pad::stick_mode::move:
+            return moves[at];
+        case mobile_pad::stick_mode::pan:
+            return pans[at];
+        case mobile_pad::stick_mode::zoom:
+            if( dir == direction::N || dir == direction::NE || dir == direction::NW ) {
+                return "zoom_in";
+            }
+            if( dir == direction::S || dir == direction::SE || dir == direction::SW ) {
+                return "zoom_out";
+            }
+            return "";
+        default:
+            return "";
+    }
+}
+
+// Runs a direction's action now and again while the stick or d-pad stays there.
+static void pad_start_direction( task_t &task, const mobile_pad::stick_mode mode,
+                                 const direction dir, uint32_t now )
+{
+    cancel_task( task );
+    const std::string action = pad_direction_action( mode, dir );
+    if( action.empty() ) {
+        return;
+    }
+    pad_emit( action );
+    const bool zoom = mode == mobile_pad::stick_mode::zoom;
+    const bool pan = mode == mobile_pad::stick_mode::pan;
+    // the first repeat after a pause, then steadily; in task.state: the interval
+    schedule_task( task, now + ( zoom ? 450 : pan ? 250 : 300 ), -1, zoom ? 350 : pan ? 80 : 130 );
+    task.pad_action = action;
+}
+
 // The layout stops reading the controller when a menu opens: forget what was held.
 static void pad_idle()
 {
+    pad_dpad_down.fill( false );
     if( mobile_pad::state().holding() ) {
         mobile_pad::state().reset();
     }
@@ -597,16 +652,40 @@ static bool handle_axis_event( SDL_Event &event )
                                                 static_cast<float>( val.y ) / 32767.0f, now );
                 if( pad.holding() || !out.action.empty() || out.changed ) {
                     cancel_task( stick_task );
-                    if( old_dir != direction::NONE && g ) {
+                    if( left_stick_dir != direction::NONE && g ) {
                         g->invalidate_main_ui_adaptor();
                         direction_changed = true;
                     }
-                    ( i == 0 ? left_stick_dir : right_stick_dir ) = direction::NONE;
+                    left_stick_dir = direction::NONE;
+                    right_stick_dir = direction::NONE;
+                    pad_stick_dir[i] = direction::NONE;
+                    pad_stick_spent[i] = dir != direction::NONE;
                     if( pad_apply( out, nullptr, now ) ) {
                         direction_changed = true;
                     }
                     continue;
                 }
+                // no button is held: the stick does what the layout gives it
+                if( dir == direction::NONE ) {
+                    pad_stick_spent[i] = false;
+                }
+                const direction pointed = pad_stick_spent[i] ? direction::NONE : dir;
+                const mobile_pad::stick_mode mode = mobile_pad::current().sticks[i];
+                if( mode == mobile_pad::stick_mode::direction ) {
+                    // upstream's cursor beside the character; "Step" walks there
+                    cancel_task( stick_task );
+                    if( pointed != left_stick_dir ) {
+                        left_stick_dir = pointed;
+                        direction_changed = true;
+                        if( g ) {
+                            g->invalidate_main_ui_adaptor();
+                        }
+                    }
+                } else if( pointed != pad_stick_dir[i] ) {
+                    pad_start_direction( stick_task, mode, pointed, now );
+                }
+                pad_stick_dir[i] = pointed;
+                continue;
             } else {
                 pad_idle();
             }
@@ -717,6 +796,19 @@ static void handle_button_event( SDL_Event &event )
         task_t *const task = button >= 0 && button < max_buttons ? &all_tasks[button] : nullptr;
         if( !down && task != nullptr ) {
             cancel_task( *task );
+        }
+        // the d-pad walks, if the layout says so; two directions make a diagonal
+        if( mobile_pad::current().dpad_moves && button >= CATA_BUTTON_DPAD_UP &&
+            button <= CATA_BUTTON_DPAD_RIGHT && !pad_machine().holding() ) {
+            pad_dpad_down[0] = button == CATA_BUTTON_DPAD_UP ? down : pad_dpad_down[0];
+            pad_dpad_down[1] = button == CATA_BUTTON_DPAD_DOWN ? down : pad_dpad_down[1];
+            pad_dpad_down[2] = button == CATA_BUTTON_DPAD_LEFT ? down : pad_dpad_down[2];
+            pad_dpad_down[3] = button == CATA_BUTTON_DPAD_RIGHT ? down : pad_dpad_down[3];
+            const int dy = ( pad_dpad_down[1] ? 1 : 0 ) - ( pad_dpad_down[0] ? 1 : 0 );
+            const int dx = ( pad_dpad_down[3] ? 1 : 0 ) - ( pad_dpad_down[2] ? 1 : 0 );
+            const direction dir = dx == 0 && dy == 0 ? direction::NONE : angle_to_direction( point( dx, dy ) );
+            pad_start_direction( all_tasks[CATA_BUTTON_DPAD_UP], mobile_pad::stick_mode::move, dir, now );
+            return;
         }
         pad_apply( pad_machine().button_event( mobile_pad::current(), pad_button( button ), down, now ),
                    down ? task : nullptr, now );
@@ -888,7 +980,7 @@ static bool handle_scheduler_event( SDL_Event &/*event*/ )
             if( pad_takes_input() ) {
                 pad_emit( task.pad_action );
                 task.counter += 1;
-                task.when = now + repeat_interval;
+                task.when = now + ( task.state > 1 ? task.state : repeat_interval );
             } else {
                 cancel_task( task );
             }
