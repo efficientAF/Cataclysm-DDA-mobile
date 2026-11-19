@@ -40,6 +40,7 @@
 #include "translations.h"
 #include "ui_manager.h"
 #include "sdl_gamepad.h"
+#include "mobile_controls.h"
 
 enum class kb_menu_status {
     remove, reset, add, add_global, execute, show, filter
@@ -56,6 +57,11 @@ class keybindings_ui : public cataimgui::window
         const nc_color h_unbound_key = h_light_red;
         input_context *ctxt;
     public:
+        // Mobile UI: the controller buttons screen reads and changes the bindings
+        // through these, see mobile_controls.h
+        static std::vector<mobile_controls::binding> mobile_bindings();
+        static std::vector<std::string> mobile_set_buttons( const std::string &category,
+                const std::string &action, const std::vector<int> &buttons );
         cataimgui::scroll keybinds_scroll = cataimgui::scroll::none;
         // current status: adding/removing/reseting/executing/showing keybindings
         kb_menu_status status = kb_menu_status::show, last_status = kb_menu_status::execute;
@@ -1551,4 +1557,106 @@ const hotkey_queue &hotkey_queue::alpha_digits()
         queue->modifiers_keycode.emplace_back( std::set<keymod_t>( { keymod_t::shift } ) );
     }
     return *queue;
+}
+
+// Mobile UI: controller buttons, see mobile_controls.h
+
+static std::vector<int> mobile_gamepad_codes( const std::vector<input_event> &events )
+{
+    std::vector<int> codes;
+    for( const input_event &event : events ) {
+        if( event.type == input_event_t::gamepad && !event.sequence.empty() ) {
+            codes.push_back( event.get_first_input() );
+        }
+    }
+    return codes;
+}
+
+std::vector<mobile_controls::binding> keybindings_ui::mobile_bindings()
+{
+    std::vector<mobile_controls::binding> ret;
+    for( const std::pair<const std::string, input_manager::t_actions> &context :
+         inp_mngr.action_contexts ) {
+        const auto basic_context = inp_mngr.basic_action_contexts.find( context.first );
+        std::vector<mobile_controls::binding> here;
+        bool any = false;
+        for( const std::pair<const std::string, action_attributes> &action : context.second ) {
+            mobile_controls::binding b;
+            b.category = context.first;
+            b.action = action.first;
+            b.name = inp_mngr.get_action_attributes( action.first, context.first ).name.translated();
+            if( b.name.empty() ) {
+                b.name = action.first;
+            }
+            b.buttons = mobile_gamepad_codes( action.second.input_events );
+            if( basic_context != inp_mngr.basic_action_contexts.end() ) {
+                const auto basic = basic_context->second.find( action.first );
+                if( basic != basic_context->second.end() ) {
+                    b.defaults = mobile_gamepad_codes( basic->second.input_events );
+                }
+            }
+            any = any || !b.buttons.empty() || !b.defaults.empty();
+            here.push_back( std::move( b ) );
+        }
+        // a context no controller button reaches is not one to play with a controller
+        if( any ) {
+            ret.insert( ret.end(), here.begin(), here.end() );
+        }
+    }
+    return ret;
+}
+
+std::vector<std::string> keybindings_ui::mobile_set_buttons( const std::string &category,
+        const std::string &action, const std::vector<int> &buttons )
+{
+    std::vector<std::string> lost;
+    const auto is_wanted = [&buttons]( const input_event & event ) {
+        return event.type == input_event_t::gamepad && !event.sequence.empty() &&
+               std::find( buttons.begin(), buttons.end(), event.get_first_input() ) != buttons.end();
+    };
+    // a button does one thing in a context
+    const auto context = inp_mngr.action_contexts.find( category );
+    if( context != inp_mngr.action_contexts.end() ) {
+        for( std::pair<const std::string, action_attributes> &other : context->second ) {
+            if( other.first == action ) {
+                continue;
+            }
+            std::vector<input_event> &events = other.second.input_events;
+            const auto gone = std::remove_if( events.begin(), events.end(), is_wanted );
+            if( gone != events.end() ) {
+                events.erase( gone, events.end() );
+                const std::string name = inp_mngr.get_action_attributes( other.first,
+                                         category ).name.translated();
+                lost.push_back( name.empty() ? other.first : name );
+            }
+        }
+    }
+    std::vector<input_event> &events = inp_mngr.get_or_create_event_list( action, category );
+    events.erase( std::remove_if( events.begin(), events.end(), []( const input_event & event ) {
+        return event.type == input_event_t::gamepad;
+    } ), events.end() );
+    for( const int code : buttons ) {
+        events.emplace_back( code, input_event_t::gamepad );
+    }
+    return lost;
+}
+
+std::vector<mobile_controls::binding> mobile_controls::bindings()
+{
+    return keybindings_ui::mobile_bindings();
+}
+
+std::vector<std::string> mobile_controls::set_buttons( const std::string &category,
+        const std::string &action, const std::vector<int> &buttons )
+{
+    return keybindings_ui::mobile_set_buttons( category, action, buttons );
+}
+
+void mobile_controls::save()
+{
+    try {
+        inp_mngr.save();
+    } catch( std::exception &err ) {
+        popup( _( "saving keybindings failed: %s" ), err.what() );
+    }
 }

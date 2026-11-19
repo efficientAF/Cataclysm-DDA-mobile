@@ -2,8 +2,10 @@
 
 #if defined(TILES)
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,6 +20,7 @@
 #include "imgui/imgui_stdlib.h"
 #include "input_context.h"
 #include "input_popup.h"
+#include "mobile_controls.h"
 #include "mobile_prompt.h"
 #include "mobile_ui.h"
 #include "options.h"
@@ -53,6 +56,8 @@ enum class entry_kind : int {
     // upstream's blank line
     gap,
     option,
+    // a row that opens another screen (text is its name, sub what it is, link which)
+    link,
 };
 
 // One line of a page, as upstream lists it.
@@ -61,6 +66,9 @@ struct entry {
     // the header or the paragraph
     std::string text;
     cOpt *opt = nullptr;
+    // only for a link
+    std::string sub = std::string();
+    std::string link = std::string();
 };
 
 struct page {
@@ -81,6 +89,35 @@ std::vector<page> access::pages( options_manager &options, const bool ingame,
     options_manager::options_container &world = options.world_options.has_value() ?
             *options.world_options.value() : options.options;
     std::vector<page> ret;
+    // Everything about touch, mouse, controller and keyboard is gathered on one
+    // page of its own, "Inputs", whichever of upstream's pages it is listed on.
+    static const std::set<std::string> input_groups = {
+        "mobile_touch_opts", "mouse_cont_opts", "android_keyboard_opts", "joystick_android_opts",
+        "shortcut_android_opts", "gestures_android_opts", "shortcut_android_in_game_opts",
+        "shortc_screen_opts"
+    };
+    static const std::set<std::string> input_options = {
+        "ENABLE_JOYSTICK", "ENABLE_MOUSE", "HIDE_CURSOR", "EDGE_SCROLL", "MENU_SCROLL",
+        "FAST_SCROLL_OFFSET", "SDL_KEYBOARD_MODE", "FORCE_CAPITAL_YN", "DIAG_MOVE_WITH_MODIFIERS_MODE",
+        "QUERY_KEYBIND_REMOVAL", "ANDROID_TRAP_BACK_BUTTON", "ANDROID_VIBRATION"
+    };
+    page inputs;
+    inputs.name = _( "Inputs" );
+    inputs.entries.push_back( { entry_kind::link, _( "Controller buttons" ), nullptr,
+                                _( "See and change what each button of a controller does, screen by screen" ),
+                                "controller" } );
+    inputs.entries.push_back( {} );
+    // in three parts, each in upstream's order: touch, mouse and controller, keyboard
+    static const std::set<std::string> keyboard_options = {
+        "SDL_KEYBOARD_MODE", "FORCE_CAPITAL_YN", "DIAG_MOVE_WITH_MODIFIERS_MODE", "QUERY_KEYBIND_REMOVAL"
+    };
+    std::array<std::vector<entry>, 3> parts;
+    std::array<std::string, 3> part_group;
+    const std::array<std::string, 3> part_name = { {
+            _( "Touch" ), _( "Mouse and controller" ), _( "Keyboard" )
+        }
+    };
+    size_t inputs_at = 0;
     for( const options_manager::Page &from : options.pages_ ) {
         const bool world_page = from.id_ == "world_default";
         if( world_options_only && !world_page ) {
@@ -121,6 +158,26 @@ std::vector<page> access::pages( options_manager &options, const bool ingame,
                     if( found == container.end() || options.get_option( item.data ).is_hidden() ) {
                         break;
                     }
+                    if( !world_options_only && ( input_groups.count( item.group ) > 0 ||
+                                                 input_options.count( item.data ) > 0 ) ) {
+                        // to the Inputs page.  A whole group of upstream's keeps its
+                        // name; single options go under the part's own name.
+                        const bool whole_group = input_groups.count( item.group ) > 0;
+                        const size_t part = keyboard_options.count( item.data ) > 0 ||
+                                            item.group == "android_keyboard_opts" ? 2 :
+                                            whole_group && item.group != "mouse_cont_opts" ? 0 : 1;
+                        const std::string heading = whole_group && part != 1 ?
+                                                    options.find_group( item.group ).name_.translated() : part_name[part];
+                        if( heading != part_group[part] ) {
+                            part_group[part] = heading;
+                            if( !parts[part].empty() ) {
+                                parts[part].push_back( {} );
+                            }
+                            parts[part].push_back( { entry_kind::group, heading, nullptr } );
+                        }
+                        parts[part].push_back( { entry_kind::option, "", &found->second } );
+                        break;
+                    }
                     if( item.group != group ) {
                         // back out of a group
                         if( to.entries.empty() || to.entries.back().kind != entry_kind::gap ) {
@@ -134,10 +191,27 @@ std::vector<page> access::pages( options_manager &options, const bool ingame,
                 }
             }
         }
+        // a group whose options all went to Inputs leaves its heading behind
+        while( !to.entries.empty() && to.entries.back().kind != entry_kind::option ) {
+            to.entries.pop_back();
+        }
         // a page without anything to change gets no chip
         if( any ) {
             ret.push_back( std::move( to ) );
+            if( from.id_ == "interface" ) {
+                inputs_at = ret.size();
+            }
         }
+    }
+    for( const std::vector<entry> &part : parts ) {
+        if( !part.empty() ) {
+            inputs.entries.insert( inputs.entries.end(), part.begin(), part.end() );
+            inputs.entries.push_back( {} );
+        }
+    }
+    if( !world_options_only ) {
+        ret.insert( ret.begin() + static_cast<std::ptrdiff_t>( inputs_at > 0 ? inputs_at : ret.size() ),
+                    std::move( inputs ) );
     }
     return ret;
 }
@@ -158,6 +232,8 @@ struct row {
     cOpt *opt = nullptr;
     std::string title;
     std::string sub;
+    // for a link row: which screen it opens
+    std::string link;
     control ctl = control::choice;
     std::string value;
     // false while the option's prerequisite is not met
@@ -208,6 +284,8 @@ class options_window : public cataimgui::window
 
         // the screen was left; result says how
         bool done = false;
+        // a link row was tapped: which screen to open
+        std::string open_link;
         std::string result;
         // an option whose row was tapped and that needs a sheet or a popup
         cOpt *asked = nullptr;
@@ -285,7 +363,14 @@ void options_window::add_rows( const page &from, const float width )
                 continue;
             }
             r.title = e.text;
-            if( e.kind == entry_kind::group ) {
+            if( e.kind == entry_kind::link ) {
+                r.sub = e.sub;
+                r.link = e.link;
+                r.text_w = width - 32.0f * u - 30.0f * u;
+                r.height = std::max( 60.0f * u, 24.0f * u +
+                                     mobile_ui::text_size( face::bold, 14.5f, r.title, r.text_w ).y + 2.0f * u +
+                                     mobile_ui::text_size( face::body, 12.0f, r.sub, r.text_w ).y );
+            } else if( e.kind == entry_kind::group ) {
                 r.height = 16.0f * u + mobile_ui::text_size( face::mono, 10.5f, r.title ).y + 6.0f * u;
             } else if( e.kind == entry_kind::lead ) {
                 r.text_w = width - 32.0f * u;
@@ -517,6 +602,25 @@ void options_window::draw_row( ImDrawList *const draw, row &r, const ImVec2 &pos
     if( r.kind == entry_kind::lead ) {
         mobile_ui::text( draw, face::body, 13.0f, ImVec2( left + 16.0f * u, pos.y + 8.0f * u ), col_lead,
                          r.title, r.text_w );
+        return;
+    }
+    if( r.kind == entry_kind::link ) {
+        bool held = false;
+        if( mobile_ui::pressable( "##link_" + r.link, pos, ImVec2( width, r.height ), &held ) ) {
+            open_link = r.link;
+        }
+        if( held ) {
+            draw->AddRectFilled( pos, ImVec2( pos.x + width, pos.y + r.height ), mobile_ui::col_button_down );
+        }
+        const float title_h = mobile_ui::text_size( face::bold, 14.5f, r.title, r.text_w ).y;
+        mobile_ui::text( draw, face::bold, 14.5f, ImVec2( left + 16.0f * u, pos.y + 12.0f * u ),
+                         mobile_ui::col_fg, r.title, r.text_w );
+        mobile_ui::text( draw, face::body, 12.0f, ImVec2( left + 16.0f * u,
+                         pos.y + 12.0f * u + title_h + 2.0f * u ), mobile_ui::col_muted, r.sub, r.text_w );
+        mobile_ui::text( draw, face::bold, 18.0f, ImVec2( left + width - 30.0f * u,
+                         pos.y + ( r.height - 22.0f * u ) * 0.5f ), mobile_ui::col_muted, ">" );
+        draw->AddLine( ImVec2( left, pos.y + r.height ), ImVec2( left + width, pos.y + r.height ),
+                       col_row_line, std::max( 1.0f, u ) );
         return;
     }
     cOpt &opt = *r.opt;
@@ -838,6 +942,11 @@ std::string show( options_manager &options, const bool ingame, const bool world_
         } else if( ( action == "LEFT" || action == "RIGHT" ) && !window.typing() ) {
             // a swipe to the left brings the chips on the right into view
             window.scroll_chips( action == "LEFT" ? 1 : -1 );
+        }
+        if( window.open_link == "controller" ) {
+            window.open_link.clear();
+            mobile_controls::show();
+            window.dirty = true;
         }
         if( window.asked != nullptr ) {
             cOpt &opt = *window.asked;
