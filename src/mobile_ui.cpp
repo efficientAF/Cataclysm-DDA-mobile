@@ -181,10 +181,20 @@ static std::string kind_of_window( const ImGuiWindow *const root )
     return "all";
 }
 
+float base_unit( const float width, const float height )
+{
+#if !defined(__ANDROID__)
+    if( width > height ) {
+        return std::max( height / 640.0f, 0.5f );
+    }
+#endif
+    return std::max( std::min( width, height ) / 390.0f, 0.5f );
+}
+
 float unit()
 {
     const ImVec2 size = ImGui::GetIO().DisplaySize;
-    const float base = std::max( std::min( size.x, size.y ) / 390.0f, 0.5f );
+    const float base = base_unit( size.x, size.y );
     const ImGuiContext *const context = ImGui::GetCurrentContext();
     const ImGuiWindow *const window = context != nullptr ? context->CurrentWindow : nullptr;
     if( window == nullptr || window->RootWindow == nullptr ) {

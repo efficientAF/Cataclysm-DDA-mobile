@@ -4237,7 +4237,8 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
     }
 
     if( options_changed ) {
-        if( query_yn( _( "Save changes?" ) ) ) {
+        // Mobile UI: the Settings screen saves what was changed without asking
+        if( mobile_menu::enabled() || query_yn( _( "Save changes?" ) ) ) {
             static_popup popup;
             popup.message( "%s", _( "Please wait…\nApplying option changes…" ) );
             ui_manager::redraw();

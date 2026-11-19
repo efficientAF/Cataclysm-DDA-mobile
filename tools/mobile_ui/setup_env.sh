@@ -7,7 +7,8 @@ apt-get update -qq || true
 apt-get install -y -qq ccache gettext astyle glslang-tools xvfb xdotool imagemagick x11-utils \
   unzip pkg-config libfreetype-dev libharfbuzz-dev libpng-dev libjpeg-dev zlib1g-dev \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
-  libxtst-dev libxkbcommon-dev libgl1-mesa-dev libegl1-mesa-dev python3-pil
+  libxtst-dev libxkbcommon-dev libgl1-mesa-dev libegl1-mesa-dev python3-pil \
+  libasound2-dev libpulse-dev libpipewire-0.3-dev
 GH=https://github.com/libsdl-org
 sdl() { # repo version extra-cmake-flags
   [ -f /usr/local/lib/cmake/$1/$1Config.cmake ] && return 0
@@ -21,6 +22,8 @@ sdl() { # repo version extra-cmake-flags
 sdl SDL3 3.4.10 "-DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_UNIX_CONSOLE_BUILD=OFF"
 sdl SDL3_image 3.4.4 "-DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF"
 sdl SDL3_ttf 3.2.2 "-DSDLTTF_VENDORED=OFF"
+# sound: SDL3 above finds ALSA, PulseAudio and PipeWire through the -dev packages
+sdl SDL3_mixer 3.2.4 "-DSDLMIXER_VENDORED=OFF -DSDLMIXER_TESTS=OFF -DSDLMIXER_EXAMPLES=OFF"
 ldconfig
 SDK=/opt/android-sdk
 if [ ! -d $SDK/ndk/28.1.13356709 ]; then

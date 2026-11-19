@@ -56,6 +56,12 @@ void add_fonts( ImGuiIO &io );
 // Pixels per canvas unit, for the screen being drawn: the size of the display
 // times the size the player chose for everything and for this kind of screen.
 float unit();
+// Pixels per canvas unit for a screen of this size, before the player's sizes.
+// A phone is 390 units across its short side.  A handheld PC or a desktop
+// window held sideways is 640 units high, so a 1280x800 Steam Deck draws the
+// canvas at 1.25: the same physical size as the phone's would be too coarse on
+// a screen that is larger and held further away.
+float base_unit( float width, float height );
 
 // --- Screen sizes ---
 //

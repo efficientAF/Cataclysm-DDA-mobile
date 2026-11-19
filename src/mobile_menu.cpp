@@ -256,7 +256,9 @@ void main_menu_view::impl::draw_title( const ImVec2 &origin, const ImVec2 &size,
                 picked = choice{ choice_kind::tutorial, 0 };
                 break;
             case 3:
-                open_sheet = sheet::settings;
+                // straight to the Settings screen: the auto pickup and safe mode
+                // rules are rows on its Gameplay tab
+                picked = choice{ choice_kind::settings, 0 };
                 break;
             case 4:
                 picked = choice{ choice_kind::help, 0 };
